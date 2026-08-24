@@ -1,0 +1,69 @@
+{% extends "base.html" %}
+{% block title %}SweetReader - 个人资料{% endblock %}
+{% block extra_css %}
+<style>
+.profile-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+@media (max-width: 768px) { .profile-grid { grid-template-columns: 1fr; } }
+.profile-card { background: white; padding: 24px 32px; border-radius: 14px; box-shadow: var(--shadow); }
+.profile-card h3 { color: var(--text-dark); font-size: 18px; margin-bottom: 16px; }
+.profile-card label { display: block; font-weight: 600; margin-bottom: 4px; color: var(--text-dark); font-size: 14px; }
+.profile-card input[type="text"],
+.profile-card input[type="email"],
+.profile-card input[type="password"] {
+    width: 100%; padding: 10px 14px; border: 2px solid #f0e0e0; border-radius: 10px; font-size: 14px; margin-bottom: 14px; box-sizing: border-box; background: #faf8f8; transition: border 0.3s;
+}
+.profile-card input:focus { outline: none; border-color: var(--primary); background: white; }
+.profile-card .btn { width: 100%; padding: 12px; border-radius: 30px; font-size: 16px; font-weight: 600; }
+.flash { padding: 10px 14px; border-radius: 10px; margin-bottom: 14px; font-size: 14px; }
+.flash.error { background: #fef0f0; color: #c0392b; border: 1px solid #fcd5d5; }
+.flash.success { background: #f0faf5; color: #27ae60; border: 1px solid #c8f0d5; }
+.hint { font-size: 13px; color: #8a7a7a; margin-top: -8px; margin-bottom: 12px; }
+</style>
+{% endblock %}
+{% block content %}
+<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;flex-wrap:wrap;gap:12px;">
+    <h2 style="color:var(--text-dark);font-size:22px;">👤 个人资料</h2>
+    <div style="display:flex;gap:8px;">
+        <a href="/library" class="btn btn-outline">← 返回书库</a>
+        {% if current_user.is_admin %}
+            <a href="/admin/users" class="btn btn-primary">👥 用户管理</a>
+        {% endif %}
+    </div>
+</div>
+
+<div class="profile-grid">
+    <!-- 修改信息 -->
+    <div class="profile-card">
+        <h3>📝 基本信息</h3>
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% for category, message in messages %}
+                <div class="flash {{ category }}">{{ message }}</div>
+            {% endfor %}
+        {% endwith %}
+        <form method="POST">
+            <input type="hidden" name="action" value="update_profile">
+            <label>用户名</label>
+            <input type="text" name="username" value="{{ current_user.username }}" required>
+            <label>邮箱</label>
+            <input type="email" name="email" value="{{ current_user.email }}" required>
+            <button type="submit" class="btn btn-primary">💾 保存修改</button>
+        </form>
+    </div>
+
+    <!-- 修改密码 -->
+    <div class="profile-card">
+        <h3>🔒 修改密码</h3>
+        <form method="POST">
+            <input type="hidden" name="action" value="change_password">
+            <label>当前密码</label>
+            <input type="password" name="old_password" placeholder="请输入当前密码" required>
+            <label>新密码</label>
+            <input type="password" name="new_password" placeholder="至少7位，含大小写字母数字特殊符号" required>
+            <div class="hint">🔑 至少7位，包含大小写字母、数字和特殊符号</div>
+            <label>确认新密码</label>
+            <input type="password" name="confirm_password" placeholder="请再次输入新密码" required>
+            <button type="submit" class="btn btn-primary">🔑 修改密码</button>
+        </form>
+    </div>
+</div>
+{% endblock %}

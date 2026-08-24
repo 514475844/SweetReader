@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% block title %}SweetReader - 生成邀请码{% endblock %}
+{% block content %}
+<div style="max-width:800px;margin:0 auto;">
+    <div style="background:white;padding:24px 32px;border-radius:16px;box-shadow:var(--shadow);margin-bottom:20px;">
+        <h2 style="color:var(--text-dark);font-size:20px;">📧 生成邀请码</h2>
+        <p style="color:var(--text-light);font-size:14px;margin-bottom:16px;">为指定邮箱生成18位邀请码，有效期7天</p>
+        <form method="POST" style="display:flex;gap:12px;flex-wrap:wrap;">
+            <input type="email" name="email" placeholder="输入邮箱地址" required style="flex:1;padding:10px 16px;border:2px solid var(--primary-light);border-radius:10px;font-size:14px;min-width:200px;">
+            <button type="submit" class="btn btn-primary" style="padding:10px 24px;">✅ 生成邀请码</button>
+        </form>
+    </div>
+    <div style="background:white;padding:24px 32px;border-radius:16px;box-shadow:var(--shadow);">
+        <h3 style="color:var(--text-dark);font-size:16px;margin-bottom:12px;">📋 邀请码列表</h3>
+        <div style="overflow-x:auto;">
+            <table style="width:100%;border-collapse:collapse;font-size:14px;">
+                <thead><tr style="background:#f5f0eb;text-align:left;">
+                    <th style="padding:10px 12px;">邀请码</th><th style="padding:10px 12px;">邮箱</th>
+                    <th style="padding:10px 12px;">状态</th><th style="padding:10px 12px;">生成时间</th><th style="padding:10px 12px;">有效期</th>
+                </tr></thead>
+                <tbody>
+                    {% for invite in invites %}
+                    <tr style="border-bottom:1px solid #f0f0f0;">
+                        <td style="padding:10px 12px;font-family:monospace;font-weight:500;">{{ invite.code }}</td>
+                        <td style="padding:10px 12px;">{{ invite.target_email }}</td>
+                        <td style="padding:10px 12px;">
+                            {% if invite.is_used %}<span style="color:#999;">已使用</span>
+                            {% elif invite.expires_at and invite.expires_at < now %}<span style="color:#e8848a;">已过期</span>
+                            {% else %}<span style="color:#7bc8a4;">✅ 有效</span>{% endif %}
+                        </td>
+                        <td style="padding:10px 12px;font-size:13px;color:#888;">{{ invite.created_at.strftime('%Y-%m-%d %H:%M') }}</td>
+                        <td style="padding:10px 12px;font-size:13px;color:#888;">{% if invite.expires_at %}{{ invite.expires_at.strftime('%Y-%m-%d') }}{% else %}-{% endif %}</td>
+                    </tr>
+                    {% else %}<tr><td colspan="5" style="padding:30px;text-align:center;color:#999;">暂无邀请码</td></tr>{% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}

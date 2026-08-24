@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+{% block title %}SweetReader - 注册{% endblock %}
+{% block extra_css %}
+<style>
+.navbar { display: none; }
+.container { padding-top: 0; }
+.register-box { max-width: 440px; margin: 30px auto; background: white; padding: 40px 48px; border-radius: 24px; box-shadow: 0 20px 60px rgba(232,132,138,0.25); }
+.register-box .logo-text { text-align: center; font-size: 28px; font-weight: 700; color: #4a3a3a; margin-bottom: 4px; }
+.register-box .logo-text .sweet { color: #e8848a; }
+.register-box .logo-text .reader { color: #4a3a3a; }
+.register-box .sub { text-align: center; color: #8a7a7a; font-size: 15px; margin-bottom: 24px; }
+.register-box label { display: block; font-weight: 600; margin-bottom: 5px; color: #4a3a3a; font-size: 14px; }
+.register-box input { width: 100%; padding: 13px 16px; border: 2px solid #f0e0e0; border-radius: 12px; font-size: 15px; margin-bottom: 14px; background: #faf8f8; box-sizing: border-box; }
+.register-box input:focus { outline: none; border-color: #e8848a; background: white; box-shadow: 0 0 0 4px rgba(232,132,138,0.12); }
+.register-box input::placeholder { color: #bbb; font-size: 14px; }
+.register-box .password-hint { font-size: 13px; color: #8a7a7a; margin-top: -8px; margin-bottom: 14px; }
+.register-box .btn { width: 100%; padding: 15px; background: #e8848a; color: white; border: none; border-radius: 30px; font-size: 17px; font-weight: 600; cursor: pointer; transition: background 0.3s; }
+.register-box .btn:hover { background: #d46a70; }
+.register-box .flash { padding: 12px 16px; border-radius: 12px; margin-bottom: 14px; font-size: 14px; }
+.register-box .flash.error { background: #fef0f0; color: #c0392b; border: 1px solid #fcd5d5; }
+.register-box .flash.success { background: #f0faf5; color: #27ae60; border: 1px solid #c8f0d5; }
+.register-box .flash.warning { background: #fff8e8; color: #b7950b; border: 1px solid #f5e6b8; }
+.register-box .links { text-align: center; margin-top: 18px; font-size: 15px; color: #8a7a7a; }
+.register-box .links a { color: #e8848a; text-decoration: none; font-weight: 600; }
+.register-box .links a:hover { text-decoration: underline; }
+</style>
+{% endblock %}
+{% block content %}
+<div class="register-box">
+    <div class="logo-text">📚 <span class="sweet">Sweet</span><span class="reader">Reader</span></div>
+    <div class="sub">🍭 使用邀请码注册</div>
+    {% with messages = get_flashed_messages(with_categories=true) %}
+        {% for category, message in messages %}
+            <div class="flash {{ category }}">{{ message }}</div>
+        {% endfor %}
+    {% endwith %}
+    <form method="POST">
+        <label>📧 邀请码</label>
+        <input type="text" name="invite_code" placeholder="请输入18位邀请码" required>
+        <label>📧 邮箱地址</label>
+        <input type="email" name="email" placeholder="请输入邮箱（需与邀请码绑定）" required>
+        <label>👤 用户名</label>
+        <input type="text" name="username" placeholder="请设置用户名" required>
+        <label>🔒 密码</label>
+        <input type="password" name="password" placeholder="至少7位，含大小写字母数字和特殊符号" required>
+        <div class="password-hint">🔑 至少7位，包含大小写字母、数字和特殊符号</div>
+        <label>🔒 确认密码</label>
+        <input type="password" name="confirm_password" placeholder="请再次输入密码" required>
+        <button type="submit" class="btn">🍭 注册</button>
+    </form>
+    <div class="links">已有账号？<a href="{{ url_for('main.login') }}">去登录</a></div>
+</div>
+{% endblock %}

@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+{% block title %}SweetReader - 阅读 {{ book.title }}{% endblock %}
+{% block extra_css %}
+<style>
+body { background: #1a1a2e; }
+.container { max-width: 100%; padding: 0; }
+.reader-nav { background: #1a1a2e; padding: 12px 24px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; border-bottom: 1px solid #333; }
+.reader-nav .title { color: #eee; font-size: 15px; max-width: 300px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.reader-nav a { color: #eee; text-decoration: none; padding: 6px 16px; background: var(--primary); border-radius: 30px; font-size: 13px; transition: background 0.2s; }
+.reader-nav a:hover { background: var(--primary-dark); }
+.reader-nav .right { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.reader-nav .progress-info { color: #888; font-size: 13px; }
+.viewer { height: calc(100vh - 70px); background: #f5f0eb; overflow: hidden; }
+.viewer iframe { width: 100%; height: 100%; border: none; }
+.unsupported { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; color: var(--text-light); padding: 20px; text-align: center; background: #f5f0eb; }
+.unsupported .big-icon { font-size: 64px; margin-bottom: 16px; }
+.unsupported .btn { padding: 10px 28px; background: var(--primary); color: white; border: none; border-radius: 30px; text-decoration: none; margin-top: 16px; font-weight: 500; }
+</style>
+{% endblock %}
+{% block content %}
+<div class="reader-nav">
+    <span class="title">📖 {{ book.title or book.filename }}</span>
+    <div class="right">
+        {% if progress %}<span class="progress-info">📊 {{ progress.progress|round(1) }}%</span>{% endif %}
+        <a href="/library">返回书库</a>
+        <a href="/download/{{ book.id }}">⬇ 下载</a>
+    </div>
+</div>
+<div class="viewer">
+    {% set ext = book.filename.split('.')[-1].lower() %}
+    {% if ext == 'epub' %}
+        <iframe src="https://epubjs-demo.vercel.app/?url={{ url_for('main.get_book_content', book_id=book.id) }}"></iframe>
+    {% elif ext == 'pdf' %}
+        <iframe src="https://mozilla.github.io/pdf.js/web/viewer.html?file={{ url_for('main.get_book_content', book_id=book.id) }}"></iframe>
+    {% else %}
+        <div class="unsupported">
+            <span class="big-icon">📄</span>
+            <h2>此格式暂不支持在线阅读</h2>
+            <p>支持格式: EPUB, PDF</p>
+            <a href="/download/{{ book.id }}" class="btn">⬇ 下载后阅读</a>
+        </div>
+    {% endif %}
+</div>
+<script>
+window.addEventListener('message', function(e) {
+    if (e.data && e.data.type === 'progress') {
+        fetch('/api/progress/{{ book.id }}', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ progress: e.data.progress })
+        });
+    }
+});
+</script>
+{% endblock %}

@@ -1,0 +1,88 @@
+{% extends "base.html" %}
+{% block title %}SweetReader - 我的书库{% endblock %}
+{% block extra_css %}
+<style>
+.main-layout { display: grid; grid-template-columns: 260px 1fr; gap: 20px; }
+@media (max-width: 900px) { .main-layout { grid-template-columns: 1fr; } }
+.sidebar { background: white; padding: 16px; border-radius: 14px; box-shadow: var(--shadow); max-height: 70vh; overflow-y: auto; }
+.sidebar h3 { font-size: 15px; color: var(--text-dark); margin-bottom: 12px; display: flex; justify-content: space-between; align-items: center; }
+.sidebar ul { list-style: none; padding-left: 0; }
+.sidebar ul ul { padding-left: 18px; border-left: 2px solid var(--primary-light); margin-left: 6px; }
+.sidebar .cat-item { display: flex; align-items: center; padding: 5px 8px; border-radius: 8px; text-decoration: none; color: var(--text-dark); font-size: 14px; transition: background 0.2s; }
+.sidebar .cat-item:hover { background: var(--primary-light); }
+.sidebar .cat-item .badge { background: var(--primary-light); padding: 0 10px; border-radius: 12px; font-size: 11px; color: var(--text-light); margin-left: auto; }
+.sidebar .folder-toggle { cursor: pointer; margin-right: 4px; font-size: 12px; color: var(--text-light); }
+.sidebar .children.hidden { display: none; }
+.books-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 16px; }
+.book-card { background: white; padding: 16px; border-radius: 14px; box-shadow: var(--shadow); transition: transform 0.2s, box-shadow 0.2s; }
+.book-card:hover { transform: translateY(-4px); box-shadow: 0 8px 30px rgba(232,132,138,0.2); }
+.book-card .icon { font-size: 40px; text-align: center; display: block; }
+.book-card .title { font-weight: 600; font-size: 14px; margin: 8px 0 4px; color: var(--text-dark); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.book-card .author { font-size: 13px; color: var(--text-light); }
+.book-card .meta { font-size: 12px; color: #bbb; margin: 4px 0 8px; }
+.book-card .actions { display: flex; gap: 6px; flex-wrap: wrap; }
+.book-card .actions .btn { font-size: 12px; padding: 4px 14px; }
+.empty-state { grid-column: 1/-1; text-align: center; padding: 60px; color: var(--text-light); }
+.empty-state .big-icon { font-size: 60px; display: block; margin-bottom: 16px; }
+.search-bar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; flex-wrap: wrap; gap: 8px; }
+.search-bar input { padding: 8px 16px; border: 2px solid var(--primary-light); border-radius: 30px; font-size: 14px; width: 220px; background: white; transition: border 0.3s; }
+.search-bar input:focus { outline: none; border-color: var(--primary); }
+</style>
+{% endblock %}
+{% block content %}
+<div class="stats">
+    <div class="stat-card"><div class="num">{{ total_books }}</div><div class="label">📖 书籍</div></div>
+    <div class="stat-card"><div class="num">{{ total_categories }}</div><div class="label">📂 分类</div></div>
+</div>
+<div class="main-layout">
+    <div class="sidebar">
+        <h3>📂 分类导航 <a href="/categories" style="font-size:12px;color:var(--primary);">查看全部 →</a></h3>
+        <ul id="categoryTree">
+            {% for cat in categories %}
+                <li>
+                    <div style="display:flex;align-items:center;">
+                        <span class="folder-toggle" onclick="toggleCat(this)">▼</span>
+                        <a href="/category/{{ cat.path }}" class="cat-item">{{ cat.name }}<span class="badge">{{ cat.book_count }}</span></a>
+                    </div>
+                    {% if cat.children %}
+                        <ul class="children" id="children-{{ cat.id }}">
+                            {% for child in cat.children %}
+                                <li><a href="/category/{{ child.path }}" class="cat-item">↳ {{ child.name }}<span class="badge">{{ child.book_count }}</span></a></li>
+                            {% endfor %}
+                        </ul>
+                    {% endif %}
+                </li>
+            {% else %}
+                <li style="color:var(--text-light);padding:10px 0;">暂无分类，请 <a href="/admin/sync" style="color:var(--primary);">同步</a></li>
+            {% endfor %}
+        </ul>
+    </div>
+    <div>
+        <div class="search-bar"><span style="font-size:14px;color:var(--text-light);">📚 全部书籍</span><input type="text" id="searchInput" placeholder="🔍 搜索书名/作者..."></div>
+        <div class="books-grid" id="booksGrid">
+            {% for book in books %}
+                <div class="book-card" data-title="{{ book.title }}" data-author="{{ book.author or '' }}">
+                    <span class="icon">{{ book.file_type|default('📖')|replace('EPUB','📖')|replace('PDF','📄')|replace('TXT','📝') }}</span>
+                    <div class="title">{{ book.title or book.filename }}</div>
+                    <div class="author">{{ book.author or '未知作者' }}</div>
+                    <div class="meta">{{ book.file_type or '未知' }} · {{ (book.file_size or 0) // 1024 }}KB</div>
+                    <div class="actions">
+                        <a href="/read/{{ book.id }}" class="btn btn-primary">阅读</a>
+                        <a href="/download/{{ book.id }}" class="btn btn-outline">下载</a>
+                        {% if current_user.is_authenticated and current_user.is_admin %}
+                            <button onclick="deleteBook({{ book.id }})" class="btn btn-danger">删除</button>
+                        {% endif %}
+                    </div>
+                </div>
+            {% else %}
+                <div class="empty-state"><span class="big-icon">📭</span><p>还没有书籍，请上传或同步分类</p></div>
+            {% endfor %}
+        </div>
+    </div>
+</div>
+<script>
+function toggleCat(el) { var li = el.closest('li'); var children = li.querySelector('.children'); if (children) { children.classList.toggle('hidden'); el.textContent = children.classList.contains('hidden') ? '▶' : '▼'; } }
+document.getElementById('searchInput').addEventListener('input', function() { var keyword = this.value.toLowerCase(); var cards = document.querySelectorAll('.book-card'); var visible = 0; cards.forEach(function(card) { var title = (card.dataset.title || '').toLowerCase(); var author = (card.dataset.author || '').toLowerCase(); var match = title.includes(keyword) || author.includes(keyword); card.style.display = match ? '' : 'none'; if (match) visible++; }); var grid = document.getElementById('booksGrid');
+async function deleteBook(id) { if (!confirm('确定要删除这本书吗？')) return; try { var res = await fetch('/delete/' + id, { method: 'DELETE' }); var data = await res.json(); if (data.success) { showToast('✅ 删除成功', 'success'); setTimeout(function(){ location.reload(); }, 1000); } else { showToast('❌ ' + data.error, 'error'); } } catch (e) { showToast('❌ 删除失败', 'error'); } }
+</script>
+{% endblock %}

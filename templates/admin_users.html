@@ -1,0 +1,188 @@
+{% extends "base.html" %}
+{% block title %}SweetReader - 用户管理{% endblock %}
+{% block extra_css %}
+<style>
+.user-table { width: 100%; border-collapse: collapse; font-size: 14px; background: white; border-radius: 12px; overflow: hidden; box-shadow: var(--shadow); }
+.user-table th { background: #f5f0eb; padding: 12px 16px; text-align: left; font-weight: 600; color: var(--text-dark); }
+.user-table td { padding: 10px 16px; border-bottom: 1px solid #f0f0f0; vertical-align: middle; }
+.user-table tr:hover { background: #faf8f8; }
+.status-badge { display: inline-block; padding: 2px 12px; border-radius: 30px; font-size: 12px; font-weight: 500; }
+.status-active { background: #e8f5e9; color: #27ae60; }
+.status-inactive { background: #fce4ec; color: #e74c3c; }
+.btn-sm { padding: 4px 12px; font-size: 12px; border-radius: 30px; border: none; cursor: pointer; transition: all 0.2s; }
+.btn-sm-danger { background: #e8848a; color: white; }
+.btn-sm-danger:hover { background: #d46a70; }
+.btn-sm-success { background: #7bc8a4; color: white; }
+.btn-sm-success:hover { background: #5fb88e; }
+.btn-sm-warning { background: #f0c27a; color: white; }
+.btn-sm-warning:hover { background: #dba85a; }
+.btn-sm-primary { background: var(--primary); color: white; }
+.btn-sm-primary:hover { background: var(--primary-dark); }
+.actions { display: flex; gap: 6px; flex-wrap: wrap; }
+.modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 999; justify-content: center; align-items: center; }
+.modal-overlay.show { display: flex; }
+.modal-box { background: white; padding: 32px 40px; border-radius: 16px; max-width: 420px; width: 95%; box-shadow: 0 20px 60px rgba(0,0,0,0.3); }
+.modal-box h3 { margin-bottom: 16px; color: var(--text-dark); }
+.modal-box input { width: 100%; padding: 10px 14px; border: 2px solid #f0e0e0; border-radius: 10px; font-size: 14px; margin-bottom: 12px; box-sizing: border-box; }
+.modal-box input:focus { outline: none; border-color: var(--primary); }
+.modal-box .modal-actions { display: flex; gap: 10px; justify-content: flex-end; margin-top: 8px; }
+</style>
+{% endblock %}
+{% block content %}
+<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;flex-wrap:wrap;gap:12px;">
+    <h2 style="color:var(--text-dark);font-size:22px;">👥 用户管理</h2>
+    <a href="/profile" class="btn btn-primary">👤 我的资料</a>
+</div>
+
+<div style="overflow-x:auto;">
+    <table class="user-table">
+        <thead>
+            <tr>
+                <th>ID</th>
+                <th>用户名</th>
+                <th>邮箱</th>
+                <th>角色</th>
+                <th>状态</th>
+                <th>注册时间</th>
+                <th>操作</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for user in users %}
+            <tr>
+                <td>{{ user.id }}</td>
+                <td><strong>{{ user.username }}</strong>{% if user.id == current_user.id %} <span style="color:var(--primary);font-size:12px;">(我)</span>{% endif %}</td>
+                <td>{{ user.email }}</td>
+                <td>{% if user.is_admin %}👑 管理员{% else %}👤 普通用户{% endif %}</td>
+                <td>
+                    <span class="status-badge {% if user.is_active %}status-active{% else %}status-inactive{% endif %}">
+                        {% if user.is_active %}✅ 启用{% else %}❌ 禁用{% endif %}
+                    </span>
+                </td>
+                <td style="font-size:13px;color:#888;">{{ user.created_at.strftime('%Y-%m-%d %H:%M') }}</td>
+                <td>
+                    <div class="actions">
+                        {% if user.id != current_user.id %}
+                            <button onclick="toggleUser({{ user.id }})" class="btn-sm {% if user.is_active %}btn-sm-warning{% else %}btn-sm-success{% endif %}">
+                                {% if user.is_active %}禁用{% else %}启用{% endif %}
+                            </button>
+                            <button onclick="showResetPwd({{ user.id }}, '{{ user.username }}')" class="btn-sm btn-sm-primary">重置密码</button>
+                            <button onclick="deleteUser({{ user.id }}, '{{ user.username }}')" class="btn-sm btn-sm-danger">删除</button>
+                        {% else %}
+                            <span style="color:#bbb;font-size:13px;">不能操作自己</span>
+                        {% endif %}
+                    </div>
+                </td>
+            </tr>
+            {% else %}
+            <tr><td colspan="7" style="text-align:center;padding:40px;color:#999;">暂无用户</td></tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+<!-- 重置密码弹窗 -->
+<div id="resetPwdModal" class="modal-overlay">
+    <div class="modal-box">
+        <h3>🔑 重置密码</h3>
+        <p style="color:var(--text-light);font-size:14px;margin-bottom:12px;">为 <strong id="resetUsername"></strong> 重置密码</p>
+        <input type="password" id="newPwd" placeholder="新密码（至少7位，含大小写字母数字特殊符号）">
+        <input type="password" id="confirmPwd" placeholder="确认新密码">
+        <div style="color:#e8848a;font-size:13px;display:none;" id="pwdError"></div>
+        <div class="modal-actions">
+            <button onclick="closeModal()" class="btn btn-outline">取消</button>
+            <button onclick="confirmReset()" class="btn btn-primary">确认重置</button>
+        </div>
+    </div>
+</div>
+
+<script>
+var resetUserId = null;
+
+function toggleUser(id) {
+    fetch('/admin/user/' + id + '/toggle', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' }
+    })
+    .then(res => res.json())
+    .then(data => {
+        if (data.success) {
+            showToast(data.is_active ? '✅ 用户已启用' : '⛔ 用户已禁用', 'success');
+            setTimeout(() => location.reload(), 800);
+        } else {
+            showToast('❌ ' + data.error, 'error');
+        }
+    });
+}
+
+function showResetPwd(id, username) {
+    resetUserId = id;
+    document.getElementById('resetUsername').textContent = username;
+    document.getElementById('resetPwdModal').classList.add('show');
+    document.getElementById('newPwd').value = '';
+    document.getElementById('confirmPwd').value = '';
+    document.getElementById('pwdError').style.display = 'none';
+}
+
+function closeModal() {
+    document.getElementById('resetPwdModal').classList.remove('show');
+    resetUserId = null;
+}
+
+function confirmReset() {
+    var pwd = document.getElementById('newPwd').value;
+    var confirm = document.getElementById('confirmPwd').value;
+    var errorEl = document.getElementById('pwdError');
+
+    if (pwd !== confirm) {
+        errorEl.textContent = '❌ 两次输入的密码不一致';
+        errorEl.style.display = 'block';
+        return;
+    }
+
+    if (pwd.length < 7) {
+        errorEl.textContent = '❌ 密码长度至少7位';
+        errorEl.style.display = 'block';
+        return;
+    }
+
+    fetch('/admin/user/' + resetUserId + '/reset-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ password: pwd })
+    })
+    .then(res => res.json())
+    .then(data => {
+        if (data.success) {
+            showToast('✅ ' + data.message, 'success');
+            closeModal();
+            setTimeout(() => location.reload(), 800);
+        } else {
+            errorEl.textContent = '❌ ' + data.error;
+            errorEl.style.display = 'block';
+        }
+    });
+}
+
+function deleteUser(id, username) {
+    if (!confirm('确定要删除用户 "' + username + '" 吗？此操作不可恢复！')) return;
+    fetch('/admin/user/' + id + '/delete', {
+        method: 'DELETE'
+    })
+    .then(res => res.json())
+    .then(data => {
+        if (data.success) {
+            showToast('✅ 用户已删除', 'success');
+            setTimeout(() => location.reload(), 800);
+        } else {
+            showToast('❌ ' + data.error, 'error');
+        }
+    });
+}
+
+// 点击弹窗背景关闭
+document.getElementById('resetPwdModal').addEventListener('click', function(e) {
+    if (e.target === this) closeModal();
+});
+</script>
+{% endblock %}

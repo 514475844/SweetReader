@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+{% block title %}SweetReader - {{ category.name }}{% endblock %}
+{% block extra_css %}
+<style>
+.breadcrumb { font-size: 14px; color: var(--text-light); margin-bottom: 8px; }
+.breadcrumb a { color: var(--primary); text-decoration: none; }
+.header-box { background: white; padding: 20px 24px; border-radius: 14px; box-shadow: var(--shadow); margin-bottom: 20px; }
+.header-box h1 { font-size: 24px; color: var(--text-dark); }
+.header-box .sub { font-size: 14px; color: var(--text-light); margin-top: 4px; }
+.back-btn { display: inline-block; padding: 6px 16px; background: var(--primary-light); border-radius: 30px; text-decoration: none; color: var(--text-dark); font-size: 14px; margin-bottom: 12px; }
+.back-btn:hover { background: #ecd0d2; }
+.books-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 16px; }
+.book-card { background: white; padding: 16px; border-radius: 14px; box-shadow: var(--shadow); transition: transform 0.2s; }
+.book-card:hover { transform: translateY(-4px); box-shadow: 0 8px 30px rgba(232,132,138,0.2); }
+.book-card .icon { font-size: 40px; text-align: center; display: block; }
+.book-card .title { font-weight: 600; font-size: 14px; margin: 8px 0 4px; color: var(--text-dark); }
+.book-card .author { font-size: 13px; color: var(--text-light); }
+.book-card .meta { font-size: 12px; color: #bbb; margin: 4px 0 8px; }
+.book-card .actions { display: flex; gap: 6px; flex-wrap: wrap; }
+.book-card .actions .btn { font-size: 12px; padding: 4px 14px; }
+.empty-state { grid-column: 1/-1; text-align: center; padding: 60px; color: var(--text-light); }
+.empty-state .big-icon { font-size: 60px; display: block; margin-bottom: 16px; }
+</style>
+{% endblock %}
+{% block content %}
+<a href="/library" class="back-btn">← 返回书库</a>
+<div class="header-box">
+    <div class="breadcrumb">{% for crumb in breadcrumb %}<a href="/category/{{ crumb.path }}">{{ crumb.name }}</a>{% if not loop.last %} › {% endif %}{% endfor %}</div>
+    <h1>📁 {{ category.name }}</h1>
+    <div class="sub">共 {{ books|length }} 本书</div>
+</div>
+<div class="books-grid">
+    {% for book in books %}
+        <div class="book-card">
+            <span class="icon">{{ book.file_type|default('📖')|replace('EPUB','📖')|replace('PDF','📄') }}</span>
+            <div class="title">{{ book.title or book.filename }}</div>
+            <div class="author">{{ book.author or '未知作者' }}</div>
+            <div class="meta">{{ book.file_type or '未知' }}</div>
+            <div class="actions">
+                <a href="/read/{{ book.id }}" class="btn btn-primary">阅读</a>
+                <a href="/download/{{ book.id }}" class="btn btn-outline">下载</a>
+            </div>
+        </div>
+    {% else %}
+        <div class="empty-state"><span class="big-icon">📭</span><p>这个分类下还没有书籍</p></div>
+    {% endfor %}
+</div>
+{% endblock %}
