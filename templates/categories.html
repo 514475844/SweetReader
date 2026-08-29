@@ -2,181 +2,94 @@
 {% block title %}SweetReader - 分类浏览{% endblock %}
 {% block extra_css %}
 <style>
-.mode-toggle { display: flex; align-items: center; gap: 12px; }
-.switch { width: 50px; height: 28px; background: #ddd; border-radius: 14px; cursor: pointer; position: relative; transition: background 0.3s; flex-shrink: 0; }
-.switch.active { background: var(--primary); }
-.switch .slider { position: absolute; top: 3px; left: 3px; width: 22px; height: 22px; background: white; border-radius: 50%; transition: transform 0.3s; box-shadow: 0 2px 4px rgba(0,0,0,0.2); }
-.switch.active .slider { transform: translateX(22px); }
-.mode-label { font-weight: 500; color: var(--text-dark); min-width: 70px; }
+.mode-select { padding: 6px 12px; border: 2px solid var(--primary-light); border-radius: 8px; font-size: 14px; background: white; cursor: pointer; outline: none; }
+.mode-select:focus { border-color: var(--primary); }
 .tree-view ul { list-style: none; padding-left: 0; }
-.tree-view ul ul { padding-left: 28px; border-left: 2px dashed var(--primary-light); margin-left: 12px; }
-.tree-view .cat-item { display: flex; align-items: center; padding: 6px 12px; border-radius: 8px; text-decoration: none; color: var(--text-dark); transition: background 0.2s; }
+.tree-view ul ul { padding-left: 18px; border-left: 2px solid var(--primary-light); margin-left: 6px; }
+.tree-view .cat-item { display: flex; align-items: center; padding: 4px 8px; border-radius: 6px; text-decoration: none; color: var(--text-dark); font-size: 14px; transition: background 0.2s; }
 .tree-view .cat-item:hover { background: var(--primary-light); }
-.tree-view .cat-item .badge { background: var(--primary-light); padding: 0 10px; border-radius: 12px; font-size: 12px; color: var(--text-light); margin-left: 10px; }
-.tree-view .cat-item .path-hint { font-size: 12px; color: #ccc; margin-left: 10px; }
-.tree-view .folder-toggle { cursor: pointer; width: 24px; display: inline-block; font-size: 13px; color: var(--text-light); user-select: none; }
+.tree-view .cat-item .badge { background: var(--primary-light); padding: 0 10px; border-radius: 12px; font-size: 11px; color: var(--text-light); margin-left: auto; }
+.tree-view .folder-toggle { cursor: pointer; margin-right: 4px; font-size: 12px; color: var(--text-light); user-select: none; }
 .tree-view .folder-toggle.open { transform: rotate(90deg); }
 .tree-view .children.hidden { display: none; }
-.flat-view { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 10px; }
-.flat-view .card { background: white; padding: 14px 18px; border-radius: 12px; box-shadow: var(--shadow); display: flex; justify-content: space-between; align-items: center; text-decoration: none; color: var(--text-dark); transition: transform 0.2s, box-shadow 0.2s; }
-.flat-view .card:hover { transform: translateY(-2px); box-shadow: 0 8px 25px rgba(232,132,138,0.15); }
-.flat-view .card .name { font-weight: 500; }
-.flat-view .card .path { font-size: 12px; color: #bbb; margin-top: 2px; }
-.flat-view .card .badge { background: var(--primary); color: white; padding: 2px 14px; border-radius: 30px; font-size: 12px; }
-.empty-state { grid-column: 1/-1; text-align: center; padding: 60px; color: var(--text-light); }
-.empty-state .big-icon { font-size: 60px; display: block; margin-bottom: 16px; }
+.flat-view { display: block; }
+.flat-view .flat-item { display: flex; align-items: center; padding: 6px 12px; background: white; border-bottom: 1px solid #f5f0eb; text-decoration: none; color: var(--text-dark); font-size: 14px; transition: background 0.2s; }
+.flat-view .flat-item:hover { background: #faf6f2; }
+.flat-view .flat-item .name { flex: 0 0 auto; }
+.flat-view .flat-item .path { font-size: 12px; color: #bbb; margin: 0 16px; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.flat-view .flat-item .badge { background: #f0e8e4; padding: 0 12px; border-radius: 12px; font-size: 12px; color: var(--text-light); flex-shrink: 0; }
+.empty-state { text-align: center; padding: 60px; color: var(--text-light); }
 </style>
 {% endblock %}
 {% block content %}
-<div style="background:white;padding:20px 24px;border-radius:14px;box-shadow:var(--shadow);margin-bottom:20px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;">
-    <div><h2 style="color:var(--text-dark);font-size:20px;">📂 分类浏览</h2><a href="/library" style="color:var(--text-light);font-size:14px;">← 返回书库</a></div>
-    <div class="mode-toggle">
-        <span>🌳 树形</span>
-        <div id="modeSwitch" class="switch active" onclick="toggleMode()"><div class="slider"></div></div>
-        <span>📋 扁平</span>
-        <span class="mode-label" id="modeLabel">树形模式</span>
+<div style="background:white;padding:16px 24px;border-radius:14px;box-shadow:var(--shadow);margin-bottom:20px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;">
+    <div><h2 style="color:var(--text-dark);font-size:20px;">📂 全部</h2></div>
+    <div>
+        <select id="modeSelect" class="mode-select" onchange="changeMode(this.value)">
+            <option value="flat">📋 扁平模式</option>
+            <option value="tree">🌳 树形模式</option>
+        </select>
     </div>
 </div>
-<div class="stats">
-    <div class="stat-card"><div class="num" id="totalCats">0</div><div class="label">分类</div></div>
-    <div class="stat-card"><div class="num" id="totalBooks">0</div><div class="label">书籍</div></div>
-    <div class="stat-card"><div class="num" id="maxDepth">0</div><div class="label">最大层级</div></div>
-</div>
-<div id="container"><div class="empty-state"><span class="big-icon">📭</span><p>加载中...</p></div></div>
+<div id="container"><div class="empty-state">加载中...</div></div>
 <script>
-// ============ 分类浏览 JavaScript ============
-var currentMode = 'tree';
-var expanded = new Set();
-
-function toggleMode() {
-    var sw = document.getElementById('modeSwitch');
-    if (currentMode === 'tree') {
-        currentMode = 'flat';
-        sw.classList.add('active');
-        document.getElementById('modeLabel').textContent = '扁平模式';
-    } else {
-        currentMode = 'tree';
-        sw.classList.remove('active');
-        document.getElementById('modeLabel').textContent = '树形模式';
-    }
-    loadData();
-}
-
-function fetchData(mode) {
-    return fetch('/api/categories?mode=' + mode).then(function(res) { return res.json(); });
-}
-
+var currentMode = 'flat', expanded = new Set();
+function changeMode(mode) { currentMode = mode; loadData(); }
+function fetchData(mode) { return fetch('/api/categories?mode=' + mode).then(function(r) { return r.json(); }); }
 function renderTree(nodes, level) {
-    if (!nodes || nodes.length === 0) {
-        return '<div class="empty-state"><span class="big-icon">📭</span><p>暂无分类</p></div>';
-    }
+    if (!nodes || nodes.length === 0) return '<div class="empty-state">暂无分类</div>';
     var html = '<ul>';
     for (var i = 0; i < nodes.length; i++) {
-        var node = nodes[i];
-        var hasChildren = node.children && node.children.length > 0;
-        var isOpen = expanded.has(node.id);
-        html += '<li>';
-        html += '<div class="cat-item" style="padding-left:' + (level*12) + 'px;">';
+        var node = nodes[i], hasChildren = node.children && node.children.length > 0, isOpen = expanded.has(node.id);
+        html += '<li><div class="cat-item" style="padding-left:' + (level * 12) + 'px;">';
+        if (hasChildren) html += '<span class="folder-toggle ' + (isOpen ? 'open' : '') + '" onclick="toggleFolder(event, ' + node.id + ')">▶</span>';
+        else html += '<span style="width:18px;display:inline-block;"></span>';
+        html += '<a href="/category/' + node.path + '" class="cat-item">' + node.name + '<span class="badge">' + (node.book_count || 0) + '</span></a></div>';
         if (hasChildren) {
-            html += '<span class="folder-toggle ' + (isOpen ? 'open' : '') + '" onclick="toggleFolder(event, ' + node.id + ')">▶</span>';
-        } else {
-            html += '<span style="width:24px;display:inline-block;"></span>';
-        }
-        html += '<a href="/category/' + node.path + '" class="cat-item" style="padding-left:0;">';
-        html += '<span class="name">📁 ' + node.name + '</span>';
-        html += '<span class="badge">' + (node.book_count || 0) + '</span>';
-        html += '<span class="path-hint">' + node.path + '</span>';
-        html += '</a>';
-        html += '</div>';
-        if (hasChildren) {
-            html += '<div class="children ' + (isOpen ? '' : 'hidden') + '" id="children-' + node.id + '">';
+            html += '<ul class="children ' + (isOpen ? '' : 'hidden') + '" id="children-' + node.id + '">';
             html += renderTree(node.children, level + 1);
-            html += '</div>';
+            html += '</ul>';
         }
         html += '</li>';
     }
     html += '</ul>';
     return html;
 }
-
 function renderFlat(data) {
-    if (!data || data.length === 0) {
-        return '<div class="empty-state"><span class="big-icon">📭</span><p>暂无分类</p></div>';
-    }
-    data.sort(function(a, b) {
-        return a.level - b.level || a.full_path.localeCompare(b.full_path);
-    });
-    var maxLev = 0;
-    for (var i = 0; i < data.length; i++) {
-        if (data[i].level > maxLev) maxLev = data[i].level;
-    }
-    document.getElementById('maxDepth').textContent = maxLev;
+    if (!data || data.length === 0) return '<div class="empty-state">暂无分类</div>';
+    data.sort(function(a, b) { return a.level - b.level || a.full_path.localeCompare(b.full_path); });
     var html = '<div class="flat-view">';
     for (var i = 0; i < data.length; i++) {
-        var cat = data[i];
-        var indent = cat.level * 16;
-        var space = '';
+        var cat = data[i], space = '';
         for (var j = 0; j < cat.level; j++) space += '　';
-        html += '<a href="/category/' + cat.path + '" class="card" style="padding-left:' + (12 + indent) + 'px;">';
-        html += '<div><div class="name">' + space + '📄 ' + cat.name + '</div>';
-        html += '<div class="path">' + cat.full_path + '</div></div>';
-        html += '<span class="badge">' + (cat.book_count || 0) + '</span>';
-        html += '</a>';
+        html += '<a href="/category/' + cat.path + '" class="flat-item"><span class="name">' + space + '📄 ' + cat.name + '</span><span class="path">' + cat.full_path + '</span><span class="badge">' + (cat.book_count || 0) + '</span></a>';
     }
     html += '</div>';
     return html;
 }
-
 function toggleFolder(e, id) {
     e.stopPropagation();
-    var children = document.getElementById('children-' + id);
-    var toggle = e.target;
-    if (expanded.has(id)) {
-        expanded.delete(id);
-        children.classList.add('hidden');
-        toggle.classList.remove('open');
-    } else {
-        expanded.add(id);
-        children.classList.remove('hidden');
-        toggle.classList.add('open');
-    }
+    var children = document.getElementById('children-' + id), toggle = e.target;
+    if (expanded.has(id)) { expanded.delete(id); children.classList.add('hidden'); toggle.classList.remove('open'); }
+    else { expanded.add(id); children.classList.remove('hidden'); toggle.classList.add('open'); }
 }
-
-function countNodes(nodes) {
-    var c = nodes.length;
-    for (var i = 0; i < nodes.length; i++) {
-        if (nodes[i].children) c += countNodes(nodes[i].children);
-    }
-    return c;
-}
-
+function countNodes(nodes) { var c = nodes.length; for (var i = 0; i < nodes.length; i++) { if (nodes[i].children) c += countNodes(nodes[i].children); } return c; }
 function loadData() {
+    var container = document.getElementById('container');
+    container.innerHTML = '加载中...';
     fetchData(currentMode).then(function(data) {
-        var container = document.getElementById('container');
         var total = 0;
-        if (currentMode === 'tree') {
-            container.innerHTML = renderTree(data, 0);
-            total = countNodes(data);
-        } else {
-            container.innerHTML = renderFlat(data);
-            total = data.length;
-        }
+        if (currentMode === 'tree') { container.innerHTML = renderTree(data, 0); total = countNodes(data); }
+        else { container.innerHTML = renderFlat(data); total = data.length; }
         document.getElementById('totalCats').textContent = total;
         return fetch('/api/books');
-    }).then(function(res) {
-        return res.json();
-    }).then(function(books) {
-        document.getElementById('totalBooks').textContent = books.length || 0;
-    }).catch(function(err) {
-        console.error('加载失败:', err);
-        document.getElementById('container').innerHTML = '<div class="empty-state"><span class="big-icon">❌</span><p>加载失败: ' + err.message + '</p></div>';
-    });
+    }).then(function(r) { return r.json(); }).then(function(books) { document.getElementById('totalBooks').textContent = books.length || 0; });
 }
-
-// 页面加载时执行
 document.addEventListener('DOMContentLoaded', function() {
-    expanded.add('root');
+    document.getElementById('modeSelect').value = 'flat';
+    currentMode = 'flat';
     loadData();
 });
+window.changeMode = changeMode; window.toggleFolder = toggleFolder;
 </script>
 {% endblock %}

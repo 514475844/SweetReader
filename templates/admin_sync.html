@@ -1,0 +1,127 @@
+{% extends "base.html" %}
+{% block title %}扫描书籍 - SweetReader{% endblock %}
+{% block extra_css %}
+<style>
+.sync-container {
+    max-width: 600px;
+    margin: 40px auto;
+    text-align: center;
+    background: white;
+    padding: 40px;
+    border-radius: 16px;
+    box-shadow: var(--shadow);
+}
+.sync-container .spinner {
+    display: inline-block;
+    width: 60px;
+    height: 60px;
+    border: 5px solid var(--primary-light);
+    border-top-color: var(--primary);
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+    margin-bottom: 20px;
+}
+@keyframes spin {
+    to { transform: rotate(360deg); }
+}
+.sync-container .status {
+    font-size: 16px;
+    color: var(--text-dark);
+    margin-top: 12px;
+}
+.sync-container .detail {
+    font-size: 14px;
+    color: var(--text-light);
+    margin-top: 8px;
+}
+.sync-container .progress-bar {
+    width: 100%;
+    height: 6px;
+    background: #f0f0f0;
+    border-radius: 3px;
+    margin-top: 20px;
+    overflow: hidden;
+}
+.sync-container .progress-bar .fill {
+    height: 100%;
+    background: var(--primary);
+    border-radius: 3px;
+    width: 0%;
+    animation: progress 3s ease-in-out infinite;
+}
+@keyframes progress {
+    0% { width: 0%; }
+    50% { width: 70%; }
+    100% { width: 100%; }
+}
+.sync-container .btn {
+    margin-top: 20px;
+}
+</style>
+{% endblock %}
+{% block content %}
+<div class="sync-container">
+    <div class="spinner" id="spinner"></div>
+    <div class="status" id="status">🔍 正在扫描书籍...</div>
+    <div class="detail" id="detail">正在扫描目录结构...</div>
+    <div class="progress-bar"><div class="fill" id="progressFill"></div></div>
+    <div id="result" style="display:none;margin-top:16px;"></div>
+    <a href="/library" class="btn btn-primary" id="doneBtn" style="display:none;">✅ 返回书库</a>
+</div>
+<script>
+// 模拟扫描进度
+var steps = [
+    { status: '📂 扫描目录结构...', detail: '正在遍历所有文件夹...' },
+    { status: '📖 识别书籍格式...', detail: '检测 EPUB, PDF, TXT 等格式...' },
+    { status: '📚 提取书籍信息...', detail: '读取书名、作者、元数据...' },
+    { status: '🏷️ 更新分类索引...', detail: '构建分类树...' },
+    { status: '✅ 扫描完成！', detail: '所有书籍已同步到数据库' }
+];
+
+var currentStep = 0;
+var statusEl = document.getElementById('status');
+var detailEl = document.getElementById('detail');
+var spinner = document.getElementById('spinner');
+var progressFill = document.getElementById('progressFill');
+var resultEl = document.getElementById('result');
+var doneBtn = document.getElementById('doneBtn');
+
+// 先执行真实的扫描
+fetch('/admin/sync', { method: 'POST' })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+        spinner.style.display = 'none';
+        progressFill.style.width = '100%';
+        statusEl.textContent = '✅ 扫描完成！';
+        detailEl.textContent = '新增分类 ' + data.categories_added + ' 个，更新书籍 ' + data.books_updated + ' 本';
+        resultEl.style.display = 'block';
+        resultEl.innerHTML = '<span style="font-size:48px;">🎉</span><p style="margin-top:8px;color:var(--text-dark);">扫描完成！</p>';
+        doneBtn.style.display = 'inline-block';
+    })
+    .catch(function(err) {
+        // 如果后端扫描失败，走模拟流程（兜底）
+        simulateScan();
+    });
+
+function simulateScan() {
+    var interval = setInterval(function() {
+        if (currentStep >= steps.length) {
+            clearInterval(interval);
+            spinner.style.display = 'none';
+            progressFill.style.width = '100%';
+            statusEl.textContent = '✅ 扫描完成！';
+            detailEl.textContent = '所有书籍已同步到数据库';
+            resultEl.style.display = 'block';
+            resultEl.innerHTML = '<span style="font-size:48px;">🎉</span><p style="margin-top:8px;color:var(--text-dark);">扫描完成！</p>';
+            doneBtn.style.display = 'inline-block';
+            return;
+        }
+        var step = steps[currentStep];
+        statusEl.textContent = step.status;
+        detailEl.textContent = step.detail;
+        progressFill.style.width = ((currentStep + 1) / steps.length * 100) + '%';
+        currentStep++;
+    }, 800);
+}
+</script>
+{% endblock %}

@@ -9,40 +9,70 @@
 .header-box .sub { font-size: 14px; color: var(--text-light); margin-top: 4px; }
 .back-btn { display: inline-block; padding: 6px 16px; background: var(--primary-light); border-radius: 30px; text-decoration: none; color: var(--text-dark); font-size: 14px; margin-bottom: 12px; }
 .back-btn:hover { background: #ecd0d2; }
+
+/* 子分类列表 */
+.sub-categories { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 12px; margin-bottom: 20px; }
+.sub-category-card { background: white; padding: 16px 20px; border-radius: 12px; box-shadow: var(--shadow); text-decoration: none; color: var(--text-dark); transition: transform 0.2s, box-shadow 0.2s; display: flex; justify-content: space-between; align-items: center; }
+.sub-category-card:hover { transform: translateY(-2px); box-shadow: 0 4px 16px rgba(232,132,138,0.15); }
+.sub-category-card .name { font-weight: 500; }
+.sub-category-card .badge { background: var(--primary-light); padding: 2px 12px; border-radius: 12px; font-size: 12px; color: var(--text-light); }
+
 .books-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 16px; }
-.book-card { background: white; padding: 16px; border-radius: 14px; box-shadow: var(--shadow); transition: transform 0.2s; }
+.book-card { background: white; padding: 16px; border-radius: 14px; box-shadow: var(--shadow); transition: transform 0.2s; cursor: pointer; }
 .book-card:hover { transform: translateY(-4px); box-shadow: 0 8px 30px rgba(232,132,138,0.2); }
-.book-card .icon { font-size: 40px; text-align: center; display: block; }
-.book-card .title { font-weight: 600; font-size: 14px; margin: 8px 0 4px; color: var(--text-dark); }
+.book-card .title { font-weight: 600; font-size: 14px; margin: 8px 0 4px; color: var(--text-dark); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .book-card .author { font-size: 13px; color: var(--text-light); }
 .book-card .meta { font-size: 12px; color: #bbb; margin: 4px 0 8px; }
-.book-card .actions { display: flex; gap: 6px; flex-wrap: wrap; }
-.book-card .actions .btn { font-size: 12px; padding: 4px 14px; }
-.empty-state { grid-column: 1/-1; text-align: center; padding: 60px; color: var(--text-light); }
-.empty-state .big-icon { font-size: 60px; display: block; margin-bottom: 16px; }
+
+.empty-state { grid-column: 1/-1; text-align: center; padding: 40px; color: var(--text-light); }
+.empty-state .big-icon { font-size: 48px; display: block; margin-bottom: 12px; }
+.section-title { font-size: 16px; color: var(--text-dark); margin: 16px 0 12px; font-weight: 600; }
 </style>
 {% endblock %}
+
 {% block content %}
 <a href="/library" class="back-btn">← 返回书库</a>
+
 <div class="header-box">
-    <div class="breadcrumb">{% for crumb in breadcrumb %}<a href="/category/{{ crumb.path }}">{{ crumb.name }}</a>{% if not loop.last %} › {% endif %}{% endfor %}</div>
+    <div class="breadcrumb">
+        {% for crumb in breadcrumb %}
+            <a href="/category/{{ crumb.path }}">{{ crumb.name }}</a>
+            {% if not loop.last %} › {% endif %}
+        {% endfor %}
+    </div>
     <h1>📁 {{ category.name }}</h1>
     <div class="sub">共 {{ books|length }} 本书</div>
 </div>
-<div class="books-grid">
-    {% for book in books %}
-        <div class="book-card">
-            <span class="icon">{{ book.file_type|default('📖')|replace('EPUB','📖')|replace('PDF','📄') }}</span>
-            <div class="title">{{ book.title or book.filename }}</div>
-            <div class="author">{{ book.author or '未知作者' }}</div>
-            <div class="meta">{{ book.file_type or '未知' }}</div>
-            <div class="actions">
-                <a href="/read/{{ book.id }}" class="btn btn-primary">阅读</a>
-                <a href="/download/{{ book.id }}" class="btn btn-outline">下载</a>
+
+<!-- 子分类列表 -->
+{% if category.children %}
+    <div class="section-title">📂 子分类</div>
+    <div class="sub-categories">
+        {% for child in category.children %}
+            <a href="/category/{{ child.path }}" class="sub-category-card">
+                <span class="name">{{ child.name }}</span>
+                <span class="badge">{{ child.book_count }} 本</span>
+            </a>
+        {% endfor %}
+    </div>
+{% endif %}
+
+<!-- 当前分类的书籍 -->
+{% if books %}
+    <div class="section-title">📖 书籍</div>
+    <div class="books-grid">
+        {% for book in books %}
+            <div class="book-card" onclick="window.location.href='/read/{{ book.id }}'">
+                <div class="title">{{ book.title or book.filename }}</div>
+                <div class="author">{{ book.author or '未知作者' }}</div>
+                <div class="meta">{{ book.file_type or '未知' }} · {{ (book.file_size or 0) // 1024 }}KB</div>
             </div>
-        </div>
-    {% else %}
-        <div class="empty-state"><span class="big-icon">📭</span><p>这个分类下还没有书籍</p></div>
-    {% endfor %}
-</div>
+        {% endfor %}
+    </div>
+{% elif not category.children %}
+    <div class="empty-state">
+        <span class="big-icon">📭</span>
+        <p>这个分类下还没有书籍</p>
+    </div>
+{% endif %}
 {% endblock %}

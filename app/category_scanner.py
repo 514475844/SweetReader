@@ -6,7 +6,27 @@ from app.models import db, Category, Book
 from app.utils import BookUtils
 
 class CategoryScanner:
-    SUPPORTED_EXTS = {'.epub', '.pdf', '.mobi', '.azw3', '.txt'}
+
+    @classmethod
+    def _update_category_counts(cls):
+        from app.models import Category, Book
+        
+        def count_books_recursive(cat):
+            total = Book.query.filter_by(category_id=cat.id).count()
+            for child in cat.children:
+                total += count_books_recursive(child)
+            return total
+        
+        all_cats = Category.query.all()
+        for cat in all_cats:
+            cat.book_count = count_books_recursive(cat)
+        db.session.commit()
+
+    SUPPORTED_EXTS = {
+        '.epub', '.pdf', '.mobi', '.azw3', '.txt',
+        '.doc', '.docx', '.rtf', '.odt',
+        '.fb2', '.cbz', '.cbr'
+    }
     BATCH_SIZE = 500
 
     @classmethod
@@ -32,6 +52,7 @@ class CategoryScanner:
         )
 
         cls._cleanup_orphans(books_dir, result)
+        cls._update_category_counts()
         return result
 
     @classmethod

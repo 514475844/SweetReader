@@ -2,8 +2,11 @@
 {% block title %}SweetReader - 生成邀请码{% endblock %}
 {% block content %}
 <div style="max-width:800px;margin:0 auto;">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;flex-wrap:wrap;gap:12px;">
+        <h2 style="color:var(--text-dark);font-size:22px;">📧 生成邀请码</h2>
+        <a href="/library" class="btn btn-outline">← 返回书库</a>
+    </div>
     <div style="background:white;padding:24px 32px;border-radius:16px;box-shadow:var(--shadow);margin-bottom:20px;">
-        <h2 style="color:var(--text-dark);font-size:20px;">📧 生成邀请码</h2>
         <p style="color:var(--text-light);font-size:14px;margin-bottom:16px;">为指定邮箱生成18位邀请码，有效期7天</p>
         <form method="POST" style="display:flex;gap:12px;flex-wrap:wrap;">
             <input type="email" name="email" placeholder="输入邮箱地址" required style="flex:1;padding:10px 16px;border:2px solid var(--primary-light);border-radius:10px;font-size:14px;min-width:200px;">

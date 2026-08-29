@@ -2,87 +2,792 @@
 {% block title %}SweetReader - 我的书库{% endblock %}
 {% block extra_css %}
 <style>
-.main-layout { display: grid; grid-template-columns: 260px 1fr; gap: 20px; }
-@media (max-width: 900px) { .main-layout { grid-template-columns: 1fr; } }
-.sidebar { background: white; padding: 16px; border-radius: 14px; box-shadow: var(--shadow); max-height: 70vh; overflow-y: auto; }
-.sidebar h3 { font-size: 15px; color: var(--text-dark); margin-bottom: 12px; display: flex; justify-content: space-between; align-items: center; }
-.sidebar ul { list-style: none; padding-left: 0; }
-.sidebar ul ul { padding-left: 18px; border-left: 2px solid var(--primary-light); margin-left: 6px; }
-.sidebar .cat-item { display: flex; align-items: center; padding: 5px 8px; border-radius: 8px; text-decoration: none; color: var(--text-dark); font-size: 14px; transition: background 0.2s; }
+/* ===== 布局：目录树 + 内容区 ===== */
+.main-layout {
+    display: grid;
+    grid-template-columns: 260px 1fr;
+    gap: 20px;
+}
+@media (max-width: 900px) {
+    .main-layout {
+        grid-template-columns: 1fr;
+    }
+}
+
+/* ===== 左侧目录树 ===== */
+.sidebar {
+    background: white;
+    padding: 12px 14px;
+    border-radius: 14px;
+    box-shadow: var(--shadow);
+    max-height: 70vh;
+    overflow-y: auto;
+}
+.sidebar .sidebar-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 10px;
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text-dark);
+}
+.sidebar .sidebar-header .expand-btn {
+    font-size: 12px;
+    color: var(--primary);
+    background: none;
+    border: 1px solid var(--primary-light);
+    border-radius: 12px;
+    padding: 1px 12px;
+    cursor: pointer;
+}
+.sidebar .sidebar-header .expand-btn:hover {
+    background: var(--primary-light);
+}
+.sidebar ul { list-style: none; padding-left: 0; margin: 0; }
+.sidebar ul ul {
+    padding-left: 16px;
+    border-left: 2px solid var(--primary-light);
+    margin-left: 4px;
+}
+.sidebar .cat-item {
+    display: flex;
+    align-items: center;
+    padding: 4px 8px;
+    border-radius: 6px;
+    text-decoration: none;
+    color: var(--text-dark);
+    font-size: 13px;
+    cursor: pointer;
+    transition: background 0.2s;
+}
 .sidebar .cat-item:hover { background: var(--primary-light); }
-.sidebar .cat-item .badge { background: var(--primary-light); padding: 0 10px; border-radius: 12px; font-size: 11px; color: var(--text-light); margin-left: auto; }
-.sidebar .folder-toggle { cursor: pointer; margin-right: 4px; font-size: 12px; color: var(--text-light); }
+.sidebar .cat-item.active { background: var(--primary); color: white; }
+.sidebar .cat-item .badge {
+    background: var(--primary-light);
+    padding: 0 8px;
+    border-radius: 10px;
+    font-size: 11px;
+    color: var(--text-light);
+    margin-left: auto;
+}
+.sidebar .cat-item.active .badge {
+    background: rgba(255,255,255,0.3);
+    color: white;
+}
+.sidebar .folder-toggle {
+    cursor: pointer;
+    margin-right: 4px;
+    font-size: 11px;
+    color: var(--text-light);
+    user-select: none;
+    width: 16px;
+    text-align: center;
+}
 .sidebar .children.hidden { display: none; }
-.books-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 16px; }
-.book-card { background: white; padding: 16px; border-radius: 14px; box-shadow: var(--shadow); transition: transform 0.2s, box-shadow 0.2s; }
-.book-card:hover { transform: translateY(-4px); box-shadow: 0 8px 30px rgba(232,132,138,0.2); }
-.book-card .icon { font-size: 40px; text-align: center; display: block; }
-.book-card .title { font-weight: 600; font-size: 14px; margin: 8px 0 4px; color: var(--text-dark); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
-.book-card .author { font-size: 13px; color: var(--text-light); }
-.book-card .meta { font-size: 12px; color: #bbb; margin: 4px 0 8px; }
-.book-card .actions { display: flex; gap: 6px; flex-wrap: wrap; }
-.book-card .actions .btn { font-size: 12px; padding: 4px 14px; }
-.empty-state { grid-column: 1/-1; text-align: center; padding: 60px; color: var(--text-light); }
-.empty-state .big-icon { font-size: 60px; display: block; margin-bottom: 16px; }
-.search-bar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; flex-wrap: wrap; gap: 8px; }
-.search-bar input { padding: 8px 16px; border: 2px solid var(--primary-light); border-radius: 30px; font-size: 14px; width: 220px; background: white; transition: border 0.3s; }
-.search-bar input:focus { outline: none; border-color: var(--primary); }
+
+/* ===== 右侧内容区 ===== */
+.content-area { display: flex; flex-direction: column; }
+
+/* ===== 继续阅读 ===== */
+.continue-reading {
+    background: white;
+    padding: 10px 16px;
+    border-radius: 10px;
+    box-shadow: var(--shadow);
+    margin-bottom: 12px;
+    display: none;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+.continue-reading.show { display: flex; }
+.continue-reading .info {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+.continue-reading .info .icon { font-size: 20px; }
+.continue-reading .info .title { font-size: 15px; font-weight: 500; color: var(--text-dark); }
+.continue-reading .info .progress { font-size: 13px; color: var(--text-light); }
+.continue-reading .btn { font-size: 14px; padding: 4px 16px; }
+
+/* ===== 筛选栏 - 两行布局 ===== */
+.filter-bar {
+    display: grid;
+    grid-template-columns: 56px 1fr;
+    gap: 4px 8px;
+    padding: 6px 10px;
+    background: white;
+    border-radius: 10px;
+    box-shadow: var(--shadow);
+    margin-bottom: 12px;
+    align-items: center;
+}
+
+/* 骰子 - 占两行 */
+.filter-bar .dice-area {
+    grid-row: 1 / 3;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+.filter-bar .dice-btn {
+    padding: 2px 8px;
+    border: 2px solid #e0e0e0;
+    border-radius: 8px;
+    background: white;
+    cursor: pointer;
+    font-size: 28px;
+    font-weight: 600;
+    color: var(--text-dark);
+    transition: all 0.3s;
+    width: 46px;
+    height: 72px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+.filter-bar .dice-btn:hover {
+    background: var(--primary-light);
+    border-color: var(--primary);
+    transform: scale(1.05);
+}
+.filter-bar .dice-btn.active {
+    background: var(--primary);
+    color: white;
+    border-color: var(--primary);
+}
+.filter-bar .dice-btn.spinning {
+    animation: diceSpin 0.5s ease-in-out;
+}
+@keyframes diceSpin {
+    0% { transform: rotate(0deg) scale(1); }
+    50% { transform: rotate(180deg) scale(1.2); }
+    100% { transform: rotate(360deg) scale(1); }
+}
+
+/* 第一行：字母筛选 */
+.filter-bar .row-top {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 4px 4px;
+}
+.filter-bar .letter-btn {
+    padding: 2px 6px;
+    border: 1px solid #e0e0e0;
+    border-radius: 4px;
+    background: white;
+    cursor: pointer;
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--text-dark);
+    transition: all 0.2s;
+    min-width: 24px;
+    text-align: center;
+    height: 28px;
+}
+.filter-bar .letter-btn:hover:not(.disabled) {
+    background: var(--primary-light);
+    border-color: var(--primary);
+}
+.filter-bar .letter-btn.active {
+    background: var(--primary);
+    color: white;
+    border-color: var(--primary);
+}
+.filter-bar .letter-btn.disabled {
+    color: #ccc;
+    cursor: not-allowed;
+    border-color: #eee;
+    background: #fafafa;
+}
+.filter-bar .letter-label {
+    font-size: 12px;
+    color: var(--text-light);
+    margin-right: 2px;
+}
+
+/* 第二行：格式筛选 + 搜索 */
+.filter-bar .row-bottom {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 4px 6px;
+}
+.filter-bar .format-label {
+    font-size: 12px;
+    color: var(--text-light);
+    margin-right: 2px;
+}
+.filter-bar .format-btn {
+    padding: 2px 10px;
+    border: 1px solid #e0e0e0;
+    border-radius: 12px;
+    background: white;
+    cursor: pointer;
+    font-size: 12px;
+    color: var(--text-dark);
+    transition: all 0.2s;
+    height: 26px;
+}
+.filter-bar .format-btn:hover {
+    background: var(--primary-light);
+    border-color: var(--primary);
+}
+.filter-bar .format-btn.active {
+    background: var(--primary);
+    color: white;
+    border-color: var(--primary);
+}
+
+/* 搜索框 - 内联拉长 */
+.filter-bar .search-wrapper {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    flex: 1;
+    min-width: 100px;
+    max-width: 280px;
+    margin-left: auto;
+    border: 2px solid var(--primary-light);
+    border-radius: 20px;
+    padding: 0 10px;
+    transition: all 0.3s;
+    height: 28px;
+    background: white;
+}
+.filter-bar .search-wrapper:focus-within {
+    border-color: var(--primary);
+    box-shadow: 0 0 0 3px rgba(232,132,138,0.15);
+    flex: 2;
+    max-width: 400px;
+}
+.filter-bar .search-wrapper .search-icon {
+    font-size: 14px;
+    color: var(--text-light);
+    flex-shrink: 0;
+}
+.filter-bar .search-wrapper .search-input {
+    border: none;
+    outline: none;
+    background: transparent;
+    font-size: 13px;
+    color: var(--text-dark);
+    width: 100%;
+    padding: 2px 0;
+}
+.filter-bar .search-wrapper .search-input::placeholder {
+    color: #bbb;
+}
+.filter-bar .book-count {
+    font-size: 12px;
+    color: var(--text-light);
+    flex-shrink: 0;
+    margin-left: 4px;
+}
+
+.loading-grid {
+    text-align: center;
+    padding: 40px 20px;
+    color: var(--text-light);
+}
+.loading-grid .spinner {
+    display: inline-block;
+    width: 32px;
+    height: 32px;
+    border: 3px solid var(--primary-light);
+    border-top-color: var(--primary);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+    margin-bottom: 12px;
+}
+@keyframes spin {
+    to { transform: rotate(360deg); }
+}
+
+.books-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: 16px;
+}
+.book-card {
+    background: white;
+    padding: 16px;
+    border-radius: 14px;
+    box-shadow: var(--shadow);
+    transition: transform 0.2s, box-shadow 0.2s;
+    cursor: pointer;
+    border: 1px solid transparent;
+}
+.book-card:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 8px 30px rgba(232,132,138,0.2);
+    border-color: var(--primary-light);
+}
+.book-card .title {
+    font-weight: 600;
+    font-size: 14px;
+    margin: 8px 0 4px;
+    color: var(--text-dark);
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+}
+.book-card .author {
+    font-size: 13px;
+    color: var(--text-light);
+}
+.book-card .meta {
+    font-size: 12px;
+    color: #bbb;
+    margin: 4px 0 8px;
+}
+.empty-state {
+    text-align: center;
+    padding: 40px 20px;
+    color: #bbb;
+    grid-column: 1 / -1;
+}
+.empty-state .big-icon { font-size: 48px; display: block; margin-bottom: 12px; }
+
+/* ===== 暗色主题 ===== */
+body.dark-theme .sidebar,
+body.dark-theme .filter-bar,
+body.dark-theme .continue-reading,
+body.dark-theme .book-card {
+    background: #222244 !important;
+}
+body.dark-theme .sidebar .cat-item { color: #e0e0e0 !important; }
+body.dark-theme .sidebar .cat-item:hover { background: rgba(255,255,255,0.08) !important; }
+body.dark-theme .sidebar .sidebar-header { color: #e0e0e0 !important; }
+body.dark-theme .filter-bar .letter-btn,
+body.dark-theme .filter-bar .format-btn {
+    background: transparent !important;
+    color: #e0e0e0 !important;
+    border-color: rgba(255,255,255,0.15) !important;
+}
+body.dark-theme .filter-bar .letter-btn.active,
+body.dark-theme .filter-bar .format-btn.active {
+    background: var(--primary) !important;
+    color: white !important;
+}
+body.dark-theme .filter-bar .dice-btn {
+    background: transparent !important;
+    color: #e0e0e0 !important;
+    border-color: rgba(255,255,255,0.15) !important;
+}
+body.dark-theme .filter-bar .dice-btn.active {
+    background: var(--primary) !important;
+    color: white !important;
+}
+body.dark-theme .filter-bar .dice-btn:hover {
+    background: rgba(255,255,255,0.08) !important;
+}
+body.dark-theme .filter-bar .search-wrapper {
+    background: rgba(255,255,255,0.05) !important;
+    border-color: rgba(255,255,255,0.15) !important;
+}
+body.dark-theme .filter-bar .search-wrapper .search-input {
+    color: #e0e0e0 !important;
+}
+body.dark-theme .filter-bar .search-wrapper .search-input::placeholder {
+    color: #666 !important;
+}
+body.dark-theme .filter-bar .book-count { color: #888 !important; }
+body.dark-theme .book-card .title,
+body.dark-theme .book-card .author,
+body.dark-theme .book-card .meta { color: #e0e0e0 !important; }
+body.dark-theme .continue-reading .info .title { color: #e0e0e0 !important; }
+body.dark-theme .continue-reading .info .progress { color: #888 !important; }
+
+/* ===== 护眼主题 ===== */
+body.green-theme .sidebar,
+body.green-theme .filter-bar,
+body.green-theme .continue-reading,
+body.green-theme .book-card {
+    background: rgba(255,255,255,0.75) !important;
+}
+body.green-theme .sidebar .cat-item { color: #2a4a2a !important; }
+body.green-theme .sidebar .cat-item:hover { background: rgba(123,200,164,0.2) !important; }
+body.green-theme .filter-bar .letter-btn,
+body.green-theme .filter-bar .format-btn {
+    background: rgba(255,255,255,0.5) !important;
+    color: #2a4a2a !important;
+    border-color: rgba(123,200,164,0.3) !important;
+}
+body.green-theme .filter-bar .letter-btn.active,
+body.green-theme .filter-bar .format-btn.active {
+    background: var(--primary) !important;
+    color: white !important;
+}
+body.green-theme .filter-bar .dice-btn {
+    background: rgba(255,255,255,0.5) !important;
+    color: #2a4a2a !important;
+    border-color: rgba(123,200,164,0.3) !important;
+}
+body.green-theme .filter-bar .dice-btn.active {
+    background: var(--primary) !important;
+    color: white !important;
+}
+body.green-theme .filter-bar .search-wrapper {
+    background: rgba(255,255,255,0.5) !important;
+    border-color: rgba(123,200,164,0.3) !important;
+}
+body.green-theme .filter-bar .search-wrapper .search-input {
+    color: #2a4a2a !important;
+}
+body.green-theme .filter-bar .book-count { color: #5a7a5a !important; }
+body.green-theme .book-card .title,
+body.green-theme .book-card .author,
+body.green-theme .book-card .meta { color: #2a4a2a !important; }
+
+@media (max-width: 768px) {
+    .sidebar { max-height: 40vh; }
+    .filter-bar { grid-template-columns: 44px 1fr; gap: 4px 6px; padding: 4px 8px; }
+    .filter-bar .dice-btn { width: 36px; height: 60px; font-size: 22px; }
+    .filter-bar .letter-btn { font-size: 11px; padding: 1px 4px; min-width: 20px; height: 24px; }
+    .filter-bar .format-btn { font-size: 11px; padding: 1px 6px; height: 22px; }
+    .filter-bar .search-wrapper { height: 24px; min-width: 60px; max-width: 160px; padding: 0 6px; }
+    .filter-bar .search-wrapper .search-input { font-size: 12px; }
+    .filter-bar .book-count { font-size: 11px; }
+    .books-grid { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; }
+}
+@media (max-width: 480px) {
+    .filter-bar { grid-template-columns: 36px 1fr; gap: 2px 4px; padding: 4px 6px; }
+    .filter-bar .dice-btn { width: 30px; height: 50px; font-size: 18px; padding: 2px 4px; }
+    .filter-bar .letter-btn { font-size: 10px; padding: 1px 3px; min-width: 16px; height: 20px; }
+    .filter-bar .format-btn { font-size: 10px; padding: 1px 4px; height: 20px; }
+    .filter-bar .search-wrapper { height: 20px; min-width: 40px; max-width: 120px; padding: 0 4px; }
+    .filter-bar .search-wrapper .search-input { font-size: 11px; }
+    .filter-bar .book-count { font-size: 10px; }
+    .books-grid { grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 8px; }
+    .book-card { padding: 10px; }
+    .book-card .title { font-size: 12px; }
+}
 </style>
 {% endblock %}
+
 {% block content %}
-<div class="stats">
-    <div class="stat-card"><div class="num">{{ total_books }}</div><div class="label">📖 书籍</div></div>
-    <div class="stat-card"><div class="num">{{ total_categories }}</div><div class="label">📂 分类</div></div>
-</div>
 <div class="main-layout">
-    <div class="sidebar">
-        <h3>📂 分类导航 <a href="/categories" style="font-size:12px;color:var(--primary);">查看全部 →</a></h3>
+    <!-- ===== 左侧目录树 ===== -->
+    <div class="sidebar" id="sidebar">
+        <div class="sidebar-header">
+            📂 分类导航
+            <button class="expand-btn" onclick="toggleAllCategories()">全部展开</button>
+        </div>
         <ul id="categoryTree">
-            {% for cat in categories %}
-                <li>
-                    <div style="display:flex;align-items:center;">
-                        <span class="folder-toggle" onclick="toggleCat(this)">▼</span>
-                        <a href="/category/{{ cat.path }}" class="cat-item">{{ cat.name }}<span class="badge">{{ cat.book_count }}</span></a>
-                    </div>
+            <li>
+                <a href="javascript:void(0)" class="cat-item active" data-cat="all" onclick="filterCategory('all')">
+                    📚 全部书籍
+                    <span class="badge">{{ total_books }}</span>
+                </a>
+            </li>
+            {% for cat in categories recursive %}
+            <li>
+                <a href="javascript:void(0)" class="cat-item" data-cat="{{ cat.path }}" onclick="filterCategory('{{ cat.path }}')">
                     {% if cat.children %}
-                        <ul class="children" id="children-{{ cat.id }}">
-                            {% for child in cat.children %}
-                                <li><a href="/category/{{ child.path }}" class="cat-item">↳ {{ child.name }}<span class="badge">{{ child.book_count }}</span></a></li>
-                            {% endfor %}
-                        </ul>
+                        <span class="folder-toggle" onclick="event.stopPropagation();toggleCategory(this)">▶</span>
                     {% endif %}
-                </li>
-            {% else %}
-                <li style="color:var(--text-light);padding:10px 0;">暂无分类，请 <a href="/admin/sync" style="color:var(--primary);">同步</a></li>
+                    📁 {{ cat.name }}
+                    <span class="badge">{{ cat.book_count }}</span>
+                </a>
+                {% if cat.children %}
+                    <ul class="children hidden">
+                        {{ loop(cat.children) }}
+                    </ul>
+                {% endif %}
+            </li>
             {% endfor %}
         </ul>
     </div>
-    <div>
-        <div class="search-bar"><span style="font-size:14px;color:var(--text-light);">📚 全部书籍</span><input type="text" id="searchInput" placeholder="🔍 搜索书名/作者..."></div>
-        <div class="books-grid" id="booksGrid">
-            {% for book in books %}
-                <div class="book-card" data-title="{{ book.title }}" data-author="{{ book.author or '' }}">
-                    <span class="icon">{{ book.file_type|default('📖')|replace('EPUB','📖')|replace('PDF','📄')|replace('TXT','📝') }}</span>
-                    <div class="title">{{ book.title or book.filename }}</div>
-                    <div class="author">{{ book.author or '未知作者' }}</div>
-                    <div class="meta">{{ book.file_type or '未知' }} · {{ (book.file_size or 0) // 1024 }}KB</div>
-                    <div class="actions">
-                        <a href="/read/{{ book.id }}" class="btn btn-primary">阅读</a>
-                        <a href="/download/{{ book.id }}" class="btn btn-outline">下载</a>
-                        {% if current_user.is_authenticated and current_user.is_admin %}
-                            <button onclick="deleteBook({{ book.id }})" class="btn btn-danger">删除</button>
-                        {% endif %}
-                    </div>
-                </div>
-            {% else %}
-                <div class="empty-state"><span class="big-icon">📭</span><p>还没有书籍，请上传或同步分类</p></div>
-            {% endfor %}
+
+    <!-- ===== 右侧内容区 ===== -->
+    <div class="content-area">
+        <!-- 继续阅读 -->
+        <div class="continue-reading" id="continueReading">
+            <div class="info">
+                <span class="icon">📖</span>
+                <span class="title" id="continueTitle">继续阅读</span>
+                <span class="progress" id="continueProgress">进度 0%</span>
+            </div>
+            <a href="#" class="btn btn-primary" id="continueLink">继续阅读 →</a>
         </div>
+
+        <!-- ===== 筛选栏 ===== -->
+        <div class="filter-bar" id="filterBar">
+            <!-- 骰子 - 占两行 -->
+            <div class="dice-area">
+                <button class="dice-btn active" id="diceBtn" onclick="rollDice()" title="随机推荐">🎲</button>
+            </div>
+
+            <!-- 第一行：字母筛选 -->
+            <div class="row-top">
+                <span class="letter-label">🔤</span>
+                <button class="letter-btn" data-letter="Num" onclick="filterLetter('Num')" title="数字开头">0-9</button>
+                <button class="letter-btn" data-letter="Other" onclick="filterLetter('Other')" title="特殊字符开头">#</button>
+                {% for letter in 'ABCDEFGHIJKLMNOPQRSTUVWXYZ' %}
+                    <button class="letter-btn" data-letter="{{ letter }}" onclick="filterLetter('{{ letter }}')">{{ letter }}</button>
+                {% endfor %}
+            </div>
+
+            <!-- 第二行：格式筛选 + 搜索 -->
+            <div class="row-bottom">
+                <span class="format-label">📄</span>
+                <button class="format-btn active" data-format="all" onclick="filterFormat('all')">全部</button>
+                <button class="format-btn" data-format="EPUB" onclick="filterFormat('EPUB')">EPUB</button>
+                <button class="format-btn" data-format="PDF" onclick="filterFormat('PDF')">PDF</button>
+                <button class="format-btn" data-format="TXT" onclick="filterFormat('TXT')">TXT</button>
+                <button class="format-btn" data-format="MOBI" onclick="filterFormat('MOBI')">MOBI</button>
+                <button class="format-btn" data-format="DOCX" onclick="filterFormat('DOCX')">DOCX</button>
+
+                <div class="search-wrapper">
+                    <span class="search-icon">🔍</span>
+                    <input type="text" class="search-input" id="searchInput" placeholder="搜索书名..." oninput="searchBooks(this.value)">
+                </div>
+                <span class="book-count" id="bookCount">0/0</span>
+            </div>
+        </div>
+
+        <!-- 书籍列表 -->
+        <div id="loadingIndicator" style="display:block;">
+            <div class="loading-grid">
+                <div class="spinner"></div>
+                <div>加载推荐书籍...</div>
+            </div>
+        </div>
+
+        <div class="books-grid" id="booksGrid" style="display:none;"></div>
     </div>
 </div>
+
 <script>
-function toggleCat(el) { var li = el.closest('li'); var children = li.querySelector('.children'); if (children) { children.classList.toggle('hidden'); el.textContent = children.classList.contains('hidden') ? '▶' : '▼'; } }
-document.getElementById('searchInput').addEventListener('input', function() { var keyword = this.value.toLowerCase(); var cards = document.querySelectorAll('.book-card'); var visible = 0; cards.forEach(function(card) { var title = (card.dataset.title || '').toLowerCase(); var author = (card.dataset.author || '').toLowerCase(); var match = title.includes(keyword) || author.includes(keyword); card.style.display = match ? '' : 'none'; if (match) visible++; }); var grid = document.getElementById('booksGrid');
-async function deleteBook(id) { if (!confirm('确定要删除这本书吗？')) return; try { var res = await fetch('/delete/' + id, { method: 'DELETE' }); var data = await res.json(); if (data.success) { showToast('✅ 删除成功', 'success'); setTimeout(function(){ location.reload(); }, 1000); } else { showToast('❌ ' + data.error, 'error'); } } catch (e) { showToast('❌ 删除失败', 'error'); } }
+var currentCategory = 'all';
+var currentLetter = 'random';
+var currentFormat = 'all';
+var currentPage = 1;
+var totalBooks = 0;
+var isLoading = false;
+var hasMore = true;
+var searchQuery = '';
+var letterCount = {};
+var allBooks = [];
+
+// ===== 目录树 =====
+function toggleCategory(el) {
+    var li = el.closest('li');
+    var children = li.querySelector('.children');
+    if (children) {
+        children.classList.toggle('hidden');
+        el.textContent = children.classList.contains('hidden') ? '▶' : '▼';
+    }
+}
+
+function toggleAllCategories() {
+    var allHidden = document.querySelectorAll('#categoryTree .children.hidden');
+    var allVisible = document.querySelectorAll('#categoryTree .children:not(.hidden)');
+    if (allHidden.length > 0 && allHidden.length >= allVisible.length) {
+        document.querySelectorAll('#categoryTree .children').forEach(function(el) {
+            el.classList.remove('hidden');
+        });
+        document.querySelectorAll('#categoryTree .folder-toggle').forEach(function(el) {
+            el.textContent = '▼';
+        });
+    } else {
+        document.querySelectorAll('#categoryTree .children').forEach(function(el) {
+            el.classList.add('hidden');
+        });
+        document.querySelectorAll('#categoryTree .folder-toggle').forEach(function(el) {
+            el.textContent = '▶';
+        });
+    }
+}
+
+function filterCategory(cat) {
+    currentCategory = cat;
+    document.querySelectorAll('.sidebar .cat-item').forEach(function(el) {
+        el.classList.toggle('active', el.dataset.cat === cat);
+    });
+    resetAndLoad();
+}
+
+// ===== 筛选 =====
+function searchBooks(query) {
+    searchQuery = query;
+    resetAndLoad();
+}
+
+function filterLetter(letter) {
+    currentLetter = letter;
+    document.querySelectorAll('.filter-bar .letter-btn').forEach(function(el) {
+        el.classList.toggle('active', el.dataset.letter === letter);
+    });
+    resetAndLoad();
+}
+
+function filterFormat(format) {
+    currentFormat = format;
+    document.querySelectorAll('.filter-bar .format-btn').forEach(function(el) {
+        el.classList.toggle('active', el.dataset.format === format);
+    });
+    resetAndLoad();
+}
+
+function rollDice() {
+    var btn = document.getElementById('diceBtn');
+    btn.classList.remove('spinning');
+    void btn.offsetWidth;
+    btn.classList.add('spinning');
+    currentLetter = 'random';
+    document.querySelectorAll('.filter-bar .letter-btn').forEach(function(el) {
+        el.classList.remove('active');
+    });
+    btn.classList.add('active');
+    resetAndLoad();
+}
+
+function shuffleArray(arr) {
+    var result = arr.slice();
+    for (var i = result.length - 1; i > 0; i--) {
+        var j = Math.floor(Math.random() * (i + 1));
+        var temp = result[i];
+        result[i] = result[j];
+        result[j] = temp;
+    }
+    return result;
+}
+
+function resetAndLoad() {
+    currentPage = 1;
+    document.getElementById('booksGrid').innerHTML = '';
+    document.getElementById('booksGrid').style.display = 'none';
+    document.getElementById('loadingIndicator').style.display = 'block';
+    loadBooks();
+}
+
+function loadBooks() {
+    if (isLoading) return;
+    isLoading = true;
+
+    var params = new URLSearchParams({
+        page: currentPage,
+        per_page: 50,
+        category: currentCategory,
+        letter: currentLetter,
+        format: currentFormat,
+        search: searchQuery
+    });
+
+    fetch('/api/books/page?' + params.toString())
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            isLoading = false;
+            if (!data.success) {
+                document.getElementById('loadingIndicator').style.display = 'none';
+                return;
+            }
+
+            totalBooks = data.total;
+            var grid = document.getElementById('booksGrid');
+            grid.style.display = 'grid';
+            document.getElementById('loadingIndicator').style.display = 'none';
+
+            var books = data.books;
+            if (currentLetter === 'random') {
+                books = shuffleArray(books);
+            }
+
+            grid.innerHTML = '';
+            books.forEach(function(book) {
+                var card = document.createElement('div');
+                card.className = 'book-card';
+                card.dataset.id = book.id;
+                card.onclick = function() { window.location.href = '/read/' + book.id; };
+                card.innerHTML =
+                    '<div class="title">' + (book.title || '未命名') + '</div>' +
+                    '<div class="author">' + (book.author || '未知作者') + '</div>' +
+                    '<div class="meta">' + (book.file_type || '未知') + ' · ' + (book.file_size_str || '0 B') + '</div>';
+                grid.appendChild(card);
+            });
+
+            document.getElementById('bookCount').textContent = grid.children.length + '/' + totalBooks;
+            currentPage++;
+        })
+        .catch(function(err) {
+            isLoading = false;
+            document.getElementById('loadingIndicator').innerHTML = '<div style="color:#e8848a;padding:20px;">加载失败，请刷新重试</div>';
+            console.error('加载失败:', err);
+        });
+}
+
+// ===== 继续阅读 =====
+function loadContinueReading() {
+    fetch('/api/continue-reading')
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            if (data.success) {
+                document.getElementById('continueReading').classList.add('show');
+                document.getElementById('continueTitle').textContent = data.book_title || '继续阅读';
+                var progress = Math.round((data.progress || 0) * 100);
+                document.getElementById('continueProgress').textContent = '进度 ' + progress + '%';
+                document.getElementById('continueLink').href = '/read/' + data.book_id;
+            }
+        })
+        .catch(function(err) {});
+}
+
+// ===== 字母统计 =====
+function loadLetterCount() {
+    fetch('/api/all-books')
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            allBooks = data;
+            letterCount = {};
+            data.forEach(function(book) {
+                var first = getPinyinFirstLetter(book.title);
+                if (!letterCount[first]) letterCount[first] = 0;
+                letterCount[first]++;
+            });
+            updateLetterButtons();
+        })
+        .catch(function(err) {});
+}
+
+function getPinyinFirstLetter(str) {
+    if (!str) return 'Other';
+    var first = str.charAt(0).toUpperCase();
+    if (first >= 'A' && first <= 'Z') return first;
+    if (first >= '0' && first <= '9') return 'Num';
+    return 'Other';
+}
+
+function updateLetterButtons() {
+    var allLetters = ['Num', 'Other'];
+    for (var i = 0; i < 26; i++) {
+        allLetters.push(String.fromCharCode(65 + i));
+    }
+    for (var i = 0; i < allLetters.length; i++) {
+        var letter = allLetters[i];
+        var btn = document.querySelector('.filter-bar .letter-btn[data-letter="' + letter + '"]');
+        if (btn) {
+            var count = letterCount[letter] || 0;
+            if (count === 0) {
+                btn.classList.add('disabled');
+                btn.title = '没有书籍';
+            } else {
+                btn.classList.remove('disabled');
+                btn.title = count + ' 本书';
+            }
+        }
+    }
+}
+
+// 初始化
+loadLetterCount();
+loadContinueReading();
+loadBooks();
 </script>
 {% endblock %}

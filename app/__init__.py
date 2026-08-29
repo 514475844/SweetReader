@@ -10,7 +10,11 @@ def create_app():
     app = Flask(__name__, template_folder='../templates', static_folder='../static')
     app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'sweet-reader-secret-key-change-me')
     app.config['BOOKS_DIR'] = os.environ.get('BOOKS_DIR', '/app/books')
-    app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///sweetreader.db'
+    
+    instance_path = '/app/instance'
+    os.makedirs(instance_path, exist_ok=True)
+    db_path = os.path.join(instance_path, 'sweetreader.db')
+    app.config['SQLALCHEMY_DATABASE_URI'] = f'sqlite:///{db_path}'
     app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
     app.config['MAX_CONTENT_LENGTH'] = 200 * 1024 * 1024
 

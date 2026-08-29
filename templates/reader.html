@@ -1,55 +1,476 @@
 {% extends "base.html" %}
-{% block title %}SweetReader - 阅读 {{ book.title }}{% endblock %}
+{% block title %}{{ book.title or book.filename }} - SweetReader{% endblock %}
 {% block extra_css %}
 <style>
-body { background: #1a1a2e; }
-.container { max-width: 100%; padding: 0; }
-.reader-nav { background: #1a1a2e; padding: 12px 24px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; border-bottom: 1px solid #333; }
-.reader-nav .title { color: #eee; font-size: 15px; max-width: 300px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.reader-nav a { color: #eee; text-decoration: none; padding: 6px 16px; background: var(--primary); border-radius: 30px; font-size: 13px; transition: background 0.2s; }
-.reader-nav a:hover { background: var(--primary-dark); }
-.reader-nav .right { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
-.reader-nav .progress-info { color: #888; font-size: 13px; }
-.viewer { height: calc(100vh - 70px); background: #f5f0eb; overflow: hidden; }
-.viewer iframe { width: 100%; height: 100%; border: none; }
-.unsupported { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; color: var(--text-light); padding: 20px; text-align: center; background: #f5f0eb; }
-.unsupported .big-icon { font-size: 64px; margin-bottom: 16px; }
-.unsupported .btn { padding: 10px 28px; background: var(--primary); color: white; border: none; border-radius: 30px; text-decoration: none; margin-top: 16px; font-weight: 500; }
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+.reader-container {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: var(--bg-color, #f5f0eb);
+    display: flex;
+    flex-direction: column;
+    z-index: 999;
+    overflow: hidden;
+}
+.reader-content {
+    flex: 1;
+    overflow-y: auto;
+    padding: 20px 30px;
+    background: var(--bg-color, #f5f0eb);
+    -webkit-overflow-scrolling: touch;
+}
+.reader-content .txt-content {
+    width: 100%;
+    padding: 0;
+    background: transparent !important;
+    font-size: var(--font-size, 17px);
+    line-height: var(--line-spacing, 2.0);
+    color: var(--text-color, #2a2a2a);
+    white-space: pre-wrap;
+    word-wrap: break-word;
+    font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", serif;
+}
+.reader-content iframe {
+    width: 100%;
+    height: 100%;
+    border: none;
+}
+
+/* ===== 底部工具栏 ===== */
+.reader-toolbar {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    background: rgba(255, 255, 255, 0.92);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    padding: 6px 16px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    border-top: 1px solid rgba(0,0,0,0.05);
+    z-index: 1000;
+    min-height: 44px;
+}
+.reader-toolbar .left {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    min-width: 0;
+}
+.reader-toolbar .left .book-title {
+    font-size: 13px;
+    color: var(--text-color, #333);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 180px;
+}
+.reader-toolbar .center {
+    flex: 1;
+    text-align: center;
+}
+.reader-toolbar .center .time-display {
+    font-size: 13px;
+    color: var(--text-light, #888);
+}
+.reader-toolbar .right {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 4px;
+}
+.reader-toolbar .right .btn-icon {
+    background: none;
+    border: none;
+    cursor: pointer;
+    padding: 4px 6px;
+    border-radius: 6px;
+    font-size: 16px;
+    color: var(--text-color, #555);
+    transition: background 0.2s;
+}
+.reader-toolbar .right .btn-icon:hover {
+    background: rgba(0,0,0,0.06);
+}
+.reader-toolbar .right .btn {
+    font-size: 13px;
+    padding: 3px 10px;
+    border-radius: 16px;
+}
+
+/* ===== 设置面板 ===== */
+.reader-settings-panel {
+    display: none;
+    position: fixed;
+    bottom: 52px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(255, 255, 255, 0.98);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    padding: 16px 24px;
+    border-radius: 12px;
+    box-shadow: 0 4px 40px rgba(0,0,0,0.15);
+    z-index: 1001;
+    min-width: 280px;
+    max-width: 90%;
+    border: 1px solid rgba(0,0,0,0.06);
+}
+.reader-settings-panel.show {
+    display: block;
+}
+.reader-settings-panel .setting-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 6px 0;
+    font-size: 14px;
+    color: var(--text-color, #333);
+}
+.reader-settings-panel .setting-row input[type="range"] {
+    width: 120px;
+}
+.reader-settings-panel .setting-row .value {
+    min-width: 36px;
+    text-align: right;
+    font-size: 13px;
+    color: var(--text-light, #888);
+}
+.reader-settings-panel .btn-row {
+    display: flex;
+    gap: 8px;
+    justify-content: center;
+    padding-top: 10px;
+    border-top: 1px solid rgba(0,0,0,0.06);
+    margin-top: 4px;
+}
+.reader-settings-panel .btn-row .btn-sm {
+    font-size: 13px;
+    padding: 4px 14px;
+    border-radius: 16px;
+}
+
+/* ===== 暗色主题 ===== */
+body.dark-theme .reader-toolbar {
+    background: rgba(30, 30, 40, 0.92);
+    border-top-color: rgba(255,255,255,0.06);
+}
+body.dark-theme .reader-toolbar .btn-icon {
+    color: #ccc;
+}
+body.dark-theme .reader-toolbar .btn-icon:hover {
+    background: rgba(255,255,255,0.06);
+}
+body.dark-theme .reader-toolbar .left .book-title {
+    color: #ccc;
+}
+body.dark-theme .reader-toolbar .center .time-display {
+    color: #888;
+}
+body.dark-theme .reader-settings-panel {
+    background: rgba(30, 30, 40, 0.98);
+    border-color: rgba(255,255,255,0.06);
+}
+body.dark-theme .reader-settings-panel .setting-row {
+    color: #ccc;
+}
+body.dark-theme .reader-settings-panel .setting-row .value {
+    color: #888;
+}
+body.dark-theme .reader-settings-panel .btn-row .btn-outline {
+    color: #ffffff !important;
+    border-color: rgba(255,255,255,0.3) !important;
+}
+body.dark-theme .reader-settings-panel .btn-row .btn-outline:hover {
+    background: rgba(255,255,255,0.15) !important;
+}
+body.dark-theme .reader-settings-panel .btn-row .btn-ghost {
+    color: #ccc !important;
+}
+body.dark-theme .reader-settings-panel .btn-row .btn-ghost:hover {
+    background: rgba(255,255,255,0.1) !important;
+}
+
+/* ===== 移动端适配 ===== */
+@media (max-width: 768px) {
+    .reader-content { padding: 10px 12px; }
+    .reader-content .txt-content { font-size: 16px; line-height: 1.9; }
+    .reader-toolbar { padding: 4px 10px; min-height: 40px; }
+    .reader-toolbar .left .book-title { font-size: 12px; max-width: 100px; }
+    .reader-toolbar .center .time-display { font-size: 12px; }
+    .reader-toolbar .right .btn-icon { font-size: 14px; padding: 3px 5px; }
+    .reader-toolbar .right .btn { font-size: 12px; padding: 2px 8px; }
+    .reader-settings-panel { min-width: 220px; padding: 12px 16px; bottom: 48px; }
+    .reader-settings-panel .setting-row { font-size: 13px; }
+    .reader-settings-panel .setting-row input[type="range"] { width: 90px; }
+}
+@media (max-width: 480px) {
+    .reader-content { padding: 4px 8px; }
+    .reader-content .txt-content { font-size: 15px; line-height: 1.8; }
+    .reader-toolbar .left .book-title { font-size: 11px; max-width: 70px; }
+    .reader-toolbar .center .time-display { font-size: 11px; }
+}
 </style>
 {% endblock %}
+
 {% block content %}
-<div class="reader-nav">
-    <span class="title">📖 {{ book.title or book.filename }}</span>
-    <div class="right">
-        {% if progress %}<span class="progress-info">📊 {{ progress.progress|round(1) }}%</span>{% endif %}
-        <a href="/library">返回书库</a>
-        <a href="/download/{{ book.id }}">⬇ 下载</a>
+<div class="reader-container" id="readerContainer">
+    <div class="reader-content" id="readerContent">
+        {% set ext = book.filename.split('.')[-1].lower() %}
+        {% if ext == 'epub' %}
+            <iframe src="/epub-reader?id={{ book.id }}"></iframe>
+        {% elif ext == 'pdf' %}
+            <iframe src="/static/libs/pdfjs/viewer.html?file=/api/read/{{ book.id }}"></iframe>
+        {% elif ext == 'txt' %}
+            <div id="txtContent" class="txt-content">加载中...</div>
+        {% else %}
+            <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;color:#888;padding:20px;text-align:center;">
+                <span style="font-size:64px;margin-bottom:16px;">📄</span>
+                <h2>此格式暂不支持在线阅读</h2>
+                <p>支持格式: EPUB, PDF, TXT</p>
+            </div>
+        {% endif %}
+    </div>
+
+    <!-- ===== 底部工具栏 ===== -->
+    <div class="reader-toolbar">
+        <div class="left">
+            <span class="book-title" id="bookTitle">{{ book.title or book.filename }}</span>
+        </div>
+        <div class="center">
+            <span class="time-display" id="readerTime"></span>
+        </div>
+        <div class="right">
+            <button class="btn-icon" onclick="toggleSettings()" title="设置">⚙️</button>
+            <button class="btn-icon" onclick="toggleTheme()" title="切换主题">🌓</button>
+            <a href="/library" class="btn btn-outline">返回</a>
+        </div>
+    </div>
+
+    <!-- ===== 设置面板 ===== -->
+    <div class="reader-settings-panel" id="settingsPanel">
+        <div class="setting-row">
+            <span>字号</span>
+            <input type="range" id="fontSizeRange" min="12" max="28" value="17" step="1" oninput="updateFontSize(this.value)">
+            <span class="value" id="fontSizeValue">17</span>
+        </div>
+        <div class="setting-row">
+            <span>行距</span>
+            <input type="range" id="lineSpacingRange" min="1.2" max="3.0" value="2.0" step="0.1" oninput="updateLineSpacing(this.value)">
+            <span class="value" id="lineSpacingValue">2.0</span>
+        </div>
+        <div class="setting-row">
+            <span>边距</span>
+            <input type="range" id="marginRange" min="0" max="60" value="30" step="2" oninput="updateMargin(this.value)">
+            <span class="value" id="marginValue">30</span>
+        </div>
+        <div class="btn-row">
+            <button class="btn btn-sm btn-outline" onclick="resetSettings()">↺ 重置</button>
+            <button class="btn btn-sm btn-primary" onclick="saveSettings()">💾 保存</button>
+            <button class="btn btn-sm btn-ghost" onclick="closeSettings()">关闭</button>
+        </div>
     </div>
 </div>
-<div class="viewer">
-    {% set ext = book.filename.split('.')[-1].lower() %}
-    {% if ext == 'epub' %}
-        <iframe src="https://epubjs-demo.vercel.app/?url={{ url_for('main.get_book_content', book_id=book.id) }}"></iframe>
-    {% elif ext == 'pdf' %}
-        <iframe src="https://mozilla.github.io/pdf.js/web/viewer.html?file={{ url_for('main.get_book_content', book_id=book.id) }}"></iframe>
-    {% else %}
-        <div class="unsupported">
-            <span class="big-icon">📄</span>
-            <h2>此格式暂不支持在线阅读</h2>
-            <p>支持格式: EPUB, PDF</p>
-            <a href="/download/{{ book.id }}" class="btn">⬇ 下载后阅读</a>
-        </div>
-    {% endif %}
-</div>
+
 <script>
-window.addEventListener('message', function(e) {
-    if (e.data && e.data.type === 'progress') {
-        fetch('/api/progress/{{ book.id }}', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ progress: e.data.progress })
-        });
+var currentBookId = {{ book.id }};
+var DEFAULT_FONT_SIZE = 17;
+var DEFAULT_LINE_SPACING = 2.0;
+var DEFAULT_MARGIN = 30;
+
+function detectAndDecode(buffer) {
+    var encodings = ['gb18030', 'gbk', 'utf-8', 'big5', 'shift-jis', 'euc-kr', 'gb2312'];
+    for (var i = 0; i < encodings.length; i++) {
+        try {
+            var decoder = new TextDecoder(encodings[i], { fatal: true });
+            var result = decoder.decode(buffer);
+            if (result.indexOf('�') < 10) {
+                return result;
+            }
+        } catch(e) {}
     }
+    var decoder = new TextDecoder('gb18030', { fatal: false });
+    return decoder.decode(buffer);
+}
+
+function loadContent() {
+    var content = document.getElementById('txtContent');
+    if (!content) return;
+    fetch('/api/read/' + currentBookId)
+        .then(function(res) { return res.arrayBuffer(); })
+        .then(function(buffer) {
+            var text = detectAndDecode(buffer);
+            content.textContent = text;
+            loadUserSettings();
+        })
+        .catch(function(err) {
+            content.textContent = '加载失败: ' + err.message;
+        });
+}
+
+function loadUserSettings() {
+    fetch('/api/user/theme')
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            var content = document.getElementById('txtContent');
+            if (!content) return;
+            var fontSize = data.font_size || DEFAULT_FONT_SIZE;
+            var lineSpacing = data.line_spacing || DEFAULT_LINE_SPACING;
+            var margin = data.page_margin || DEFAULT_MARGIN;
+            
+            document.documentElement.style.setProperty('--font-size', fontSize + 'px');
+            document.getElementById('fontSizeRange').value = fontSize;
+            document.getElementById('fontSizeValue').textContent = fontSize;
+            
+            document.documentElement.style.setProperty('--line-spacing', lineSpacing);
+            document.getElementById('lineSpacingRange').value = lineSpacing;
+            document.getElementById('lineSpacingValue').textContent = lineSpacing;
+            
+            document.getElementById('marginRange').value = margin;
+            document.getElementById('marginValue').textContent = margin;
+            content.style.padding = margin + 'px';
+            
+            if (data.theme) {
+                applyTheme(data.theme);
+            }
+        });
+}
+
+function applyTheme(theme) {
+    document.body.className = '';
+    if (theme !== 'default' && theme !== 'light') {
+        document.body.classList.add(theme + '-theme');
+    }
+    var themes = {
+        'default': { bg: '#f5f0eb', text: '#2a2a2a' },
+        'dark': { bg: '#1a1a2e', text: '#e0e0e0' },
+        'green': { bg: '#d4edda', text: '#2a2a2a' }
+    };
+    var t = themes[theme] || themes['default'];
+    document.documentElement.style.setProperty('--bg-color', t.bg);
+    document.documentElement.style.setProperty('--text-color', t.text);
+    var container = document.getElementById('readerContainer');
+    if (container) container.style.background = t.bg;
+    var content = document.getElementById('txtContent');
+    if (content) {
+        content.style.color = t.text;
+        content.style.background = 'transparent';
+    }
+    document.documentElement.style.setProperty('--theme', theme);
+}
+
+function toggleTheme() {
+    var current = document.documentElement.style.getPropertyValue('--theme') || 'default';
+    var themes = ['default', 'dark', 'green'];
+    var idx = themes.indexOf(current);
+    var next = themes[(idx + 1) % themes.length];
+    applyTheme(next);
+    fetch('/api/user/theme', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({theme: next})
+    });
+}
+
+function updateFontSize(val) {
+    document.documentElement.style.setProperty('--font-size', val + 'px');
+    document.getElementById('fontSizeValue').textContent = val;
+}
+
+function updateLineSpacing(val) {
+    document.documentElement.style.setProperty('--line-spacing', val);
+    document.getElementById('lineSpacingValue').textContent = val;
+}
+
+function updateMargin(val) {
+    document.getElementById('marginValue').textContent = val;
+    var content = document.getElementById('txtContent');
+    if (content) content.style.padding = val + 'px';
+}
+
+function changeFontSize(delta) {
+    var range = document.getElementById('fontSizeRange');
+    var val = parseInt(range.value) + delta;
+    val = Math.max(12, Math.min(28, val));
+    range.value = val;
+    updateFontSize(val);
+}
+
+function resetSettings() {
+    document.getElementById('fontSizeRange').value = DEFAULT_FONT_SIZE;
+    document.getElementById('lineSpacingRange').value = DEFAULT_LINE_SPACING;
+    document.getElementById('marginRange').value = DEFAULT_MARGIN;
+    updateFontSize(DEFAULT_FONT_SIZE);
+    updateLineSpacing(DEFAULT_LINE_SPACING);
+    updateMargin(DEFAULT_MARGIN);
+    applyTheme('default');
+    alert('✅ 已恢复默认设置');
+}
+
+function saveSettings() {
+    var data = {
+        font_size: parseInt(document.getElementById('fontSizeRange').value),
+        line_spacing: parseFloat(document.getElementById('lineSpacingRange').value),
+        page_margin: parseInt(document.getElementById('marginRange').value)
+    };
+    fetch('/api/user/theme', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(data)
+    }).then(function(r) { return r.json(); }).then(function(res) {
+        if (res.success) alert('✅ 设置已保存');
+    });
+}
+
+function toggleSettings() {
+    document.getElementById('settingsPanel').classList.toggle('show');
+}
+
+function closeSettings() {
+    document.getElementById('settingsPanel').classList.remove('show');
+}
+
+var saveTimer = null;
+function autoSaveProgress() {
+    var content = document.getElementById('txtContent');
+    if (!content) return;
+    var scrollTop = document.getElementById('readerContent').scrollTop;
+    var scrollHeight = document.getElementById('readerContent').scrollHeight;
+    var clientHeight = document.getElementById('readerContent').clientHeight;
+    if (scrollHeight <= clientHeight) return;
+    var progress = scrollTop / (scrollHeight - clientHeight);
+    fetch('/api/progress/' + currentBookId, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({progress: progress, location: 'scroll_' + scrollTop})
+    });
+}
+
+document.getElementById('readerContent').addEventListener('scroll', function() {
+    clearTimeout(saveTimer);
+    saveTimer = setTimeout(autoSaveProgress, 2000);
 });
+
+document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') closeSettings();
+});
+
+function updateTime() {
+    var now = new Date();
+    var str = String(now.getHours()).padStart(2, '0') + ':' + String(now.getMinutes()).padStart(2, '0');
+    document.getElementById('readerTime').textContent = str;
+}
+setInterval(updateTime, 10000);
+updateTime();
+
+loadContent();
 </script>
 {% endblock %}

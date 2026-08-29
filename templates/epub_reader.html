@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>EPUB 阅读器</title>
+    <link rel="stylesheet" href="/static/libs/epubjs/epub.min.css">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { height: 100vh; display: flex; flex-direction: column; background: #f5f0eb; }
+        #viewer { flex: 1; overflow: hidden; background: white; }
+        .controls { display: flex; gap: 12px; padding: 8px 16px; background: white; border-bottom: 1px solid #eee; align-items: center; flex-wrap: wrap; }
+        .controls button { padding: 4px 12px; border: none; border-radius: 6px; cursor: pointer; background: #e8848a; color: white; font-size: 13px; }
+        .controls button:hover { background: #d46a70; }
+        .controls .info { color: #888; font-size: 13px; margin-left: auto; }
+        .controls select { padding: 4px 8px; border-radius: 4px; border: 1px solid #ddd; }
+        .controls .progress-bar { flex: 1; min-width: 80px; height: 4px; background: #eee; border-radius: 2px; position: relative; }
+        .controls .progress-bar .fill { height: 100%; background: #e8848a; border-radius: 2px; width: 0%; transition: width 0.3s; }
+    </style>
+</head>
+<body>
+    <div class="controls">
+        <button onclick="prev()">◀ 上一页</button>
+        <button onclick="next()">下一页 ▶</button>
+        <span id="location" class="info">0 / 0</span>
+        <div class="progress-bar"><div class="fill" id="progressFill"></div></div>
+        <select id="fontSize" onchange="setFontSize(this.value)">
+            <option value="14">小</option>
+            <option value="18" selected>中</option>
+            <option value="24">大</option>
+        </select>
+    </div>
+    <div id="viewer"></div>
+    <script src="/static/libs/epubjs/epub.min.js"></script>
+    <script>
+        var book, rendition, currentLocation = 0, totalPages = 0;
+        var urlParams = new URLSearchParams(window.location.search);
+        var bookId = urlParams.get('id');
+        fetch('/api/read/' + bookId)
+            .then(function(res) { return res.arrayBuffer(); })
+            .then(function(data) {
+                var blob = new Blob([data], { type: 'application/epub+zip' });
+                var url = URL.createObjectURL(blob);
+                book = ePub(url);
+                rendition = book.renderTo('viewer', { width: '100%', height: '100%' });
+                rendition.display();
+                book.ready.then(function() {
+                    totalPages = book.locations.length() || 1;
+                    updateInfo();
+                });
+                book.on('relocated', function(location) {
+                    currentLocation = location.start.cfi;
+                    var p = book.locations.locationFromCfi(currentLocation);
+                    var percent = (p / totalPages) * 100;
+                    document.getElementById('progressFill').style.width = Math.min(percent, 100) + '%';
+                    document.getElementById('location').textContent = Math.round(p) + ' / ' + totalPages;
+                });
+            });
+        function next() { if (rendition) rendition.next(); }
+        function prev() { if (rendition) rendition.prev(); }
+        function updateInfo() {
+            var p = book.locations.locationFromCfi(currentLocation) || 0;
+            document.getElementById('location').textContent = Math.round(p) + ' / ' + totalPages;
+            var percent = (p / totalPages) * 100;
+            document.getElementById('progressFill').style.width = Math.min(percent, 100) + '%';
+        }
+        function setFontSize(val) { if (rendition) rendition.themes.fontSize(val + 'px'); }
+    </script>
+</body>
+</html>

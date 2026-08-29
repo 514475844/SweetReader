@@ -1,0 +1,153 @@
+{% extends "base.html" %}
+{% block title %}SweetReader - 设置{% endblock %}
+{% block extra_css %}
+<style>
+.settings-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+@media (max-width: 768px) { .settings-grid { grid-template-columns: 1fr; } }
+.settings-card { background: white; padding: 24px 32px; border-radius: 14px; box-shadow: var(--shadow); }
+.settings-card h3 { color: var(--text-dark); font-size: 18px; margin-bottom: 16px; }
+.settings-card label { display: block; font-weight: 500; margin-bottom: 6px; color: var(--text-dark); font-size: 14px; }
+.settings-card select { width: 100%; padding: 10px 14px; border: 2px solid var(--primary-light); border-radius: 10px; font-size: 14px; background: white; margin-bottom: 12px; cursor: pointer; outline: none; transition: border 0.3s; }
+.settings-card select:focus { border-color: var(--primary); }
+.settings-card .theme-options { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 16px; align-items: center; }
+.settings-card .theme-options .theme-btn { width: 44px; height: 44px; border-radius: 50%; border: 3px solid transparent; cursor: pointer; transition: all 0.3s; }
+.settings-card .theme-options .theme-btn:hover { transform: scale(1.1); }
+.settings-card .theme-options .theme-btn.active { border-color: var(--primary); box-shadow: 0 0 0 3px rgba(232,132,138,0.3); }
+.settings-card .theme-options .theme-btn.default { background: #f5f0eb; border-color: #e8848a; position: relative; }
+.settings-card .theme-options .theme-btn.default::after { content: '🍭'; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); font-size: 18px; }
+.settings-card .theme-options .theme-btn.dark { background: #1a1a2e; border-color: #333; }
+.settings-card .theme-options .theme-btn.green { background: #d4edda; border-color: #5cb85c; }
+.settings-card input[type="range"] { width: 100%; margin: 8px 0 12px; }
+.settings-card .range-value { float: right; font-weight: 600; color: var(--primary); }
+.settings-card .btn { width: 100%; padding: 12px; border-radius: 30px; font-size: 16px; font-weight: 600; }
+.lang-selector { display: flex; gap: 8px; margin-top: 4px; }
+.lang-selector button { padding: 6px 16px; border: 2px solid var(--primary-light); border-radius: 8px; background: white; cursor: pointer; font-size: 14px; transition: all 0.2s; }
+.lang-selector button:hover { border-color: var(--primary); background: var(--primary-light); }
+.lang-selector button.active { border-color: var(--primary); background: var(--primary); color: white; }
+</style>
+{% endblock %}
+{% block content %}
+<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;flex-wrap:wrap;gap:12px;">
+    <h2 style="color:var(--text-dark);font-size:22px;">⚙️ 设置</h2>
+    <div style="display:flex;gap:8px;">
+        <button onclick="saveAllSettings()" class="btn btn-primary">💾 保存全部</button>
+        <a href="/library" class="btn btn-outline">← 返回书库</a>
+    </div>
+</div>
+<div class="settings-grid">
+    <div class="settings-card">
+        <h3>🌐 语言</h3>
+        <div class="lang-selector">
+            <button class="active" data-lang="zh" onclick="setLang('zh')">中文</button>
+            <button data-lang="en" onclick="setLang('en')">English</button>
+        </div>
+        <p style="color:var(--text-light);font-size:13px;margin-top:8px;">当前语言: <span id="currentLang">中文</span></p>
+    </div>
+    <div class="settings-card">
+        <h3>🎨 主题</h3>
+        <div class="theme-options">
+            <div class="theme-btn default active" data-theme="default" title="默认" onclick="previewTheme('default')"></div>
+            <div class="theme-btn dark" data-theme="dark" title="暗色" onclick="previewTheme('dark')"></div>
+            <div class="theme-btn green" data-theme="green" title="护眼" onclick="previewTheme('green')"></div>
+        </div>
+        <p style="color:var(--text-light);font-size:13px;margin-top:4px;">点击主题即可预览效果</p>
+    </div>
+    <div class="settings-card">
+        <h3>📏 字体大小</h3>
+        <label>字号: <span class="range-value" id="fontSizeValue">16px</span></label>
+        <input type="range" id="fontSizeRange" min="12" max="28" value="16" step="1" oninput="updateFontSize(this.value)">
+    </div>
+    <div class="settings-card">
+        <h3>📐 行距</h3>
+        <label>行高: <span class="range-value" id="lineSpacingValue">1.8</span></label>
+        <input type="range" id="lineSpacingRange" min="1.2" max="3.0" value="1.8" step="0.1" oninput="updateLineSpacing(this.value)">
+    </div>
+</div>
+<script>
+var currentSettings = {};
+var selectedTheme = 'default';
+
+function previewTheme(theme) {
+    selectedTheme = theme;
+    document.body.className = '';
+    if (theme !== 'default') {
+        document.body.classList.add(theme + '-theme');
+    }
+    document.querySelectorAll('.theme-btn').forEach(function(b) {
+        b.classList.remove('active');
+    });
+    var btn = document.querySelector('.theme-btn[data-theme="' + theme + '"]');
+    if (btn) btn.classList.add('active');
+    
+    var themes = {
+        default: { primary: '#e8848a', dark: '#d46a70', light: '#f5d4d6' },
+        dark: { primary: '#8a8ad4', dark: '#6a6ab0', light: '#d4d4f0' },
+        green: { primary: '#7bc8a4', dark: '#5fb88e', light: '#d4f0e4' }
+    };
+    var t = themes[theme] || themes.default;
+    document.documentElement.style.setProperty('--primary', t.primary);
+    document.documentElement.style.setProperty('--primary-dark', t.dark);
+    document.documentElement.style.setProperty('--primary-light', t.light);
+    currentSettings.theme = theme;
+}
+
+function setLang(lang) {
+    document.querySelectorAll('.lang-selector button').forEach(function(b) {
+        b.classList.remove('active');
+    });
+    document.querySelector('.lang-selector button[data-lang="' + lang + '"]').classList.add('active');
+    document.getElementById('currentLang').textContent = lang === 'zh' ? '中文' : 'English';
+    currentSettings.language = lang;
+}
+
+function updateFontSize(val) {
+    document.getElementById('fontSizeValue').textContent = val + 'px';
+    document.documentElement.style.setProperty('--font-size', val + 'px');
+    currentSettings.font_size = parseInt(val);
+}
+
+function updateLineSpacing(val) {
+    document.getElementById('lineSpacingValue').textContent = val;
+    document.documentElement.style.setProperty('--line-spacing', val);
+    currentSettings.line_spacing = parseFloat(val);
+}
+
+function saveAllSettings() {
+    var data = {
+        theme: currentSettings.theme || selectedTheme || 'default',
+        font_size: currentSettings.font_size || parseInt(document.getElementById('fontSizeRange').value),
+        line_spacing: currentSettings.line_spacing || parseFloat(document.getElementById('lineSpacingRange').value),
+        language: currentSettings.language || 'zh'
+    };
+    fetch('/api/user/theme', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(data)
+    }).then(function(r) { return r.json(); }).then(function(res) {
+        if (res.success) {
+            showToast("✅ 所有设置已保存！", "success");
+        } else {
+            alert('❌ 保存失败，请重试');
+        }
+    });
+}
+
+// 加载用户设置
+fetch('/api/user/theme').then(function(r) { return r.json(); }).then(function(data) {
+    if (data.font_size) {
+        document.getElementById('fontSizeRange').value = data.font_size;
+        updateFontSize(data.font_size);
+    }
+    if (data.line_spacing) {
+        document.getElementById('lineSpacingRange').value = data.line_spacing;
+        updateLineSpacing(data.line_spacing);
+    }
+    if (data.theme) {
+        previewTheme(data.theme);
+    }
+    if (data.language) {
+        setLang(data.language);
+    }
+});
+</script>
+{% endblock %}

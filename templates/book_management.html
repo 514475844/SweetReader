@@ -1,0 +1,98 @@
+{% extends "base.html" %}
+{% block title %}SweetReader - 书籍管理{% endblock %}
+{% block extra_css %}
+<style>
+.book-table { width: 100%; border-collapse: collapse; font-size: 14px; background: white; border-radius: 12px; overflow: hidden; box-shadow: var(--shadow); }
+.book-table th { background: #f5f0eb; padding: 12px 16px; text-align: left; font-weight: 600; color: var(--text-dark); }
+.book-table td { padding: 10px 16px; border-bottom: 1px solid #f0f0f0; vertical-align: middle; }
+.book-table tr:hover { background: #faf8f8; }
+.btn-sm { padding: 4px 12px; font-size: 12px; border-radius: 30px; border: none; cursor: pointer; transition: all 0.2s; }
+.btn-sm-danger { background: #e8848a; color: white; }
+.btn-sm-danger:hover { background: #d46a70; }
+.btn-sm-primary { background: var(--primary); color: white; }
+.btn-sm-primary:hover { background: var(--primary-dark); }
+.btn-sm-outline { background: transparent; color: var(--text-dark); border: 1px solid #ddd; }
+.btn-sm-outline:hover { background: #f5f0eb; }
+.actions { display: flex; gap: 6px; flex-wrap: wrap; }
+.header-actions { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+.search-box { padding: 8px 16px; border: 2px solid var(--primary-light); border-radius: 30px; font-size: 14px; width: 220px; background: white; transition: border 0.3s; }
+.search-box:focus { outline: none; border-color: var(--primary); }
+</style>
+{% endblock %}
+{% block content %}
+<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;flex-wrap:wrap;gap:12px;">
+    <h2 style="color:var(--text-dark);font-size:22px;">📚 书籍管理</h2>
+    <div class="header-actions">
+        <input class="search-box" id="searchBox" placeholder="搜索..." oninput="filterBooks()">
+        <span style="color:var(--text-light);font-size:14px;" id="countLabel">共 0 本</span>
+    </div>
+</div>
+
+<div style="overflow-x:auto;">
+    <table class="book-table">
+        <thead>
+            <tr>
+                <th>ID</th>
+                <th>书名</th>
+                <th>作者</th>
+                <th>格式</th>
+                <th>大小</th>
+                <th>分类</th>
+                <th>操作</th>
+            </tr>
+        </thead>
+        <tbody id="bookTableBody">
+            {% for book in books %}
+            <tr data-title="{{ book.title }}" data-author="{{ book.author }}">
+                <td>{{ book.id }}</td>
+                <td><strong>{{ book.title or book.filename }}</strong></td>
+                <td>{{ book.author or '未知' }}</td>
+                <td>{{ book.file_type or '未知' }}</td>
+                <td>{{ (book.file_size or 0) // 1024 }}KB</td>
+                <td>{{ book.category.get_full_path() if book.category else '未分类' }}</td>
+                <td>
+                    <div class="actions">
+                        <a href="/download/{{ book.id }}" class="btn-sm btn-sm-primary">下载</a>
+                        <button onclick="deleteBook({{ book.id }})" class="btn-sm btn-sm-danger">删除</button>
+                    </div>
+                </td>
+            </tr>
+            {% else %}
+            <tr><td colspan="7" style="text-align:center;padding:40px;color:#999;">暂无书籍</td></tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+<script>
+function filterBooks() {
+    var keyword = document.getElementById('searchBox').value.toLowerCase();
+    var rows = document.querySelectorAll('#bookTableBody tr');
+    var visible = 0;
+    rows.forEach(function(row) {
+        var title = (row.dataset.title || '').toLowerCase();
+        var author = (row.dataset.author || '').toLowerCase();
+        var match = title.includes(keyword) || author.includes(keyword);
+        row.style.display = match ? '' : 'none';
+        if (match) visible++;
+    });
+    document.getElementById('countLabel').textContent = '共 ' + visible + ' 本';
+}
+
+async function deleteBook(id) {
+    showConfirm("确定要删除这本书吗？", function() { document.getElementById("deleteForm").submit(); });
+    try {
+        var res = await fetch('/delete/' + id, { method: 'DELETE' });
+        var data = await res.json();
+        if (data.success) {
+            showToast('删除成功', 'success');
+            setTimeout(function(){ location.reload(); }, 800);
+        } else {
+            showToast('删除失败: ' + data.error, 'error');
+        }
+    } catch (e) {
+        showToast('删除失败', 'error');
+    }
+}
+</script>
+{% endblock %}

@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+{% block title %}SweetReader - 操作日志{% endblock %}
+{% block extra_css %}
+<style>
+.log-container {
+    background: white;
+    padding: 20px;
+    border-radius: 12px;
+    box-shadow: var(--shadow);
+    max-height: 70vh;
+    overflow-y: auto;
+    font-family: 'Courier New', monospace;
+    font-size: 13px;
+    line-height: 1.8;
+}
+.log-entry {
+    padding: 4px 8px;
+    border-bottom: 1px solid #f5f0eb;
+    color: var(--text-dark);
+}
+.log-entry .time { color: #888; margin-right: 12px; }
+.log-entry .user { color: var(--primary); margin-right: 8px; }
+.log-entry .action { color: #333; }
+</style>
+{% endblock %}
+{% block content %}
+<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;flex-wrap:wrap;gap:12px;">
+    <h2 style="color:var(--text-dark);font-size:22px;">📋 操作日志</h2>
+    <div style="display:flex;gap:8px;">
+        <a href="/admin/logs" class="btn btn-outline">🔄 刷新</a>
+        <a href="/library" class="btn btn-outline">← 返回书库</a>
+    </div>
+</div>
+<div style="color:var(--text-light);font-size:14px;margin-bottom:12px;">最近100条操作记录</div>
+<div class="log-container">
+    {% if logs %}
+        {% for log in logs %}
+            <div class="log-entry">{{ log }}</div>
+        {% endfor %}
+    {% else %}
+        <div style="text-align:center;padding:40px;color:#999;">暂无操作日志</div>
+    {% endif %}
+</div>
+{% endblock %}

@@ -22,20 +22,6 @@ class User(UserMixin, db.Model):
     def check_password(self, password):
         return check_password_hash(self.password_hash, password)
 
-    @staticmethod
-    def validate_password(password):
-        if len(password) < 7:
-            return False, '密码长度至少7位'
-        if not re.search(r'[A-Z]', password):
-            return False, '密码需要包含至少一个大写字母'
-        if not re.search(r'[a-z]', password):
-            return False, '密码需要包含至少一个小写字母'
-        if not re.search(r'\d', password):
-            return False, '密码需要包含至少一个数字'
-        if not re.search(r'[!@#$%^&*(),.?":{}|<>]', password):
-            return False, '密码需要包含至少一个特殊符号'
-        return True, '密码强度合格'
-
 class InviteCode(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     code = db.Column(db.String(18), unique=True, nullable=False)
@@ -117,3 +103,4 @@ class UserTheme(db.Model):
     line_spacing = db.Column(db.Float, default=1.8)
     page_margin = db.Column(db.Integer, default=40)
     detail_mode = db.Column(db.Boolean, default=False)
+    language = db.Column(db.String(10), default='zh')

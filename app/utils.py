@@ -4,7 +4,11 @@ import ebooklib
 from ebooklib import epub
 
 class BookUtils:
-    SUPPORTED_FORMATS = ['.epub', '.pdf', '.mobi', '.azw3', '.txt']
+    SUPPORTED_FORMATS = [
+        '.epub', '.pdf', '.mobi', '.azw3', '.txt',
+        '.doc', '.docx', '.rtf', '.odt',
+        '.fb2', '.cbz', '.cbr'
+    ]
 
     @staticmethod
     def extract_epub_metadata(file_path):
@@ -36,14 +40,16 @@ class BookUtils:
     @staticmethod
     def get_file_type(filename):
         ext = Path(filename).suffix.lower()
-        type_map = {'.epub': 'EPUB', '.pdf': 'PDF', '.mobi': 'MOBI', '.azw3': 'AZW3', '.txt': 'TXT'}
+        type_map = {
+            '.epub': 'EPUB', '.pdf': 'PDF', '.mobi': 'MOBI', '.azw3': 'AZW3',
+            '.txt': 'TXT', '.doc': 'DOC', '.docx': 'DOCX',
+            '.rtf': 'RTF', '.odt': 'ODT', '.fb2': 'FB2', '.cbz': 'CBZ', '.cbr': 'CBR'
+        }
         return type_map.get(ext, '未知')
 
     @staticmethod
     def get_file_icon(filename):
-        ext = Path(filename).suffix.lower()
-        icon_map = {'.epub': '📖', '.pdf': '📄', '.mobi': '📱', '.azw3': '📱', '.txt': '📝'}
-        return icon_map.get(ext, '📚')
+        return ''
 
     @staticmethod
     def format_file_size(size):
@@ -66,3 +72,11 @@ class BookUtils:
             return str(cover_path)
         except Exception as e:
             return None
+
+    @staticmethod
+    def extract_docx_to_html(file_path):
+        return {'success': False, 'error': 'DOCX 支持需要安装 python-docx'}
+
+    @staticmethod
+    def extract_doc_text(file_path):
+        return {'success': False, 'error': 'DOC 支持需要安装 antiword'}

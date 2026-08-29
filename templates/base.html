@@ -2,17 +2,32 @@
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>{% block title %}SweetReader{% endblock %}</title>
     <link rel="icon" href="{{ url_for('static', filename='favicon.ico') }}" type="image/x-icon">
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
-        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f5f0eb; min-height: 100vh; }
-        .container { max-width: 1400px; margin: 0 auto; padding: 20px; }
-        :root { --primary: #e8848a; --primary-dark: #d46a70; --primary-light: #f5d4d6; --bg-warm: #fdf6f3; --text-dark: #4a3a3a; --text-light: #8a7a7a; --shadow: 0 4px 20px rgba(232,132,138,0.15); }
-        .btn { padding: 8px 20px; border: none; border-radius: 30px; cursor: pointer; font-size: 14px; text-decoration: none; display: inline-block; transition: all 0.3s; font-weight: 500; }
+        body { 
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; 
+            background: #f5f0eb; 
+            min-height: 100vh; 
+            display: flex; 
+            flex-direction: column; 
+        }
+        .container { 
+            max-width: 1400px; 
+            margin: 0 auto; 
+            padding: 12px 16px; 
+            flex: 1; 
+            display: flex; 
+            flex-direction: column; 
+            width: 100%;
+        }
+        :root { --primary: #e8848a; --primary-dark: #d46a70; --primary-light: #f5d4d6; --bg-warm: #fdf6f3; --text-dark: #4a3a3a; --text-light: #8a7a7a; --shadow: 0 2px 12px rgba(232,132,138,0.12); }
+        .btn { padding: 6px 16px; border: none; border-radius: 20px; cursor: pointer; font-size: 18px; text-decoration: none; display: inline-block; transition: all 0.3s; font-weight: 500; }
         .btn-primary { background: var(--primary); color: white; }
         .btn-primary:hover { background: var(--primary-dark); }
+        .btn-primary:disabled { opacity: 0.6; cursor: not-allowed; }
         .btn-outline { background: transparent; color: var(--text-dark); border: 2px solid var(--primary-light); }
         .btn-outline:hover { background: var(--primary-light); border-color: var(--primary); }
         .btn-success { background: #7bc8a4; color: white; }
@@ -21,51 +36,526 @@
         .btn-danger:hover { background: #d46a70; }
         .btn-ghost { background: transparent; color: var(--text-light); }
         .btn-ghost:hover { background: #f5f0eb; }
-        .navbar { background: white; padding: 12px 24px; border-radius: 16px; box-shadow: var(--shadow); display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; flex-wrap: wrap; gap: 12px; }
-        .navbar .logo { font-size: 24px; font-weight: 700; color: var(--text-dark); display: flex; align-items: center; gap: 10px; }
-        .navbar .logo .sweet { color: var(--primary); }
-        .navbar .logo .reader { color: var(--text-dark); }
-        .navbar .actions { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
-        .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; margin-bottom: 24px; }
-        .stat-card { background: white; padding: 16px 20px; border-radius: 14px; box-shadow: var(--shadow); text-align: center; }
-        .stat-card .num { font-size: 28px; font-weight: 700; color: var(--primary); }
-        .stat-card .label { font-size: 13px; color: var(--text-light); margin-top: 4px; }
-        .toast { position: fixed; bottom: 24px; right: 24px; padding: 14px 28px; border-radius: 12px; color: white; display: none; z-index: 999; animation: slideUp 0.4s cubic-bezier(0.34,1.56,0.64,1); box-shadow: 0 8px 30px rgba(0,0,0,0.15); }
-        .toast.show { display: block; }
-        .toast.success { background: #7bc8a4; }
-        .toast.error { background: #e8848a; }
-        .toast.info { background: #8ab8d4; }
-        @keyframes slideUp { from { transform: translateY(40px) scale(0.95); opacity: 0; } to { transform: translateY(0) scale(1); opacity: 1; } }
-        .hidden { display: none !important; }
-        @media (max-width: 768px) { .navbar { flex-direction: column; align-items: stretch; } .navbar .logo { justify-content: center; } .navbar .actions { justify-content: center; } .stats { grid-template-columns: repeat(2, 1fr); } }
+        .btn-sm { font-size: 13px; padding: 3px 12px; border-radius: 16px; }
+
+        /* 扫描中动画 */
+        .btn-scanning {
+            position: relative;
+            padding-right: 36px !important;
+        }
+        .btn-scanning .spinner-dots::after {
+            content: '';
+            position: absolute;
+            right: 10px;
+            top: 50%;
+            transform: translateY(-50%);
+            width: 16px;
+            height: 16px;
+            border: 2px solid rgba(255,255,255,0.3);
+            border-top-color: white;
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+        }
+        @keyframes spin {
+            to { transform: translateY(-50%) rotate(360deg); }
+        }
+
+        /* ===== 顶部导航栏 ===== */
+        .navbar {
+            background: white;
+            padding: 8px 20px;
+            border-radius: 12px;
+            box-shadow: var(--shadow);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 16px;
+            flex-wrap: nowrap;
+            gap: 12px;
+            min-height: 56px;
+            width: 100%;
+        }
+        .navbar .logo {
+            display: flex;
+            align-items: center;
+            text-decoration: none;
+            flex-shrink: 0;
+        }
+        .navbar .logo img { 
+            height: 56px; 
+            width: 56px; 
+            display: block;
+            border-radius: 50%;
+        }
+        .navbar .current-time {
+            color: var(--text-light);
+            font-size: 18px;
+            font-weight: 400;
+            text-align: center;
+            flex: 1 1 auto;
+            white-space: nowrap;
+        }
+        .navbar .actions {
+            display: flex;
+            gap: 8px;
+            align-items: center;
+            flex-shrink: 0;
+        }
+        .navbar .actions .user-menu {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            background: #f5f0eb;
+            padding: 4px 12px 4px 16px;
+            border-radius: 20px;
+            cursor: pointer;
+            font-size: 17px;
+            white-space: nowrap;
+            flex-shrink: 0;
+        }
+        .navbar .actions .user-menu .username { 
+            color: var(--text-dark);
+            max-width: 120px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .navbar .actions .user-menu .dropdown-btn { 
+            font-size: 10px; 
+            color: #888;
+            flex-shrink: 0;
+            margin-left: 2px;
+        }
+
+        /* ===== 下拉菜单 ===== */
+        .dropdown { position: relative; display: inline-block; }
+        .dropdown-content {
+            display: none;
+            position: absolute;
+            right: 0;
+            top: 100%;
+            background: white;
+            min-width: 180px;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.15);
+            border-radius: 12px;
+            padding: 6px 0;
+            z-index: 1000;
+            margin-top: 6px;
+            border: 1px solid rgba(0,0,0,0.04);
+        }
+        .dropdown-content.show { display: block; }
+        .dropdown-content a {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 8px 18px;
+            text-decoration: none;
+            color: var(--text-dark);
+            font-size: 15px;
+            transition: background 0.2s;
+            white-space: nowrap;
+        }
+        .dropdown-content a:hover { background: #f5f0eb; }
+        .dropdown-content .divider {
+            height: 1px;
+            background: #f0f0f0;
+            margin: 4px 12px;
+        }
+
+        /* ===== Flash 消息 ===== */
+        .flash-messages { margin-bottom: 12px; }
+        .flash-messages .flash {
+            padding: 10px 16px;
+            border-radius: 10px;
+            font-size: 14px;
+            margin-bottom: 6px;
+        }
+        .flash-messages .flash.success { background: #e8f5e9; color: #2e7d32; border: 1px solid #c8e6c9; }
+        .flash-messages .flash.error { background: #fce4ec; color: #c62828; border: 1px solid #f8bbd0; }
+        .flash-messages .flash.info { background: #e3f2fd; color: #0d47a1; border: 1px solid #bbdefb; }
+
+        .content { flex: 1; display: flex; flex-direction: column; }
+
+        /* ===== 全局主题适配 ===== */
+        body.dark-theme {
+            background: #1a1a2e !important;
+        }
+        body.dark-theme .navbar,
+        body.dark-theme .dropdown-content {
+            background: #222244 !important;
+        }
+        body.dark-theme .navbar .current-time {
+            color: #888 !important;
+        }
+        body.dark-theme .navbar .actions .user-menu {
+            background: rgba(255,255,255,0.08) !important;
+            color: #e0e0e0 !important;
+        }
+        body.dark-theme .navbar .actions .user-menu .username {
+            color: #e0e0e0 !important;
+        }
+        body.dark-theme .dropdown-content a {
+            color: #e0e0e0 !important;
+        }
+        body.dark-theme .dropdown-content a:hover {
+            background: rgba(255,255,255,0.08) !important;
+        }
+        body.dark-theme .dropdown-content .divider {
+            background: rgba(255,255,255,0.06) !important;
+        }
+        body.dark-theme .btn-outline {
+            color: #e0e0e0 !important;
+            border-color: rgba(255,255,255,0.2) !important;
+        }
+        body.dark-theme .btn-outline:hover {
+            background: rgba(255,255,255,0.1) !important;
+        }
+        body.dark-theme .flash.success {
+            background: rgba(39,174,96,0.15) !important;
+            color: #7bc8a4 !important;
+        }
+        body.dark-theme .flash.error {
+            background: rgba(231,76,60,0.15) !important;
+            color: #e8848a !important;
+        }
+        body.dark-theme .flash.info {
+            background: rgba(52,152,219,0.15) !important;
+            color: #5dade2 !important;
+        }
+
+        /* ===== 移动端适配 ===== */
+        @media (max-width: 768px) {
+            .container { padding: 8px 10px !important; }
+            .navbar {
+                padding: 6px 12px !important;
+                gap: 6px !important;
+                min-height: 48px !important;
+                border-radius: 8px !important;
+                margin-bottom: 10px !important;
+                flex-wrap: nowrap !important;
+            }
+            .navbar .logo img { height: 40px !important; width: 40px !important; }
+            .navbar .current-time {
+                font-size: 14px !important;
+                flex: 0 1 auto !important;
+                white-space: nowrap !important;
+            }
+            .navbar .actions { gap: 4px !important; }
+            .navbar .actions .user-menu {
+                font-size: 14px !important;
+                padding: 2px 8px 2px 12px !important;
+            }
+            .navbar .actions .user-menu .username {
+                max-width: 80px !important;
+                font-size: 14px !important;
+            }
+            .dropdown-content {
+                min-width: 160px !important;
+                right: -8px !important;
+            }
+            .dropdown-content a {
+                font-size: 14px !important;
+                padding: 7px 14px !important;
+            }
+            .btn { font-size: 14px !important; padding: 4px 12px !important; border-radius: 16px !important; }
+            .btn-sm { font-size: 12px !important; padding: 2px 10px !important; }
+        }
+        @media (max-width: 480px) {
+            .container { padding: 4px 6px !important; }
+            .navbar { 
+                padding: 4px 8px !important; 
+                min-height: 40px !important;
+                gap: 4px !important;
+            }
+            .navbar .logo img { height: 32px !important; width: 32px !important; }
+            .navbar .current-time { font-size: 12px !important; }
+            .navbar .actions .user-menu {
+                font-size: 12px !important;
+                padding: 1px 6px 1px 10px !important;
+            }
+            .navbar .actions .user-menu .username {
+                max-width: 60px !important;
+                font-size: 12px !important;
+            }
+            .dropdown-content {
+                min-width: 140px !important;
+                right: -4px !important;
+            }
+            .dropdown-content a {
+                font-size: 13px !important;
+                padding: 6px 12px !important;
+            }
+            .btn { font-size: 12px !important; padding: 3px 10px !important; }
+            .btn-sm { font-size: 11px !important; padding: 2px 8px !important; }
+        }
+        @media (max-width: 380px) {
+            .navbar .current-time { font-size: 11px !important; }
+            .navbar .actions .user-menu .username { max-width: 50px !important; font-size: 11px !important; }
+            .navbar .logo img { height: 28px !important; width: 28px !important; }
+        }
     </style>
     {% block extra_css %}{% endblock %}
 </head>
 <body>
     <div class="container">
         <nav class="navbar">
-            <div class="logo"><span style="font-size:28px;">📚</span><span><span class="sweet">Sweet</span><span class="reader">Reader</span></span></div>
+            <a href="/library" class="logo">
+                <img src="{{ url_for('static', filename='favicon.ico') }}" alt="SweetReader">
+            </a>
+            <div class="current-time" id="currentTime"></div>
             <div class="actions">
-                <a href="/library" class="btn btn-ghost">🏠 书库</a>
-                <a href="/categories" class="btn btn-ghost">📂 分类</a>
                 {% if current_user.is_authenticated %}
-                    <span style="color:var(--text-light);font-size:14px;">🍭 {{ current_user.username }}</span>
-                    {% if current_user.is_admin %}
-                        <a href="/admin/invite" class="btn btn-success">📧 邀请码</a>
-                        <a href="/admin/users" class="btn btn-success">👥 用户管理</a>
-                        <a href="/admin/sync" class="btn btn-success">🔄 同步</a>
-                    {% endif %}
-                    <a href="/logout" class="btn btn-danger">退出</a>
+                    <div class="dropdown">
+                        <div class="user-menu" onclick="toggleDropdown()">
+                            <span class="username">{{ current_user.username }}</span>
+                            <span class="dropdown-btn">▼</span>
+                        </div>
+                        <div class="dropdown-content" id="dropdownMenu">
+                            <a href="/library">📚 书库</a>
+                            <a href="/profile">👤 个人资料</a>
+                            <a href="/settings">⚙️ 设置</a>
+                            {% if current_user.is_admin %}
+                                <div class="divider"></div>
+                                <a href="/admin/users">👥 用户管理</a>
+                                <a href="/admin/invite">📧 邀请码</a>
+                                <a href="/admin/logs">📋 操作日志</a>
+                                <a href="javascript:void(0)" id="scanBtn" onclick="scanBooks()" class="scan-link">📂 扫描书籍</a>
+                            {% endif %}
+                            <div class="divider"></div>
+                            <a href="/logout" style="color:#e8848a;">🚪 退出登录</a>
+                        </div>
+                    </div>
+                {% else %}
+                    <a href="/login" class="btn btn-primary">登录</a>
                 {% endif %}
             </div>
         </nav>
-        {% block content %}{% endblock %}
+
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                <div class="flash-messages">
+                    {% for category, message in messages %}
+                        <div class="flash {{ category }}">{{ message }}</div>
+                    {% endfor %}
+                </div>
+            {% endif %}
+        {% endwith %}
+
+        <div class="content">
+            {% block content %}{% endblock %}
+        </div>
     </div>
-    <div id="toast" class="toast"></div>
+
     <script>
-        function showToast(msg, type) { var t = document.getElementById('toast'); t.textContent = msg; t.className = 'toast show ' + type; clearTimeout(t._timer); t._timer = setTimeout(function(){ t.classList.remove('show'); }, 3500); }
-        var params = new URLSearchParams(window.location.search); var msg = params.get('message'); if (msg) showToast(msg, 'success');
+        function toggleDropdown() {
+            document.getElementById('dropdownMenu').classList.toggle('show');
+        }
+        document.addEventListener('click', function(e) {
+            if (!e.target.closest('.dropdown')) {
+                document.getElementById('dropdownMenu').classList.remove('show');
+            }
+        });
+
+        function updateTime() {
+            var now = new Date();
+            var str = String(now.getHours()).padStart(2, '0') + ':' + String(now.getMinutes()).padStart(2, '0');
+            document.getElementById('currentTime').textContent = str;
+        }
+        setInterval(updateTime, 10000);
+        updateTime();
+
+        // ===== 扫描书籍 =====
+        function scanBooks() {
+            var btn = document.getElementById('scanBtn');
+            if (!btn) return;
+            
+            // 防止重复点击
+            if (btn.classList.contains('scanning')) return;
+            
+            // 保存原始文本
+            var originalText = btn.textContent;
+            
+            // 变为扫描中状态
+            btn.textContent = '⏳ 扫描中...';
+            btn.classList.add('scanning');
+            btn.style.pointerEvents = 'none';
+            btn.style.opacity = '0.7';
+            
+            // 发送扫描请求
+            fetch('/admin/sync', {
+                method: 'POST'
+            })
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                // 恢复按钮
+                btn.textContent = '✅ 扫描完成';
+                btn.classList.remove('scanning');
+                btn.style.pointerEvents = 'auto';
+                btn.style.opacity = '1';
+                
+                // 显示结果提示
+                var msg = '📂 扫描完成！';
+                if (data.categories_added !== undefined) {
+                    msg += ' 新增分类 ' + data.categories_added + ' 个，';
+                }
+                if (data.books_updated !== undefined) {
+                    msg += '更新书籍 ' + data.books_updated + ' 本';
+                }
+                showFlash(msg, 'success');
+                
+                // 3秒后恢复为"扫描书籍"
+                setTimeout(function() {
+                    btn.textContent = '📂 扫描书籍';
+                }, 3000);
+            })
+            .catch(function(err) {
+                // 恢复按钮
+                btn.textContent = '📂 扫描书籍';
+                btn.classList.remove('scanning');
+                btn.style.pointerEvents = 'auto';
+                btn.style.opacity = '1';
+                showFlash('❌ 扫描失败: ' + err.message, 'error');
+            });
+        }
+
+        function showFlash(message, type) {
+            var container = document.querySelector('.flash-messages');
+            if (!container) {
+                container = document.createElement('div');
+                container.className = 'flash-messages';
+                var content = document.querySelector('.content');
+                if (content) {
+                    content.parentNode.insertBefore(container, content);
+                }
+            }
+            var flash = document.createElement('div');
+            flash.className = 'flash ' + type;
+            flash.textContent = message;
+            container.appendChild(flash);
+            setTimeout(function() {
+                flash.remove();
+            }, 5000);
+        }
     </script>
     {% block extra_js %}{% endblock %}
 </body>
 </html>
+<style>
+/* Toast 通知动画 */
+.toast-container {
+    position: fixed;
+    top: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 9999;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    pointer-events: none;
+}
+.toast {
+    padding: 10px 24px;
+    border-radius: 12px;
+    font-size: 15px;
+    font-weight: 500;
+    color: white;
+    background: rgba(0,0,0,0.78);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    box-shadow: 0 8px 32px rgba(0,0,0,0.2);
+    animation: toastIn 0.4s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+    pointer-events: auto;
+    min-width: 160px;
+    text-align: center;
+}
+.toast.success { background: rgba(46, 125, 50, 0.92); }
+.toast.error { background: rgba(198, 40, 40, 0.92); }
+.toast.info { background: rgba(13, 71, 161, 0.92); }
+.toast.warning { background: rgba(237, 108, 2, 0.92); }
+
+.toast.out {
+    animation: toastOut 0.3s ease-in forwards;
+}
+@keyframes toastIn {
+    0% { opacity: 0; transform: translateY(-30px) scale(0.9); }
+    100% { opacity: 1; transform: translateY(0) scale(1); }
+}
+@keyframes toastOut {
+    0% { opacity: 1; transform: translateY(0) scale(1); }
+    100% { opacity: 0; transform: translateY(-20px) scale(0.9); }
+}
+</style>
+<script>
+// Toast 通知系统
+function showToast(message, type) {
+    type = type || 'info';
+    var container = document.getElementById('toastContainer');
+    if (!container) {
+        container = document.createElement('div');
+        container.id = 'toastContainer';
+        container.className = 'toast-container';
+        document.body.appendChild(container);
+    }
+    var toast = document.createElement('div');
+    toast.className = 'toast ' + type;
+    toast.textContent = message;
+    container.appendChild(toast);
+    
+    setTimeout(function() {
+        toast.classList.add('out');
+        setTimeout(function() {
+            if (toast.parentNode) toast.parentNode.removeChild(toast);
+        }, 300);
+    }, 2000);
+}
+
+// 替代 confirm 的确认对话框
+function showConfirm(message, onConfirm, onCancel) {
+    var container = document.getElementById('toastContainer');
+    if (!container) {
+        container = document.createElement('div');
+        container.id = 'toastContainer';
+        container.className = 'toast-container';
+        document.body.appendChild(container);
+    }
+    
+    var box = document.createElement('div');
+    box.className = 'toast';
+    box.style.cssText = 'background: rgba(30,30,40,0.95); backdrop-filter: blur(12px); padding: 16px 28px; min-width: 200px; pointer-events: auto; cursor: default;';
+    
+    var msg = document.createElement('div');
+    msg.textContent = message;
+    msg.style.cssText = 'margin-bottom: 12px; font-size: 15px;';
+    box.appendChild(msg);
+    
+    var btnRow = document.createElement('div');
+    btnRow.style.cssText = 'display: flex; gap: 10px; justify-content: center;';
+    
+    var confirmBtn = document.createElement('button');
+    confirmBtn.textContent = '确定';
+    confirmBtn.style.cssText = 'padding: 4px 20px; border: none; border-radius: 8px; background: var(--primary, #e8848a); color: white; cursor: pointer; font-size: 14px;';
+    confirmBtn.onclick = function() {
+        box.classList.add('out');
+        setTimeout(function() {
+            if (box.parentNode) box.parentNode.removeChild(box);
+            if (onConfirm) onConfirm();
+        }, 300);
+    };
+    
+    var cancelBtn = document.createElement('button');
+    cancelBtn.textContent = '取消';
+    cancelBtn.style.cssText = 'padding: 4px 20px; border: 1px solid rgba(255,255,255,0.2); border-radius: 8px; background: transparent; color: #ccc; cursor: pointer; font-size: 14px;';
+    cancelBtn.onclick = function() {
+        box.classList.add('out');
+        setTimeout(function() {
+            if (box.parentNode) box.parentNode.removeChild(box);
+            if (onCancel) onCancel();
+        }, 300);
+    };
+    
+    btnRow.appendChild(cancelBtn);
+    btnRow.appendChild(confirmBtn);
+    box.appendChild(btnRow);
+    container.appendChild(box);
+}
+</script>
