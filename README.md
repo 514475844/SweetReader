@@ -30,12 +30,24 @@ docker run -d \
   sweet-reader:latest
 ```
 
-### 默认账号
+### 首次启动自动初始化
 
-| 字段 | 值 |
+**第一次启动会自动创建数据库和管理员账号：**
+
+- 用户名：`admin`
+- 密码：`admin123`
+
+无需任何手动配置，启动即用。
+
+### 参数说明
+
+| 参数 | 说明 |
 |------|------|
-| 用户名 | admin |
-| 密码 | admin123 |
+| `-p 5000:5000` | 访问端口，访问地址为 `http://你的IP:5000` |
+| `-v /path/to/books:/app/books:ro` | 挂载你的书籍目录（只读） |
+| `-v /path/to/data:/app/instance` | 挂载数据目录（数据库、配置等） |
+| `--restart unless-stopped` | 容器自动重启 |
+| `-d` | 后台运行 |
 
 ---
 
@@ -51,7 +63,8 @@ SweetReader/
 │   ├── category_scanner.py  # 分类扫描器
 │   └── encoding_utils.py    # 编码检测
 ├── templates/           # HTML 模板
-├── static/              # 静态资源
+├── static/              # 静态资源（含 epubjs/pdfjs）
+├── docker-entrypoint.sh # 启动初始化脚本
 ├── Dockerfile
 ├── requirements.txt
 ├── run.py
