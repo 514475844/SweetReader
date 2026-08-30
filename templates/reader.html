@@ -267,15 +267,10 @@ body.dark-theme .reader-settings-panel .btn-row .btn-ghost:hover {
             <input type="range" id="lineSpacingRange" min="1.2" max="3.0" value="2.0" step="0.1" oninput="updateLineSpacing(this.value)">
             <span class="value" id="lineSpacingValue">2.0</span>
         </div>
-        <div class="setting-row">
-            <span>边距</span>
-            <input type="range" id="marginRange" min="0" max="60" value="30" step="2" oninput="updateMargin(this.value)">
-            <span class="value" id="marginValue">30</span>
-        </div>
+        <!-- 边距已隐藏（强制0） -->
         <div class="btn-row">
-            <button class="btn btn-sm btn-outline" onclick="resetSettings()">↺ 重置</button>
-            <button class="btn btn-sm btn-primary" onclick="saveSettings()">💾 保存</button>
-            <button class="btn btn-sm btn-ghost" onclick="closeSettings()">关闭</button>
+            <button class="btn btn-sm btn-outline" onclick="resetAndClose()">↺ 重置并关闭</button>
+            <button class="btn btn-sm btn-primary" onclick="saveAndClose()">💾 保存并关闭</button>
         </div>
     </div>
 </div>
@@ -293,12 +288,64 @@ function detectAndDecode(buffer) {
             var decoder = new TextDecoder(encodings[i], { fatal: true });
             var result = decoder.decode(buffer);
             if (result.indexOf('�') < 10) {
-                return result;
+                return cleanText(result);
             }
         } catch(e) {}
     }
     var decoder = new TextDecoder('gb18030', { fatal: false });
-    return decoder.decode(buffer);
+    return cleanText(decoder.decode(buffer));
+}
+
+function cleanText(text) {
+    // 1. 将各种换行符统一为 \n
+    text = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+    
+    // 2. 将3个以上的连续空行压缩为2个空行（段落间保留一个空行）
+    text = text.replace(/\n{4,}/g, '\n\n\n');
+    
+    // 3. 去掉每行末尾的空格
+    text = text.replace(/[ \t]+\n/g, '\n');
+    
+    // 4. 将只有空格的行转为空行
+    text = text.replace(/^[ \t]+$/gm, '');
+    
+    // 5. 处理段落：非空行前面加2个空格缩进（但标题/特殊行除外）
+    var lines = text.split('\n');
+    var result = [];
+    var inParagraph = false;
+    for (var i = 0; i < lines.length; i++) {
+        var line = lines[i];
+        var trimmed = line.trim();
+        if (trimmed.length === 0) {
+            // 空行：段落结束
+            result.push('');
+            inParagraph = false;
+            continue;
+        }
+        // 判断是否是标题行（短行、无标点、中文或英文）
+        var isTitle = trimmed.length < 20 && 
+            (trimmed.match(/[，。！？；：""''（）《》]/g) || []).length < 1 &&
+            (trimmed.match(/[\u4e00-\u9fa5]/g) || []).length > 0;
+        if (isTitle) {
+            result.push(trimmed);
+            inParagraph = false;
+        } else {
+            // 正文段落：首行缩进2个空格
+            if (!inParagraph) {
+                result.push('  ' + trimmed);
+                inParagraph = true;
+            } else {
+                // 同一段落续行
+                result.push(line);
+            }
+        }
+    }
+    
+    // 6. 去掉开头和结尾的空行
+    while (result.length > 0 && result[0].trim() === '') result.shift();
+    while (result.length > 0 && result[result.length - 1].trim() === '') result.pop();
+    
+    return result.join('\n');
 }
 
 function loadContent() {
@@ -383,11 +430,17 @@ function toggleTheme() {
 function updateFontSize(val) {
     document.documentElement.style.setProperty('--font-size', val + 'px');
     document.getElementById('fontSizeValue').textContent = val;
+    // 直接应用到内容
+    var content = document.getElementById('txtContent');
+    if (content) content.style.fontSize = val + 'px';
 }
 
 function updateLineSpacing(val) {
     document.documentElement.style.setProperty('--line-spacing', val);
     document.getElementById('lineSpacingValue').textContent = val;
+    // 直接应用到内容
+    var content = document.getElementById('txtContent');
+    if (content) content.style.lineHeight = val;
 }
 
 function updateMargin(val) {
@@ -438,6 +491,30 @@ function closeSettings() {
     document.getElementById('settingsPanel').classList.remove('show');
 }
 
+
+function saveAndClose() {
+    saveSettings();
+    closeSettings();
+}
+
+function resetAndClose() {
+    resetSettings();
+    closeSettings();
+}
+
+// 点击设置面板外部自动保存并关闭
+document.addEventListener('click', function(e) {
+    var panel = document.getElementById('settingsPanel');
+    var btn = document.getElementById('settingsToggle');
+    if (panel && panel.classList.contains('show')) {
+        if (!panel.contains(e.target) && btn && !btn.contains(e.target)) {
+            saveSettings();
+            closeSettings();
+        }
+    }
+});
+
+
 var saveTimer = null;
 function autoSaveProgress() {
     var content = document.getElementById('txtContent');
@@ -472,5 +549,65 @@ setInterval(updateTime, 10000);
 updateTime();
 
 loadContent();
+
+// 从 URL 获取进度参数并跳转
+(function() {
+    var urlParams = new URLSearchParams(window.location.search);
+    var targetProgress = parseFloat(urlParams.get("progress"));
+    if (targetProgress && !isNaN(targetProgress) && targetProgress > 0) {
+        // 等待内容加载完成
+        function doScroll() {
+            var container = document.getElementById('readerContent');
+            if (!container) {
+                setTimeout(doScroll, 200);
+                return;
+            }
+            // 等待内容渲染
+            setTimeout(function() {
+                var scrollHeight = container.scrollHeight - container.clientHeight;
+                if (scrollHeight > 0) {
+                    container.scrollTop = scrollHeight * targetProgress;
+                    console.log("✅ 已跳转到 " + (targetProgress * 100).toFixed(1) + "% 位置");
+                } else {
+                    // 如果内容还没加载完，再试一次
+                    setTimeout(function() {
+                        var scrollHeight2 = container.scrollHeight - container.clientHeight;
+                        if (scrollHeight2 > 0) {
+                            container.scrollTop = scrollHeight2 * targetProgress;
+                            console.log("✅ 延迟跳转到 " + (targetProgress * 100).toFixed(1) + "% 位置");
+                        }
+                    }, 1000);
+                }
+            }, 500);
+        }
+        doScroll();
+    }
+})();
+
+
+// 保存并关闭设置
+function saveAndClose() {
+    saveSettings();
+    closeSettingsPanel();
+}
+
+// 重置并关闭设置
+function resetAndClose() {
+    resetSettings();
+    closeSettingsPanel();
+}
+
+// 点击设置面板外部关闭（自动保存）
+document.addEventListener('click', function(e) {
+    var panel = document.getElementById('settingsPanel');
+    var btn = document.querySelector('.reader-toolbar .btn-settings');
+    if (panel && panel.classList.contains('active')) {
+        if (!panel.contains(e.target) && btn && !btn.contains(e.target)) {
+            saveSettings();
+            closeSettingsPanel();
+        }
+    }
+});
+
 </script>
 {% endblock %}

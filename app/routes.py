@@ -215,7 +215,7 @@ def category_view(category_path):
     return render_template('category.html', category=category, books=books, breadcrumb=breadcrumb)
 
 # ============ 管理员 ============
-@bp.route('/admin/sync')
+@bp.route('/admin/sync', methods=['GET', 'POST'])
 @login_required
 def sync_categories():
     if not current_user.is_admin:

@@ -1,8 +1,9 @@
 Flask==2.3.2
-Flask-Login==0.6.2
-Flask-SQLAlchemy==3.1.1
-Flask-Migrate==4.0.5
+Flask-SQLAlchemy==3.0.5
+SQLAlchemy==2.0.19
 Werkzeug==2.3.4
-ebooklib==0.18
-Pillow==10.2.0
-python-magic==0.4.27
+EbookLib==0.18
+PyPDF2==3.0.1
+python-docx==1.1.0
+lxml==4.9.3
+Pillow==10.0.0
