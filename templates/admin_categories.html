@@ -1,0 +1,71 @@
+{% extends "base.html" %}
+{% block title %}分类管理{% endblock %}
+{% block content %}
+<div class="container" style="max-width:1100px;margin:24px auto;padding:0 16px;">
+  <h2>分类管理</h2>
+  <p style="color:#888;font-size:13px;margin-bottom:12px;">重命名 / 合并分类（仅修改数据库映射，不影响磁盘文件，书籍仍可正常打开）。合并会把源分类及其全部子分类下的书籍转移到目标分类并删除源分类，不可撤销。</p>
+  <div class="cat-bar">
+    <input type="text" id="filterInput" placeholder="筛选分类路径…" oninput="filterRows()">
+    <span class="merge-label">合并目标：</span>
+    <select id="mergeTarget">
+      <option value="">选择目标分类…</option>
+      {% for t in categories %}<option value="{{ t.id }}">{{ t.path }}</option>{% endfor %}
+    </select>
+  </div>
+  <div id="msg" style="margin:10px 0;min-height:20px;"></div>
+  <table class="cat-table">
+    <thead><tr><th>分类路径</th><th>层级</th><th>书本数</th><th>重命名</th><th>操作</th></tr></thead>
+    <tbody id="rows">
+    {% for c in categories %}
+      <tr>
+        <td class="cpath">{{ c.path }}</td>
+        <td>{{ c.level }}</td>
+        <td>{{ c.book_count }}</td>
+        <td>
+          <input type="text" class="newname" placeholder="新名称" style="width:120px;">
+          <button class="btn btn-sm btn-outline" onclick="renameCat({{ c.id }}, this)">重命名</button>
+        </td>
+        <td><button class="btn btn-sm btn-outline" onclick="mergeCat({{ c.id }})">合并到此分类</button></td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+<style>
+.cat-bar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 4px; }
+.cat-bar input[type=text] { height: 30px; padding: 0 10px; border: 1px solid #ddd; border-radius: 8px; font-size: 13px; min-width: 200px; }
+.cat-bar select { height: 30px; max-width: 340px; border: 1px solid #ddd; border-radius: 8px; font-size: 13px; }
+.merge-label { font-size: 13px; color: #888; }
+.cat-table { width:100%; border-collapse:collapse; font-size:13px; }
+.cat-table th, .cat-table td { border-bottom:1px solid #eee; padding:6px 10px; text-align:left; vertical-align:middle; }
+.cat-table th { background:#f7f7f7; font-weight:600; position: sticky; top: 0; }
+.cat-table .cpath { max-width: 420px; word-break: break-all; }
+</style>
+<script>
+function showMsg(t, ok){ var m=document.getElementById('msg'); m.textContent=t; m.style.color = ok ? '#2a9d4a' : '#c0392b'; }
+function filterRows(){
+  var q = (document.getElementById('filterInput').value || '').trim().toLowerCase();
+  var trs = document.querySelectorAll('#rows tr');
+  for (var i=0;i<trs.length;i++){
+    var p = trs[i].querySelector('.cpath');
+    var txt = p ? p.textContent.toLowerCase() : '';
+    trs[i].style.display = (q === '' || txt.indexOf(q) >= 0) ? '' : 'none';
+  }
+}
+function renameCat(id, btn){
+  var inp = btn.parentNode.querySelector('.newname');
+  var name = (inp.value || '').trim();
+  if(!name){ showMsg('请输入新名称', false); return; }
+  fetch('/api/admin/category/'+id+'/rename', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({name:name})})
+    .then(function(r){return r.json();}).then(function(d){ if(d.success){ showMsg('已重命名', true); location.reload(); } else showMsg(d.message||'失败', false); });
+}
+function mergeCat(id){
+  var sel = document.getElementById('mergeTarget');
+  var tid = sel.value;
+  if(!tid){ showMsg('请先在右上选择合并目标分类', false); return; }
+  if(!confirm('确定将该分类及其全部子分类的书籍合并到目标分类？此操作不可撤销。')) return;
+  fetch('/api/admin/category/'+id+'/merge', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({target_id: parseInt(tid, 10)})})
+    .then(function(r){return r.json();}).then(function(d){ if(d.success){ showMsg('已合并', true); location.reload(); } else showMsg(d.message||'失败', false); });
+}
+</script>
+{% endblock %}

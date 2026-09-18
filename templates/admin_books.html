@@ -1,0 +1,509 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="admin-books">
+    <h2>书籍管理</h2>
+
+    {% if current_user.is_admin or current_user.can_import %}
+    <div class="card">
+        <h3>导入书籍</h3>
+        <p class="hint">上传书籍文件，导入后默认归入「导入」分类；若文件名或压缩包子目录命中已有分类，会自动归入对应分类。支持单文件与 <b>.zip</b> 压缩包批量导入，会自动解压。可执行文件会被拒绝。</p>
+        <div class="fmt-list">支持格式：
+            <span class="fmt-chip">.txt</span><span class="fmt-chip">.epub</span><span class="fmt-chip">.md</span><span class="fmt-chip">.pdf</span><span class="fmt-chip">.mobi</span><span class="fmt-chip">.azw3</span><span class="fmt-chip">.html</span><span class="fmt-chip">.log</span><span class="fmt-chip">.cn</span><span class="fmt-chip">.zip（批量）</span>
+        </div>
+        <form id="importForm" enctype="multipart/form-data">
+            <input type="file" name="files" multiple accept=".txt,.epub,.md,.log,.cn,.pdf,.mobi,.azw3,.zip,.html">
+            <button type="button" class="btn btn-primary" onclick="doImport()">上传并导入</button>
+        </form>
+        <div id="importProgressWrap" class="imp-progress" style="display:none;">
+            <div class="imp-bar"><div class="imp-fill" id="importProgressFill"></div></div>
+            <span class="imp-pct" id="importProgressPct">0%</span>
+        </div>
+        <div id="importResult" class="result-line"></div>
+    </div>
+
+    {% endif %}
+    <div class="card">
+        <form method="get" class="search-row">
+            <input type="text" name="q" value="{{ q }}" placeholder="搜索书名 / 文件名">
+            <button type="submit" class="btn btn-outline">搜索</button>
+        </form>
+        <button type="button" class="btn btn-outline" onclick="openDup()">查重去重</button>
+        <div class="batch-bar" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:10px 0;">
+            <span id="selCount" style="font-size:13px;color:#888;">已选 0 本</span>
+            <select id="batchMoveSel" style="max-width:260px;"><option value="">移动到分类…</option>{% for c in categories %}<option value="{{ c.id }}">{{ c.path }}</option>{% endfor %}</select>
+            <button class="btn btn-sm btn-outline" onclick="batchMove()">移动</button>
+            <input type="text" id="batchTag" placeholder="标签" style="width:100px;">
+            <button class="btn btn-sm btn-outline" onclick="batchTagOp('add')">打标签</button>
+            <button class="btn btn-sm btn-outline" onclick="batchTagOp('remove')">去标签</button>
+            <button class="btn btn-sm btn-outline" onclick="batchDelete()">批量删除</button>
+            {% if current_user.is_admin or current_user.can_export %}<a class="btn btn-sm btn-outline" href="/admin/export-meta">导出元数据CSV</a>{% endif %}
+        </div>
+        <div class="table-wrap">
+        <table class="book-table">
+            <thead>
+                <tr><th><input type="checkbox" id="selAll" onchange="toggleSelectAll(this)" title="全选本页"></th><th>ID</th><th>书名</th><th>格式</th><th>操作</th></tr>
+            </thead>
+            <tbody>
+            {% for b in books %}
+                <tr>
+                    <td><input type="checkbox" class="bsel" value="{{ b.id }}" onchange="updateSelCount()"></td>
+                    <td>{{ b.id }}</td>
+                    <td>{{ b.title or b.filename }}</td>
+                    <td>{{ b.file_type }}</td>
+                    <td>
+                        {% if current_user.is_admin or current_user.can_export %}<button class="btn btn-sm btn-outline" onclick="doExport({{ b.id }})">导出</button>{% endif %}
+                        {% if current_user.is_admin or current_user.can_manage_books %}<button class="btn btn-sm btn-outline" onclick="doConvert({{ b.id }})">转编码</button>{% endif %}
+                        {% if current_user.is_admin or current_user.can_manage_books %}<button class="btn btn-sm btn-outline" onclick="editBook({{ b.id }})">编辑</button>{% endif %}
+                        {% if current_user.is_admin or current_user.can_manage_books %}<button class="btn btn-sm btn-outline" onclick="deleteBook({{ b.id }}, this)">删除</button>{% endif %}
+                    </td>
+                </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+        </div>
+        <div class="pager">
+            {% if page > 1 %}<a href="?page={{ page-1 }}&q={{ q }}">← 上一页</a>{% endif %}
+            <span>第 {{ page }} 页 / 共 {{ total }} 本</span>
+            <a href="?page={{ page+1 }}&q={{ q }}">下一页 →</a>
+        </div>
+    </div>
+
+    <div id="convertResult" class="card" style="display:none;"></div>
+
+    <div id="dupPanel" class="card" style="display:none;"></div>
+
+    <div class="card">
+        <h3>高级工具</h3>
+        <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;">
+            <input type="text" id="newCatName" placeholder="新建分类名" style="width:160px;">
+            <button class="btn btn-sm btn-outline" onclick="createCat()">新建分类</button>
+            <button class="btn btn-sm btn-outline" onclick="scanInvalid()">扫描失效书籍</button>
+            <button class="btn btn-sm btn-outline" onclick="mergeSelected()">合并选中书籍</button>
+        </div>
+        <p class="hint" style="margin-top:8px;">「合并选中」把勾选的书顺序拼成一本书（仅 txt/md，≤20 本），<b>默认保留原件</b>；「扫描失效书籍」列出磁盘文件已丢失的记录（如手动挪走文件后的残留）。</p>
+        <div id="toolsResult" style="display:none;"></div>
+    </div>
+
+    <div id="editModal" class="modal-mask" style="display:none;">
+        <div class="modal-box">
+            <h3>编辑书籍信息</h3>
+            <input type="hidden" id="editId">
+            <label>书名</label><input type="text" id="editTitle">
+            <label>作者</label><input type="text" id="editAuthor">
+            <label>格式</label><input type="text" id="editType" placeholder="txt/epub/md ...">
+            <label>分类</label><select id="editCat"></select>
+            <label>简介</label><textarea id="editDesc" rows="3"></textarea>
+            <label>封面（≤5MB，jpg/png/webp/gif）</label>
+            <input type="file" id="editCover" accept="image/*" onchange="uploadCover()">
+            <img id="editCoverImg" src="" alt="封面预览" style="display:none;max-width:88px;margin-top:6px;border-radius:4px;">
+            <div style="margin-top:4px;display:flex;align-items:center;gap:8px;">
+                <span id="editCoverTip" style="font-size:12px;color:var(--text-light);"></span>
+                <button type="button" class="btn btn-sm btn-outline" onclick="clearCover()">清除封面</button>
+            </div>
+            <div class="modal-actions">
+                <button class="btn btn-primary" onclick="saveEdit()">保存</button>
+                <button class="btn btn-outline" onclick="closeEdit()">取消</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+    .table-wrap { width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+.admin-books { max-width: 880px; margin: 16px auto; padding: 0 12px; }
+.admin-books h2 { font-size: 18px; margin: 8px 0 14px; }
+.admin-books .card { background: #fff; border-radius: 8px; box-shadow: var(--shadow); padding: 14px 16px; margin-bottom: 14px; }
+body.dark-theme .admin-books .card { background: #23252b; }
+.admin-books h3 { font-size: 15px; margin: 0 0 8px; }
+.admin-books .hint { color: var(--text-light); font-size: 12px; margin: 0 0 10px; }
+.admin-books .search-row { display: flex; gap: 8px; margin-bottom: 12px; }
+.admin-books .search-row input { flex: 1; }
+.admin-books .book-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.admin-books .book-table th, .admin-books .book-table td { text-align: left; padding: 7px 8px; border-bottom: 1px solid #eee; }
+body.dark-theme .admin-books .book-table th, body.dark-theme .admin-books .book-table td { border-color: #34373e; }
+.admin-books .pager { display: flex; justify-content: space-between; align-items: center; margin-top: 12px; font-size: 13px; }
+.admin-books .result-line { margin-top: 10px; color: var(--primary); font-size: 13px; }
+.admin-books #convertResult pre { background: #f5f5f5; padding: 8px; border-radius: 6px; max-height: 160px; overflow: auto; white-space: pre-wrap; font-size: 12px; }
+body.dark-theme .admin-books #convertResult pre { background: #2c2f36; }
+.admin-books .fmt-list { font-size: 12px; color: var(--text-light); margin: 0 0 10px; }
+.admin-books .fmt-chip { display: inline-block; background: rgba(0,0,0,.05); border-radius: 4px; padding: 1px 6px; margin: 0 4px 4px 0; font-family: monospace; }
+body.dark-theme .admin-books .fmt-chip { background: rgba(255,255,255,.08); }
+.admin-books .modal-mask { position: fixed; inset: 0; background: rgba(0,0,0,.4); display: flex; align-items: center; justify-content: center; z-index: 50; }
+.admin-books .modal-box { background: #fff; border-radius: 10px; padding: 18px 20px; width: 360px; max-width: 92vw; box-shadow: 0 8px 30px rgba(0,0,0,.25); }
+body.dark-theme .admin-books .modal-box { background: #23252b; }
+.admin-books .modal-box label { display: block; font-size: 12px; color: var(--text-light); margin: 10px 0 4px; }
+.admin-books .modal-box input, .admin-books .modal-box select, .admin-books .modal-box textarea { width: 100%; }
+.admin-books .modal-actions { display: flex; gap: 10px; margin-top: 14px; justify-content: flex-end; }
+.admin-books .dup-group { border: 1px solid #eee; border-radius: 8px; padding: 10px 12px; margin-bottom: 10px; }
+body.dark-theme .admin-books .dup-group { border-color: #34373e; }
+.admin-books .dup-group h4 { margin: 0 0 6px; font-size: 14px; }
+.admin-books .dup-item { display: flex; align-items: center; gap: 8px; font-size: 13px; padding: 3px 0; }
+/* ===== 导入进度与结果 ===== */
+.admin-books .imp-progress { display: flex; align-items: center; gap: 8px; margin-top: 10px; }
+.admin-books .imp-bar { flex: 1; height: 8px; background: rgba(0,0,0,.09); border-radius: 4px; overflow: hidden; }
+.admin-books .imp-fill { height: 100%; width: 0; background: var(--primary); transition: width .15s; }
+.admin-books .imp-pct { font-size: 12px; color: var(--text-light); min-width: 34px; }
+.admin-books .imp-list { margin: 8px 0 0; padding-left: 18px; font-size: 12px; color: var(--text-dark); }
+.admin-books .imp-list li { margin-bottom: 3px; }
+.admin-books .imp-author { margin-left: 8px; color: #2f6fd0; }
+.admin-books .imp-type { margin-left: 8px; color: var(--text-light); }
+</style>
+
+<script>
+function doImport() {
+    var form = document.getElementById('importForm');
+    var input = form.querySelector('input[type=file]');
+    if (!input.files || !input.files.length) {
+        document.getElementById('importResult').textContent = '请先选择文件';
+        return;
+    }
+    var fd = new FormData(form);
+    var wrap = document.getElementById('importProgressWrap');
+    var fill = document.getElementById('importProgressFill');
+    var pct = document.getElementById('importProgressPct');
+    wrap.style.display = 'block';
+    fill.style.width = '0%';
+    pct.textContent = '0%';
+    document.getElementById('importResult').textContent = '';
+
+    var xhr = new XMLHttpRequest();
+    xhr.open('POST', '/api/admin/import');
+    // #207 导入进度显示
+    xhr.upload.onprogress = function(e) {
+        if (e.lengthComputable) {
+            var p = Math.round(e.loaded / e.total * 100);
+            fill.style.width = p + '%';
+            pct.textContent = p + '%';
+        }
+    };
+    xhr.onload = function() {
+        fill.style.width = '100%';
+        pct.textContent = '100%';
+        var d = {};
+        try { d = JSON.parse(xhr.responseText); } catch (e) { d = {}; }
+        var el = document.getElementById('importResult');
+        if (!(d && d.success)) {
+            el.textContent = '失败：' + ((d && d.message) || '未知错误');
+            return;
+        }
+        var html = '已导入 ' + d.imported + ' 本';
+        if (d.skipped && d.skipped.length) {
+            html += '，跳过 ' + d.skipped.length + ' 个：'
+                 + d.skipped.map(function(s) {
+                       return escapeHtml(s.name) + '（' + escapeHtml(s.reason) + '）';
+                   }).join('、');
+        }
+        if (d.details && d.details.length) {
+            html += '<ul class="imp-list">';
+            d.details.forEach(function(x) {
+                html += '<li><b>' + escapeHtml(x.title) + '</b>'
+                     + (x.author ? '<span class="imp-author">作者：' + escapeHtml(x.author) + '</span>' : '')
+                     + '<span class="imp-type">' + escapeHtml(x.type) + '</span></li>';
+            });
+            html += '</ul>';
+        }
+        el.innerHTML = html;
+        setTimeout(function() { location.reload(); }, 1600);
+    };
+    xhr.onerror = function() {
+        document.getElementById('importResult').textContent = '导入失败（网络错误）';
+    };
+    xhr.send(fd);
+}
+function doExport(id) { window.location.href = '/api/admin/export/' + id; }
+function doConvert(id) {
+    fetch('/api/admin/convert-encoding', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ book_id: id })
+    }).then(function(r){ return r.json(); }).then(function(d){
+        var box = document.getElementById('convertResult');
+        box.style.display = 'block';
+        if (!d.success) { box.innerHTML = '<h3>失败：' + escapeHtml(d.message) + '</h3>'; return; }
+        var tag = d.changed ? '（已重写 UTF-8）' : '（本就是 UTF-8，无需转换）';
+        box.innerHTML = '<h3>编码转换：' + escapeHtml(d.encoding) + tag + '</h3>'
+            + '<div><b>转换前：</b></div><pre>' + escapeHtml(d.before) + '</pre>'
+            + '<div><b>转换后：</b></div><pre>' + escapeHtml(d.after) + '</pre>';
+    }).catch(function(){ document.getElementById('convertResult').innerHTML = '<h3>转换失败</h3>'; });
+}
+function editBook(id) {
+    fetch('/api/admin/book/' + id).then(function(r){ return r.json(); }).then(function(d){
+        if (!d.success) { alert(d.message || '加载失败'); return; }
+        document.getElementById('editId').value = d.book.id;
+        document.getElementById('editTitle').value = d.book.title || '';
+        document.getElementById('editAuthor').value = d.book.author || '';
+        document.getElementById('editType').value = d.book.file_type || '';
+        document.getElementById('editDesc').value = d.book.description || '';
+        var sel = document.getElementById('editCat'); sel.innerHTML = '';
+        var o0 = document.createElement('option'); o0.value=''; o0.textContent='（未分类）'; sel.appendChild(o0);
+        (d.categories || []).forEach(function(c){
+            var o = document.createElement('option'); o.value = c.id; o.textContent = c.name;
+            if (c.id == d.book.category_id) o.selected = true; sel.appendChild(o);
+        });
+        var cimg = document.getElementById('editCoverImg');
+        var cp = d.book.cover_path || '';
+        if (cp && cp.indexOf('/') === 0) {
+            var i = cp.indexOf('static/');
+            if (i >= 0) cp = cp.slice(i + 7);
+        }
+        if (cp) { cimg.src = '/' + cp; cimg.style.display = 'block'; }
+        else { cimg.style.display = 'none'; cimg.src = ''; }
+        var cvr = document.getElementById('editCover'); if (cvr) cvr.value = '';
+        var ctip = document.getElementById('editCoverTip'); if (ctip) ctip.textContent = '';
+        document.getElementById('editModal').style.display = 'flex';
+    });
+}
+function closeEdit() { document.getElementById('editModal').style.display = 'none'; }
+function saveEdit() {
+    var id = document.getElementById('editId').value;
+    var payload = {
+        title: document.getElementById('editTitle').value.trim(),
+        author: document.getElementById('editAuthor').value.trim(),
+        file_type: document.getElementById('editType').value.trim(),
+        category_id: document.getElementById('editCat').value,
+        description: document.getElementById('editDesc').value.trim()
+    };
+    fetch('/api/admin/book/' + id, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
+        .then(function(r){ return r.json(); }).then(function(d){
+            if (d.success) { closeEdit(); location.reload(); } else { alert(d.message || '保存失败'); }
+        });
+}
+function deleteBook(id, btn) {
+    if (!confirm('确认删除这本书？文件也会一并删除，不可恢复。')) return;
+    fetch('/api/admin/book/' + id + '/delete', { method: 'POST' })
+        .then(function(r){ return r.json(); }).then(function(d){
+            if (d.success) { var tr = btn.closest('tr'); if (tr) tr.remove(); } else { alert(d.message || '删除失败'); }
+        });
+}
+// ===== #34 批量操作 =====
+function toggleSelectAll(cb) {
+    document.querySelectorAll('input.bsel').forEach(function(c){ c.checked = cb.checked; });
+    updateSelCount();
+}
+function updateSelCount() {
+    var n = document.querySelectorAll('input.bsel:checked').length;
+    var el = document.getElementById('selCount');
+    if (el) el.textContent = '已选 ' + n + ' 本';
+}
+function selectedIds() {
+    var ids = [];
+    document.querySelectorAll('input.bsel:checked').forEach(function(c){ ids.push(parseInt(c.value, 10)); });
+    return ids;
+}
+function batchMove() {
+    var ids = selectedIds();
+    var sel = document.getElementById('batchMoveSel');
+    if (!ids.length) { alert('请先勾选书籍'); return; }
+    if (!sel || !sel.value) { alert('请选择目标分类'); return; }
+    batchPost({ids: ids, action: 'move', category_id: parseInt(sel.value, 10)});
+}
+function batchTagOp(op) {
+    var ids = selectedIds();
+    var t = document.getElementById('batchTag');
+    if (!ids.length) { alert('请先勾选书籍'); return; }
+    if (!t || !(t.value || '').trim()) { alert('请输入标签'); return; }
+    batchPost({ids: ids, action: 'tag', op: op, tag: t.value.trim()});
+}
+function batchDelete() {
+    var ids = selectedIds();
+    if (!ids.length) { alert('请先勾选书籍'); return; }
+    if (!confirm('确定删除选中的 ' + ids.length + ' 本书？磁盘文件也会一并删除，不可恢复！')) return;
+    batchPost({ids: ids, action: 'delete'});
+}
+function batchPost(payload) {
+    fetch('/api/admin/books/batch', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload)})
+        .then(function(r){ return r.json(); })
+        .then(function(d){
+            if (d && d.success) { alert('已处理 ' + (d.affected || 0) + ' 本'); location.reload(); }
+            else alert((d && d.message) || '操作失败');
+        });
+}
+
+// ===== #39 封面上传 =====
+function uploadCover() {
+    var inp = document.getElementById('editCover');
+    var id = document.getElementById('editId').value;
+    var tip = document.getElementById('editCoverTip');
+    if (!inp.files || !inp.files.length) return;
+    if (!id) { tip.textContent = '请先打开一本书'; return; }
+    var fd = new FormData();
+    fd.append('cover', inp.files[0]);
+    tip.textContent = '上传中...';
+    fetch('/api/admin/book/' + id + '/cover', { method: 'POST', body: fd })
+        .then(function(r){ return r.json(); })
+        .then(function(d){
+            if (d.success) {
+                tip.textContent = '封面已更新';
+                var img = document.getElementById('editCoverImg');
+                img.src = '/' + d.cover_path;
+                img.style.display = 'block';
+            } else { tip.textContent = '失败：' + (d.message || ''); }
+        })
+        .catch(function(){ tip.textContent = '上传失败'; });
+}
+function clearCover() {
+    var id = document.getElementById('editId').value;
+    var tip = document.getElementById('editCoverTip');
+    fetch('/api/admin/book/' + id + '/cover', { method: 'DELETE' })
+        .then(function(r){ return r.json(); })
+        .then(function(d){
+            if (d.success) {
+                tip.textContent = '已清除封面';
+                var img = document.getElementById('editCoverImg');
+                img.style.display = 'none'; img.src = '';
+                document.getElementById('editCover').value = '';
+            } else { tip.textContent = d.message || '清除失败'; }
+        });
+}
+// ===== #284 新建分类 =====
+function createCat() {
+    var n = (document.getElementById('newCatName').value || '').trim();
+    var res = document.getElementById('toolsResult');
+    if (!n) { alert('请输入分类名'); return; }
+    fetch('/api/admin/category/create', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({name: n})})
+        .then(function(r){ return r.json(); })
+        .then(function(d){
+            if (d.success) {
+                res.style.display = 'block';
+                res.innerHTML = '<p class="hint">已新建分类：' + escapeHtml(d.category.name) + '</p>';
+                document.getElementById('newCatName').value = '';
+                location.reload();
+            } else alert(d.message || '新建失败');
+        });
+}
+// ===== #43 失效书籍扫描与清理 =====
+var INVALID_IDS = [];
+function scanInvalid() {
+    var res = document.getElementById('toolsResult');
+    res.style.display = 'block';
+    res.innerHTML = '<p class="hint">正在扫描，请稍候…</p>';
+    INVALID_IDS = [];
+    function step(offset) {
+        fetch('/api/admin/books/invalid?limit=1000&offset=' + offset)
+            .then(function(r){ return r.json(); })
+            .then(function(d){
+                if (!d.success) { res.innerHTML = '<p class="hint">' + escapeHtml(d.message || '失败') + '</p>'; return; }
+                (d.books || []).forEach(function(b){ INVALID_IDS.push(b.id); });
+                res.innerHTML = '<p class="hint">已扫描 ' + (d.next_offset || 0) + ' 本，累计失效 ' + INVALID_IDS.length + ' 条…</p>';
+                if (d.has_more && INVALID_IDS.length < 500) { step(d.next_offset); return; }
+                renderInvalid(res);
+            })
+            .catch(function(){ res.innerHTML = '<p class="hint">扫描失败</p>'; });
+    }
+    step(0);
+}
+function renderInvalid(res) {
+    if (!INVALID_IDS.length) { res.innerHTML = '<p class="hint">未发现失效记录 ✅</p>'; return; }
+    var h = '<p class="hint">发现 ' + INVALID_IDS.length + ' 条失效记录（磁盘文件已丢失）：</p>';
+    h += '<div style="max-height:200px;overflow:auto;font-size:12px;">';
+    INVALID_IDS.forEach(function(id, i){ if (i < 80) { h += '<div>#' + id + '</div>'; } });
+    if (INVALID_IDS.length > 80) { h += '<div>… 其余 ' + (INVALID_IDS.length - 80) + ' 条同样会一并选中</div>'; }
+    h += '</div>';
+    h += '<button class="btn btn-sm btn-outline" style="margin-top:8px;" onclick="purgeInvalid()">清理这 ' + INVALID_IDS.length + ' 条记录</button>';
+    res.innerHTML = h;
+}
+function purgeInvalid() {
+    if (!INVALID_IDS.length) return;
+    if (!confirm('将删除 ' + INVALID_IDS.length + ' 条数据库记录（它们的磁盘文件本就不存在，不会删任何真实文件）。继续？')) return;
+    fetch('/api/admin/books/invalid/delete', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ids: INVALID_IDS})})
+        .then(function(r){ return r.json(); })
+        .then(function(d){
+            alert(d.success ? ('已清理 ' + d.removed + ' 条') : (d.message || '清理失败'));
+            if (d.success) location.reload();
+        });
+}
+// ===== #41 合并书籍 =====
+function mergeSelected() {
+    var ids = selectedIds();
+    if (ids.length < 2) { alert('请至少勾选 2 本书'); return; }
+    var t = prompt('合并后的书名（留空则用第一本的标题）：', '');
+    if (t === null) return;
+    var delSrc = confirm('是否同时删除源书籍（含磁盘文件）？\n\n确定 = 删除原件，不可恢复\n取消 = 保留原件，仅生成合并本');
+    fetch('/api/admin/books/merge', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ids: ids, title: t, delete_sources: delSrc})})
+        .then(function(r){ return r.json(); })
+        .then(function(d){
+            if (d.success) {
+                alert('已合并《' + d.title + '》：' + d.merged + ' 本，' + (d.size / 1048576).toFixed(2) + ' MB');
+                location.reload();
+            } else alert(d.message || '合并失败');
+        });
+}
+function openDup() {
+    var box = document.getElementById('dupPanel');
+    box.style.display = 'block';
+    box.innerHTML = '<div class="dup-tools" style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:12px;">' +
+        '<label style="font-size:13px;color:var(--text-light);">相似度阈值：</label>' +
+        '<select id="dupThreshold" style="padding:6px 10px;border-radius:12px;border:2px solid var(--primary-light);">' +
+        '<option value="0.9" selected>90%</option><option value="0.95">95%</option></select>' +
+        '<button class="btn btn-sm btn-primary" onclick="runDup()">开始检测</button>' +
+        '<button class="btn btn-sm btn-outline" onclick="selectAllDup(true)">全选重复项</button>' +
+        '<button class="btn btn-sm btn-outline" onclick="selectAllDup(false)">全不选</button>' +
+        '<button class="btn btn-sm btn-danger" onclick="deleteCheckedDup()">删除选中</button>' +
+        '</div><p class="hint" id="dupStatus">正在检测重复书籍…</p>';
+    runDup();
+}
+function runDup() {
+    var box = document.getElementById('dupPanel');
+    var th = document.getElementById('dupThreshold') ? document.getElementById('dupThreshold').value : '0.9';
+    var status = document.getElementById('dupStatus');
+    if (status) status.textContent = '正在检测重复书籍…';
+    fetch('/api/admin/books/duplicates?threshold=' + th).then(function(r){ return r.json(); }).then(function(d){
+        if (!d.success) { if (status) status.textContent = (d.message || '失败'); return; }
+        if (!d.groups.length) { if (status) status.textContent = '未检测到重复书籍 ✅'; return; }
+        var html = '<h3>查重结果（' + d.total_groups + ' 组，阈值 ' + Math.round(d.threshold*100) + '%' + (d.truncated ? '，已截断' : '') + '）</h3>';
+        var auto = d.auto_select_ids || [];
+        d.groups.forEach(function(g, gi){
+            var pct = Math.round((g.similarity||1)*100);
+            html += '<div class="dup-group"><h4>' + escapeHtml(g.title) + (g.author ? ' — ' + escapeHtml(g.author) : '') +
+                ' （' + g.count + ' 本，相似度 ' + pct + '%）</h4>';
+            g.books.forEach(function(b){
+                var checked = auto.indexOf(b.id) >= 0 ? ' checked' : '';
+                html += '<div class="dup-item"><input type="checkbox" data-g="' + gi + '" data-id="' + b.id + '"' + checked + '> <span>' +
+                    escapeHtml(b.title || b.filename) + '</span> <span class="imp-type">' + escapeHtml(b.filename) +
+                    (b.file_size ? ' · ' + (b.file_size/1048576).toFixed(2) + 'MB' : '') + '</span></div>';
+            });
+            html += '<button class="btn btn-sm btn-outline" onclick="delDupGroup(' + gi + ')">删除本组勾选项</button></div>';
+        });
+        if (status) status.remove();
+        box.insertAdjacentHTML('beforeend', html);
+    });
+}
+function selectAllDup(v) {
+    document.querySelectorAll('#dupPanel input[type=checkbox]').forEach(function(cb){ cb.checked = v; });
+}
+function delDupGroup(gi) {
+    var ids = [];
+    document.querySelectorAll('input[data-g="' + gi + '"]:checked').forEach(function(cb){ ids.push(cb.getAttribute('data-id')); });
+    if (!ids.length) { alert('请先勾选要删除的书'); return; }
+    if (!confirm('确认彻底删除选中的 ' + ids.length + ' 本？\n\n将同时删除：\n· 磁盘上的书籍文件\n· 封面\n· 该书的阅读进度与书签\n\n此操作不可恢复。')) return;
+    deleteDupIds(ids);
+}
+function deleteCheckedDup() {
+    var ids = [];
+    document.querySelectorAll('#dupPanel input[type=checkbox]:checked').forEach(function(cb){ ids.push(cb.getAttribute('data-id')); });
+    if (!ids.length) { alert('请先勾选要删除的书'); return; }
+    if (!confirm('确认彻底删除选中的 ' + ids.length + ' 本？\n\n将同时删除：\n· 磁盘上的书籍文件\n· 封面\n· 该书的阅读进度与书签\n\n此操作不可恢复。')) return;
+    deleteDupIds(ids);
+}
+function deleteDupIds(ids) {
+    if (!ids.length) return;
+    fetch('/api/admin/books/batch', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ ids: ids, action: 'delete' })
+    }).then(function(r){ return r.json(); }).then(function(d){
+        if (!d.success) { alert(d.message || '删除失败'); return; }
+        var msg = '已彻底删除 ' + d.affected + ' 本\n\n磁盘文件、封面、阅读进度与书签均已清理。';
+        if (d.files_deleted) msg += '\n其中成功删除磁盘文件 ' + d.files_deleted + ' 个。';
+        if (d.files_failed && d.files_failed.length) {
+            msg += '\n\n注意：' + d.files_failed.length + ' 个文件未能删除（可能权限不足或路径异常），id：' + d.files_failed.join(',');
+        }
+        alert(msg);
+        location.reload();
+    }).catch(function(){ alert('网络错误，删除未完成'); });
+}
+function escapeHtml(s) {
+    return (s || '').replace(/[&<>]/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;'}[c]; });
+}
+</script>
+{% endblock %}

@@ -1,0 +1,53 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+
+# 运行时数据（instance 是挂载卷，不进版本库）
+instance/
+*.db
+*.db-journal
+*.sqlite
+*.sqlite3
+cookies.txt
+*.key
+
+# 书库与封面（个人数据，运行时挂载或生成）
+books/
+static/covers/
+
+# 书库压缩包
+*.tar.gz
+*.zip
+*.7z
+*.rar
+
+# 备份与临时文件
+*.bak
+*.bak2
+*.bak3
+*.bak4
+*.bak_*
+.bak*/
+*.tmp
+*.orig
+*.rej
+
+# 一次性调试脚本（不随项目发布）
+_probe_*.py
+_patch_*.py
+_inspect_*.py
+_verify_*.py
+_scan_*.py
+_check_*.py
+_wrapup*.py
+_gh_*.py
+
+# 编辑器 / 系统
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp

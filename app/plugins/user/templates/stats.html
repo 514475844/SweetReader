@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+{% block title %}SweetReader - 书库统计{% endblock %}
+{% block extra_css %}
+<style>
+.stat-wrap { max-width: 760px; padding: 24px; }
+.stat-card { border: 1px solid #eee; border-radius: 10px; padding: 16px 20px; margin-bottom: 16px; background: white; box-shadow: var(--shadow); }
+body.dark-theme .stat-card { background: #23252b; border-color: #3a3d44; }
+.stat-num { font-size: 34px; font-weight: 700; color: var(--text-dark); }
+body.dark-theme .stat-num { color: #e0e0e0; }
+.stat-sub { color: var(--text-light); font-size: 13px; margin-top: 4px; }
+.row { display: flex; flex-wrap: wrap; gap: 14px; }
+.mini { flex: 1 1 200px; }
+.bar { height: 8px; background: #2b5fd9; border-radius: 4px; margin-top: 6px; }
+body.dark-theme .bar { background: #8fb0ff; }
+.cat-item { display: flex; justify-content: space-between; padding: 4px 0; border-bottom: 1px dashed #eee; font-size: 14px; color: var(--text-dark); }
+body.dark-theme .cat-item { color: #e0e0e0; border-color: #3a3d44; }
+.hint { color: var(--text-light); font-size: 13px; }
+</style>
+{% endblock %}
+{% block content %}
+<div class="stat-wrap">
+    <h2 style="color:var(--text-dark);font-size:22px;margin-bottom:4px;">书库统计</h2>
+    {% if not show_format and not show_recent %}
+    <p class="hint">当前设置仅展示总量与热门分类前 {{ top_n }} 个。可在「插件管理 → 书库统计 → 图形化设置」开启更多维度。</p>
+    {% endif %}
+
+    <div class="stat-card">
+        <div class="stat-num">{{ total }}</div>
+        <div class="stat-sub">书库总藏书量</div>
+    </div>
+
+    {% if show_format %}
+    <div class="stat-card">
+        <div style="font-weight:600;color:var(--text-dark);margin-bottom:10px;">格式分布</div>
+        {% for t, c in by_format %}
+        <div class="cat-item"><span>{{ t }}</span><span>{{ c }} 本</span></div>
+        {% endfor %}
+    </div>
+    {% endif %}
+
+    <div class="stat-card">
+        <div style="font-weight:600;color:var(--text-dark);margin-bottom:10px;">热门分类（前 {{ top_n }}）</div>
+        {% for cat in top_cats %}
+        <div class="cat-item"><span>{{ cat.name }}</span><span>{{ cat.book_count }} 本</span></div>
+        {% endfor %}
+    </div>
+
+    {% if show_recent %}
+    <div class="stat-card">
+        <div style="font-weight:600;color:var(--text-dark);margin-bottom:10px;">最近入库</div>
+        {% for b in recent %}
+        <div class="cat-item"><span>{{ b.title or b.filename }}</span><span>{{ b.file_type or '' }}</span></div>
+        {% endfor %}
+    </div>
+    {% endif %}
+</div>
+{% endblock %}

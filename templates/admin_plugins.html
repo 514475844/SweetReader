@@ -1,0 +1,253 @@
+{% extends "base.html" %}
+{% block title %}SweetReader - 插件管理{% endblock %}
+{% block extra_css %}
+<style>
+.plugin-list { max-width: 820px; display: flex; flex-direction: column; gap: 14px; margin-top: 8px; }
+.plugin-card { border: 1px solid #eee; border-radius: 10px; padding: 14px 18px; background: white; box-shadow: var(--shadow); display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
+body.dark-theme .plugin-card { background: #23252b; border-color: #3a3d44; }
+.plugin-name { font-weight: 600; color: var(--text-dark); font-size: 15px; }
+body.dark-theme .plugin-name { color: #e0e0e0; }
+.plugin-meta { color: var(--text-light); font-size: 12px; margin-top: 3px; }
+.plugin-id { color: var(--text-light); font-size: 11px; margin-top: 4px; }
+.plugin-extra { color: var(--text-light); font-size: 11px; margin-top: 3px; }
+.caps { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.cap { font-size: 11px; padding: 1px 8px; border-radius: 10px; background: #f0f0f3; color: #555; }
+body.dark-theme .cap { background: #2c2f36; color: #b8bcc4; }
+.badge { display: inline-block; font-size: 11px; padding: 1px 8px; border-radius: 10px; margin-left: 6px; vertical-align: middle; }
+.badge-builtin { background: #e8f0ff; color: #2b5fd9; }
+body.dark-theme .badge-builtin { background: #1c2a4a; color: #8fb0ff; }
+.badge-user { background: #e8f7ee; color: #2e7d44; }
+body.dark-theme .badge-user { background: #143524; color: #7fd99a; }
+.badge-broken { background: #fde8e8; color: #c0392b; }
+body.dark-theme .badge-broken { background: #3a1c1c; color: #ff9b9b; }
+.plugin-side { display: flex; flex-direction: column; align-items: flex-end; gap: 8px; white-space: nowrap; }
+.toggle-label { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--text-light); cursor: pointer; }
+.btn-link { font-size: 12px; padding: 4px 10px; border: 1px solid #2b5fd9; border-radius: 8px; color: #2b5fd9; text-decoration: none; }
+body.dark-theme .btn-link { color: #8fb0ff; border-color: #8fb0ff; }
+.head-actions { display: flex; gap: 10px; align-items: center; margin-top: 6px; }
+.btn-rescan { font-size: 13px; padding: 5px 14px; border: 1px solid #ccc; border-radius: 8px; background: white; cursor: pointer; color: var(--text-dark); }
+body.dark-theme .btn-rescan { background: #23252b; color: #e0e0e0; border-color: #3a3d44; }
+.settings-box { border: 1px solid #e3e3e8; border-radius: 10px; padding: 14px 18px; background: #fafbff; margin-top: 0; }
+body.dark-theme .settings-box { background: #1f2228; border-color: #3a3d44; }
+.settings-title { font-weight: 600; color: var(--text-dark); font-size: 13px; margin-bottom: 10px; }
+body.dark-theme .settings-title { color: #e0e0e0; }
+.field { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+.field > label { width: 130px; font-size: 13px; color: var(--text-dark); flex-shrink: 0; }
+body.dark-theme .field > label { color: #d0d0d0; }
+.field .help { display: block; color: var(--text-light); font-size: 11px; margin-top: 2px; }
+.field input[type=text], .field input[type=number], .field select, .field textarea {
+    flex: 1; padding: 6px 9px; border: 1px solid #ccc; border-radius: 7px; font-size: 13px;
+    background: white; color: var(--text-dark); max-width: 360px;
+}
+body.dark-theme .field input, body.dark-theme .field select, body.dark-theme .field textarea {
+    background: #2a2d34; color: #e0e0e0; border-color: #3a3d44;
+}
+.field textarea { min-height: 60px; resize: vertical; }
+.btn-save { font-size: 13px; padding: 6px 18px; border: none; border-radius: 8px; background: #2b5fd9; color: white; cursor: pointer; }
+.btn-save:hover { background: #234fb0; }
+.save-msg { font-size: 12px; color: #2e7d44; margin-left: 10px; }
+body.dark-theme .save-msg { color: #7fd99a; }
+.upload-box { border: 1px solid #e3e3e8; border-radius: 10px; padding: 14px 18px; background: #fafbff; max-width: 820px; margin-top: 12px; }
+body.dark-theme .upload-box { background: #1f2228; border-color: #3a3d44; }
+.upload-title { font-weight: 600; color: var(--text-dark); font-size: 13px; margin-bottom: 10px; }
+body.dark-theme .upload-title { color: #e0e0e0; }
+.upload-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.upload-row input[type=file] { font-size: 13px; color: var(--text-dark); flex: 1 1 240px; min-width: 0; }
+.upload-hint { color: var(--text-light); font-size: 11.5px; margin-top: 8px; line-height: 1.7; }
+.upload-hint code { background: rgba(127,127,127,.14); padding: 0 4px; border-radius: 4px; }
+.btn-danger-sm { font-size: 12px; padding: 4px 10px; border: 1px solid #e0b4b4; border-radius: 8px; background: #fff; color: #c0392b; cursor: pointer; }
+.btn-danger-sm:hover { background: #fdeaea; }
+body.dark-theme .btn-danger-sm { background: #2a2d34; border-color: #5a3a3a; color: #ff9b9b; }
+@media (max-width: 768px) {
+    .main-layout { padding: 12px !important; }
+    .plugin-list, .upload-box { max-width: 100%; }
+    .plugin-card { flex-direction: column; align-items: stretch; gap: 10px; }
+    .plugin-side { flex-direction: row; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px; }
+    .settings-box .field { flex-direction: column; align-items: stretch; gap: 4px; }
+    .field > label { width: auto; }
+    .field input[type=text], .field input[type=number], .field select, .field textarea { max-width: 100%; }
+    .upload-row { flex-direction: column; align-items: stretch; }
+}
+</style>
+{% endblock %}
+{% block content %}
+<div class="main-layout" style="padding:24px;">
+    <h2 style="color:var(--text-dark);font-size:22px;">插件管理</h2>
+    <p style="color:var(--text-light);font-size:13px;margin:4px 0 0;">启用 / 停用插件，并配置每个插件自带的图形化选项。改动即时生效，无需重启。</p>
+    <div class="head-actions">
+        <button class="btn-rescan" onclick="scanPlugins()">重新扫描插件目录</button>
+        <span style="color:var(--text-light);font-size:12px;">用户插件放 <code>instance/plugins/</code>，扫描后自动出现并可在下方配置</span>
+    </div>
+
+    <div class="upload-box">
+        <div class="upload-title">上传插件</div>
+        <div class="upload-row">
+            <input type="file" id="pluginFile" accept=".py,.zip">
+            <button class="btn-save" onclick="uploadPlugin()">上传并安装</button>
+            <span class="save-msg" id="uploadMsg"></span>
+        </div>
+        <div class="upload-hint">
+            支持 <b>.py</b> 单文件插件（文件名即插件 ID，如 <code>my_tool.py</code>）与 <b>.zip</b> 插件包
+            （内含 <code>__init__.py</code>，或以插件 ID 命名的 <code>id.py</code>，可带 <code>templates/</code>、<code>static/</code>）。
+            上传后会校验编码、语法与 <code>PLUGIN</code> 定义，通过即落盘并自动启用。
+        </div>
+    </div>
+
+    <div class="plugin-list">
+        {% for p in plugins %}
+        <div>
+            <div class="plugin-card">
+                <div style="flex:1;">
+                    <div class="plugin-name">{{ p.name }} <span class="plugin-meta">v{{ p.version }}</span>
+                        {% if p.error %}<span class="badge badge-broken">导入失败</span>
+                        {% elif p.source == 'builtin' %}<span class="badge badge-builtin">内置</span>
+                        {% else %}<span class="badge badge-user">用户</span>{% endif %}
+                    </div>
+                    <div class="plugin-meta">{{ p.description }}</div>
+                    <div class="caps">
+                        {% if p.capabilities.homepage %}<span class="cap">首页入口</span>{% endif %}
+                        {% if p.capabilities.blueprint %}<span class="cap">独立页面</span>{% endif %}
+                        {% if p.capabilities.reader_tools %}<span class="cap">阅读页按钮</span>{% endif %}
+                        {% if p.capabilities.admin_nav %}<span class="cap">管理侧栏</span>{% endif %}
+                        {% if p.capabilities.settings or p.capabilities.custom_settings %}<span class="cap">图形化设置</span>{% endif %}
+                    </div>
+                    <div class="plugin-id">ID: {{ p.id }}{% if p.author %} · 作者：{{ p.author }}{% endif %}</div>
+                    {% if p.error %}<div class="plugin-extra" style="color:#c0392b;">错误：{{ p.error }}</div>{% endif %}
+                </div>
+                <div class="plugin-side">
+                    <label class="toggle-label">
+                        <input type="checkbox" {% if p.enabled %}checked{% endif %} onchange="togglePlugin('{{ p.id }}', this.checked)"> 启用
+                    </label>
+                    {% if p.has_custom_settings %}
+                    <a class="btn-link" href="/plugin/{{ p.id }}/settings" target="_blank">自定义设置页 ↗</a>
+                    {% endif %}
+                    {% if p.removable %}
+                    <button class="btn-danger-sm" onclick="deletePlugin('{{ p.id }}', '{{ p.name }}')">删除插件</button>
+                    {% endif %}
+                </div>
+            </div>
+
+            {% if p.settings_schema %}
+            <div class="settings-box">
+                <div class="settings-title">「{{ p.name }}」图形化设置</div>
+                <form id="form-{{ p.id }}" data-schema='{{ p.settings_schema | tojson }}' onsubmit="return false;">
+                    {% for f in p.settings_schema %}
+                    <div class="field">
+                        <label>{{ f.label }}{% if f.help %}<span class="help">{{ f.help }}</span>{% endif %}</label>
+                        {% if f.type == 'bool' %}
+                            <input type="checkbox" id="{{ p.id }}_{{ f.key }}" {% if p.settings[f.key] %}checked{% endif %}>
+                        {% elif f.type == 'int' or f.type == 'float' %}
+                            <input type="number" id="{{ p.id }}_{{ f.key }}" value="{{ p.settings[f.key] }}" {% if f.min is defined %}min="{{ f.min }}"{% endif %} {% if f.max is defined %}max="{{ f.max }}"{% endif %}>
+                        {% elif f.type == 'select' %}
+                            <select id="{{ p.id }}_{{ f.key }}">{% for o in f.options %}<option value="{{ o.value }}" {% if p.settings[f.key] == o.value %}selected{% endif %}>{{ o.label }}</option>{% endfor %}</select>
+                        {% elif f.type == 'textarea' %}
+                            <textarea id="{{ p.id }}_{{ f.key }}">{{ p.settings[f.key] }}</textarea>
+                        {% else %}
+                            <input type="text" id="{{ p.id }}_{{ f.key }}" value="{{ p.settings[f.key] }}">
+                        {% endif %}
+                    </div>
+                    {% endfor %}
+                    <button class="btn-save" onclick="saveSettings('{{ p.id }}')">保存设置</button>
+                    <span class="save-msg" id="msg-{{ p.id }}"></span>
+                </form>
+            </div>
+            {% endif %}
+        </div>
+        {% endfor %}
+    </div>
+    <p id="pluginMsg" style="color:var(--text-light);font-size:12px;margin-top:14px;"></p>
+</div>
+<script>
+function togglePlugin(id, enabled) {
+    fetch('/api/plugins/' + id + '/toggle', {
+        method: 'POST', credentials: 'same-origin',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({enabled: enabled})
+    })
+    .then(function(r){ return r.json(); })
+    .then(function(d){
+        document.getElementById('pluginMsg').textContent =
+            d.success ? ('「' + id + '」已' + (enabled ? '启用' : '停用')) : ('操作失败：' + (d.message || ''));
+    })
+    .catch(function(){ document.getElementById('pluginMsg').textContent = '请求失败'; });
+}
+function saveSettings(id) {
+    var form = document.getElementById('form-' + id);
+    var schema = JSON.parse(form.getAttribute('data-schema'));
+    var data = {};
+    schema.forEach(function(f){
+        var el = document.getElementById(id + '_' + f.key);
+        if (!el) return;
+        if (f.type === 'bool') data[f.key] = el.checked;
+        else if (f.type === 'int') data[f.key] = parseInt(el.value, 10);
+        else if (f.type === 'float') data[f.key] = parseFloat(el.value);
+        else data[f.key] = el.value;
+        if ((f.type === 'int' || f.type === 'float') && isNaN(data[f.key])) data[f.key] = f.default;
+    });
+    var msg = document.getElementById('msg-' + id);
+    msg.textContent = '保存中…';
+    fetch('/api/plugins/' + id + '/settings', {
+        method: 'POST', credentials: 'same-origin',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({settings: data})
+    })
+    .then(function(r){ return r.json(); })
+    .then(function(d){
+        msg.textContent = d.success ? '已保存 ✓' : ('失败：' + (d.message || ''));
+    })
+    .catch(function(){ msg.textContent = '请求失败'; });
+    return false;
+}
+function uploadPlugin() {
+    var inp = document.getElementById('pluginFile');
+    var msg = document.getElementById('uploadMsg');
+    if (!inp || !inp.files || !inp.files.length) {
+        msg.style.color = '#c0392b';
+        msg.textContent = '请先选择文件';
+        return;
+    }
+    var fd = new FormData();
+    fd.append('file', inp.files[0]);
+    msg.style.color = '';
+    msg.textContent = '上传中…';
+    fetch('/api/plugins/upload', { method: 'POST', credentials: 'same-origin', body: fd })
+        .then(function(r){ return r.json(); })
+        .then(function(d){
+            if (d && d.success) {
+                msg.textContent = d.message || '已安装';
+                window.location.reload();
+            } else {
+                msg.style.color = '#c0392b';
+                msg.textContent = '失败：' + ((d && d.message) || '未知错误');
+            }
+        })
+        .catch(function(){
+            msg.style.color = '#c0392b';
+            msg.textContent = '请求失败';
+        });
+}
+function deletePlugin(id, name) {
+    if (!confirm('确定删除插件「' + name + '」？' + String.fromCharCode(10) + String.fromCharCode(10) + '会同时删除磁盘上的插件文件，删除后不可恢复。')) return;
+    var msg = document.getElementById('pluginMsg');
+    msg.textContent = '删除中…';
+    fetch('/api/plugins/' + id + '/delete', { method: 'POST', credentials: 'same-origin' })
+        .then(function(r){ return r.json(); })
+        .then(function(d){
+            if (d && d.success) { window.location.reload(); }
+            else { msg.textContent = '删除失败：' + ((d && d.message) || ''); }
+        })
+        .catch(function(){ msg.textContent = '请求失败'; });
+}
+function scanPlugins() {
+    var msg = document.getElementById('pluginMsg');
+    msg.textContent = '扫描中…';
+    fetch('/api/plugins/scan', { method: 'POST', credentials: 'same-origin' })
+        .then(function(r){ return r.json(); })
+        .then(function(d){
+            if (d.success) { window.location.reload(); }
+            else { msg.textContent = '扫描失败：' + (d.message || ''); }
+        })
+        .catch(function(){ msg.textContent = '请求失败'; });
+}
+</script>
+{% endblock %}

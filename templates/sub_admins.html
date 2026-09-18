@@ -1,0 +1,111 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="sub-admin">
+    <h2>子管理员授权</h2>
+    <p class="hint">最高管理员可授权最多 {{ max_sub_admins }} 名子管理员，开放部分功能（导入 / 导出 / 书籍管理）。被授权者仅能使用授予的功能，其余管理入口对其不可见。</p>
+
+    <div class="card">
+        <h3>当前子管理员（{{ subs|length }} / {{ max_sub_admins }}）</h3>
+        {% if subs %}
+        <table class="sa-table">
+            <thead>
+                <tr><th>用户名</th><th>邮箱</th><th>导入</th><th>导出</th><th>书籍管理</th><th>授权时间</th><th>操作</th></tr>
+            </thead>
+            <tbody>
+            {% for s in subs %}
+                <tr>
+                    <td>{{ s.username }}</td>
+                    <td>{{ s.email }}</td>
+                    <td>{{ '✅' if s.can_import else '—' }}</td>
+                    <td>{{ '✅' if s.can_export else '—' }}</td>
+                    <td>{{ '✅' if s.can_manage_books else '—' }}</td>
+                    <td>{{ s.granted_at or '' }}</td>
+                    <td><button class="btn btn-sm btn-danger" onclick="doRevoke({{ s.id }}, '{{ s.username }}')">撤销</button></td>
+                </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+        {% else %}
+        <p class="empty">尚未授权任何子管理员。</p>
+        {% endif %}
+    </div>
+
+    <div class="card">
+        <h3>授权新子管理员</h3>
+        {% if eligible %}
+        <form id="grantForm" onsubmit="return false;">
+            <div class="form-row">
+                <label>选择用户</label>
+                <select id="grantUser">
+                    {% for u in eligible %}
+                    <option value="{{ u.id }}">{{ u.username }}（{{ u.email }}）</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="form-row caps">
+                <label><input type="checkbox" id="capImport"> 导入书籍</label>
+                <label><input type="checkbox" id="capExport"> 导出书籍</label>
+                <label><input type="checkbox" id="capManage"> 书籍管理（含编码转换）</label>
+            </div>
+            <button class="btn btn-primary" onclick="doGrant()">授权</button>
+        </form>
+        <div id="grantResult" class="result-line"></div>
+        {% else %}
+        <p class="empty">没有可授权的普通用户（已达上限或无可授权账号）。</p>
+        {% endif %}
+    </div>
+</div>
+
+<style>
+.sub-admin { max-width: 880px; margin: 16px auto; padding: 0 12px; }
+.sub-admin h2 { font-size: 18px; margin: 8px 0 10px; }
+.sub-admin .card { background: #fff; border-radius: 8px; box-shadow: var(--shadow); padding: 14px 16px; margin-bottom: 14px; }
+body.dark-theme .sub-admin .card { background: #23252b; }
+.sub-admin h3 { font-size: 15px; margin: 0 0 10px; }
+.sub-admin .hint { color: var(--text-light); font-size: 12px; margin: 0 0 12px; }
+.sub-admin .empty { color: var(--text-light); font-size: 13px; }
+.sub-admin .sa-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.sub-admin .sa-table th, .sub-admin .sa-table td { text-align: left; padding: 7px 8px; border-bottom: 1px solid #eee; }
+body.dark-theme .sub-admin .sa-table th, body.dark-theme .sub-admin .sa-table td { border-color: #34373e; }
+.sub-admin .form-row { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; flex-wrap: wrap; }
+.sub-admin .form-row label { font-size: 13px; }
+.sub-admin .form-row.caps label { gap: 6px; display: inline-flex; align-items: center; margin-right: 16px; }
+.sub-admin .form-row select { flex: 1; padding: 6px 10px; border-radius: 8px; border: 1px solid var(--primary-light); font-size: 14px; }
+.sub-admin .result-line { margin-top: 10px; color: var(--primary); font-size: 13px; }
+</style>
+
+<script>
+function doGrant() {
+    var uid = document.getElementById('grantUser').value;
+    var caps = {
+        can_import: document.getElementById('capImport').checked,
+        can_export: document.getElementById('capExport').checked,
+        can_manage_books: document.getElementById('capManage').checked
+    };
+    if (!caps.can_import && !caps.can_export && !caps.can_manage_books) {
+        document.getElementById('grantResult').textContent = '请至少勾选一项功能权限';
+        return;
+    }
+    fetch('/api/admin/sub-admin/grant', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(Object.assign({ user_id: Number(uid) }, caps))
+    }).then(function(r){ return r.json(); }).then(function(d){
+        document.getElementById('grantResult').textContent = d.success ? '已授权' : ('失败：' + d.message);
+        if (d.success) setTimeout(function(){ location.reload(); }, 700);
+    }).catch(function(){ document.getElementById('grantResult').textContent = '授权失败'; });
+}
+function doRevoke(uid, name) {
+    showConfirm('确定撤销「' + name + '」的子管理员权限？', function(){
+        fetch('/api/admin/sub-admin/revoke', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ user_id: Number(uid) })
+        }).then(function(r){ return r.json(); }).then(function(d){
+            showToast(d.success ? '已撤销' : ('失败：' + d.message), d.success ? 'success' : 'error');
+            if (d.success) setTimeout(function(){ location.reload(); }, 700);
+        }).catch(function(){ showToast('撤销失败', 'error'); });
+    });
+}
+</script>
+{% endblock %}

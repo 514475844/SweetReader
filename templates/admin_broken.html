@@ -1,0 +1,280 @@
+{% extends "base.html" %}
+{% block title %}SweetReader - 乱码与损坏文件{% endblock %}
+{% block extra_css %}
+<style>
+.broken-page { max-width: 1080px; }
+.broken-page h2 { color: var(--text-dark); font-size: 22px; }
+.broken-page .sub { color: var(--text-light); font-size: 13px; margin: 6px 0 0; line-height: 1.7; }
+.card-box { border: 1px solid #e6e6ec; border-radius: 12px; padding: 14px 18px; background: #fff;
+    box-shadow: var(--shadow); margin-top: 14px; }
+body.dark-theme .card-box { background: #23252b; border-color: #3a3d44; }
+.box-title { font-weight: 600; color: var(--text-dark); font-size: 14px; margin-bottom: 10px; }
+body.dark-theme .box-title { color: #e0e0e0; }
+.toolbar { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+.toolbar select, .toolbar button { font-size: 13px; padding: 6px 12px; border-radius: 8px;
+    border: 1px solid #ccc; background: #fff; color: var(--text-dark); cursor: pointer; }
+body.dark-theme .toolbar select, body.dark-theme .toolbar button { background: #2a2d34; color: #e0e0e0; border-color: #3a3d44; }
+.toolbar button.primary { background: #2b5fd9; border-color: #2b5fd9; color: #fff; font-weight: 600; }
+.toolbar button.danger { background: #fff; border-color: #e0b4b4; color: #c0392b; }
+body.dark-theme .toolbar button.danger { background: #2a2d34; border-color: #5a3a3a; color: #ff9b9b; }
+.toolbar button:disabled { opacity: .5; cursor: not-allowed; }
+.progress-line { color: var(--text-light); font-size: 12px; margin-left: auto; }
+table.bl { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 13px; }
+table.bl th, table.bl td { text-align: left; padding: 8px 10px; border-bottom: 1px solid #eee; vertical-align: top; }
+body.dark-theme table.bl th, body.dark-theme table.bl td { border-color: #34373e; }
+table.bl th { color: var(--text-light); font-weight: 500; font-size: 12px; white-space: nowrap; }
+table.bl td.old { color: var(--text-light); word-break: break-all; max-width: 220px; }
+table.bl input[type=text] { width: 100%; min-width: 120px; padding: 5px 8px; border: 1px solid #ccc;
+    border-radius: 6px; font-size: 13px; background: #fff; color: var(--text-dark); }
+body.dark-theme table.bl input[type=text] { background: #2a2d34; color: #e0e0e0; border-color: #3a3d44; }
+.tag-ok { color: #2e7d44; font-size: 12px; }
+.tag-warn { color: #b8860b; font-size: 12px; }
+.tag-bad { color: #c0392b; font-size: 12px; }
+.src { color: var(--text-light); font-size: 11.5px; }
+.cat-list { display: flex; flex-wrap: wrap; gap: 8px; }
+.cat-chip { font-size: 12px; padding: 4px 10px; border-radius: 999px; background: #f2f2f6; color: #555; }
+body.dark-theme .cat-chip { background: #2c2f36; color: #b8bcc4; }
+.empty { color: var(--text-light); font-size: 13px; padding: 10px 0; }
+.link-btn { font-size: 13px; padding: 6px 12px; border-radius: 8px; border: 1px solid #ccc;
+    background: #fff; color: var(--text-dark); text-decoration: none; }
+body.dark-theme .link-btn { background: #2a2d34; color: #e0e0e0; border-color: #3a3d44; }
+@media (max-width: 768px) {
+    .broken-page { padding: 12px !important; }
+    .toolbar { gap: 8px; }
+    .toolbar select, .toolbar button { flex: 1 1 auto; }
+    .progress-line { margin-left: 0; flex: 1 1 100%; }
+    .table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+    table.bl { min-width: 720px; }
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="main-layout broken-page" style="padding:24px;">
+    <h2>乱码与损坏文件</h2>
+    <p class="sub">
+        书名 / 文件名里的乱码发生在入库之前（原中文字节已丢失，按字节还原不可能），
+        但<strong>真实书名基本都写在文件内容里</strong>——这里会读文件内容反推出建议书名，确认后再写入。
+        损坏文件（磁盘丢失、空文件、无法解析）可直接删除，磁盘正文、封面、阅读进度、书签会一并清理。
+    </p>
+
+    <div class="card-box">
+        <div class="box-title">扫描</div>
+        <div class="toolbar">
+            <select id="scopeSel">
+                <option value="title">仅书名 / 文件名乱码（约 {{ total_bad }} 本）</option>
+                <option value="all">全部书籍（顺带检查损坏文件）</option>
+            </select>
+            <button class="primary" id="scanBtn" onclick="startScan()">开始扫描</button>
+            <button id="nextBtn" onclick="scanNext()" disabled>继续扫描下一批</button>
+            <button id="clearBtn" onclick="clearResults()">清空结果</button>
+            <span class="progress-line" id="scanInfo">尚未扫描</span>
+        </div>
+    </div>
+
+    <div class="card-box">
+        <div class="box-title">批量操作</div>
+        <div class="toolbar">
+            <button class="primary" onclick="applyFix()">应用修复（选中项）</button>
+            <label style="font-size:13px;color:var(--text-light);display:flex;align-items:center;gap:6px;">
+                <input type="checkbox" id="renameFile" checked> 同时重命名磁盘文件（推荐）
+            </label>
+            <button class="danger" onclick="deleteSelected()">删除选中（含磁盘文件）</button>
+            <span class="progress-line" id="opInfo"></span>
+        </div>
+        <div class="table-wrap">
+            <table class="bl">
+                <thead>
+                    <tr>
+                        <th style="width:34px;"><input type="checkbox" id="checkAll" onclick="toggleAll(this.checked)"></th>
+                        <th>当前书名 / 文件名</th>
+                        <th>建议书名（可修改）</th>
+                        <th style="width:150px;">来源</th>
+                        <th style="width:110px;">文件状态</th>
+                    </tr>
+                </thead>
+                <tbody id="rows">
+                    <tr><td colspan="5" class="empty">还没有结果，先点「开始扫描」。</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <div class="card-box">
+        <div class="box-title">分类目录乱码（{{ garbled_cats | length }} 个）</div>
+        {% if garbled_cats %}
+        <div class="cat-list">
+            {% for c in garbled_cats %}
+            <span class="cat-chip" title="{{ c.path }}">{{ c.name }} · {{ c.count }} 本</span>
+            {% endfor %}
+        </div>
+        <p class="src" style="margin-top:10px;">
+            分类名无法从内容还原，请到
+            <a href="/admin/categories">分类管理</a> 里重命名或合并到正常分类。
+        </p>
+        {% else %}
+        <div class="empty">没有检测到分类名乱码。</div>
+        {% endif %}
+    </div>
+</div>
+
+<script>
+var scanOffset = 0;
+var scanTotal = 0;
+var lastBatch = 0;
+var items = [];
+
+function esc(s) {
+    return String(s == null ? '' : s)
+        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+}
+
+function startScan() {
+    items = [];
+    scanOffset = 0;
+    scanTotal = 0;
+    renderRows();
+    scanNext();
+}
+
+function scanNext() {
+    var scope = document.getElementById('scopeSel').value;
+    var btn = document.getElementById('scanBtn');
+    var next = document.getElementById('nextBtn');
+    var info = document.getElementById('scanInfo');
+    btn.disabled = true;
+    next.disabled = true;
+    info.textContent = '扫描中…（已取 ' + scanOffset + ' 条）';
+    fetch('/api/admin/broken/scan?scope=' + encodeURIComponent(scope) +
+          '&offset=' + scanOffset + '&limit=15', { credentials: 'same-origin' })
+        .then(function (r) { return r.json(); })
+        .then(function (d) {
+            btn.disabled = false;
+            if (!d || !d.success) {
+                info.textContent = '扫描失败：' + ((d && d.message) || '未知错误');
+                return;
+            }
+            scanTotal = d.total || 0;
+            lastBatch = (d.items || []).length;
+            items = items.concat(d.items || []);
+            scanOffset += lastBatch;
+            renderRows();
+            info.textContent = '已取 ' + scanOffset + ' / ' + scanTotal + ' 条';
+            if (d.has_more && lastBatch > 0) {
+                next.disabled = false;
+            } else {
+                info.textContent = '扫描完成，共 ' + scanOffset + ' 条';
+                next.disabled = true;
+            }
+        })
+        .catch(function () {
+            btn.disabled = false;
+            info.textContent = '请求失败';
+        });
+}
+
+function statusLabel(it) {
+    if (it.status === 'missing') return '<span class="tag-bad">文件丢失</span>';
+    if (it.status === 'empty') return '<span class="tag-bad">空文件</span>';
+    if (it.status === 'unreadable') return '<span class="tag-bad">无法解析</span>';
+    return '<span class="tag-ok">正常</span>';
+}
+
+function renderRows() {
+    var tb = document.getElementById('rows');
+    if (!items.length) {
+        tb.innerHTML = '<tr><td colspan="5" class="empty">还没有结果，先点「开始扫描」。</td></tr>';
+        return;
+    }
+    var html = '';
+    items.forEach(function (it, i) {
+        var suggested = it.suggested_title || '';
+        html += '<tr>'
+            + '<td><input type="checkbox" class="rowcheck" data-i="' + i + '"'
+            + (suggested ? ' checked' : '') + '></td>'
+            + '<td class="old">' + esc(it.title || '(空)') + '<br><span class="src">'
+            + esc(it.filename || '') + ' · ' + esc(it.file_type || '') + '</span></td>'
+            + '<td><input type="text" class="newtitle" data-i="' + i + '" value="'
+            + esc(suggested) + '" placeholder="'
+            + (it.mojibake ? '无法从内容推断，可手动填写' : '保持原名可不填') + '"></td>'
+            + '<td class="src">' + esc(it.suggest_source || '—') + '</td>'
+            + '<td>' + statusLabel(it)
+            + (it.status_text ? '<br><span class="src">' + esc(it.status_text) + '</span>' : '')
+            + '</td></tr>';
+    });
+    tb.innerHTML = html;
+}
+
+function clearResults() {
+    items = [];
+    scanOffset = 0;
+    scanTotal = 0;
+    lastBatch = 0;
+    renderRows();
+    document.getElementById('scanInfo').textContent = '尚未扫描';
+    document.getElementById('opInfo').textContent = '';
+    document.getElementById('nextBtn').disabled = true;
+}
+
+function toggleAll(on) {
+    var cs = document.querySelectorAll('.rowcheck');
+    for (var i = 0; i < cs.length; i++) cs[i].checked = !!on;
+}
+
+function collect(withTitleOnly) {
+    var out = [];
+    var cs = document.querySelectorAll('.rowcheck');
+    for (var i = 0; i < cs.length; i++) {
+        if (!cs[i].checked) continue;
+        var idx = parseInt(cs[i].getAttribute('data-i'), 10);
+        var it = items[idx];
+        if (!it) continue;
+        var inp = document.querySelector('.newtitle[data-i="' + idx + '"]');
+        var title = inp ? String(inp.value || '').trim() : '';
+        if (withTitleOnly && !title) continue;
+        out.push({ id: it.id, title: title });
+    }
+    return out;
+}
+
+function applyFix() {
+    var list = collect(true);
+    var info = document.getElementById('opInfo');
+    if (!list.length) { info.textContent = '请先勾选条目并填写建议书名'; return; }
+    var rename = document.getElementById('renameFile').checked;
+    if (!confirm('将把 ' + list.length + ' 本的书名改为建议书名' + (rename ? '，并重命名磁盘文件' : '') + '，确定继续？')) return;
+    info.textContent = '修复中…';
+    fetch('/api/admin/broken/fix', {
+        method: 'POST', credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ items: list, rename_file: rename })
+    })
+        .then(function (r) { return r.json(); })
+        .then(function (d) {
+            info.textContent = (d && d.success) ? d.message : ('失败：' + ((d && d.message) || ''));
+            if (d && d.success) setTimeout(function () { location.reload(); }, 900);
+        })
+        .catch(function () { info.textContent = '请求失败'; });
+}
+
+function deleteSelected() {
+    var list = collect(false).map(function (x) { return x.id; });
+    var info = document.getElementById('opInfo');
+    if (!list.length) { info.textContent = '请先勾选要删除的条目'; return; }
+    if (!confirm('确定删除选中的 ' + list.length + ' 本？\n\n磁盘上的正文文件、封面、阅读进度与书签会一并删除，且不可恢复。')) return;
+    info.textContent = '删除中…';
+    fetch('/api/admin/broken/delete', {
+        method: 'POST', credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids: list })
+    })
+        .then(function (r) { return r.json(); })
+        .then(function (d) {
+            info.textContent = (d && d.success) ? d.message : ('失败：' + ((d && d.message) || ''));
+            if (d && d.success) setTimeout(function () { location.reload(); }, 900);
+        })
+        .catch(function () { info.textContent = '请求失败'; });
+}
+</script>
+{% endblock %}

@@ -1,0 +1,45 @@
+# 构建上下文瘦身：镜像里这些都没用（挂载卷会在运行时覆盖）
+.git
+.gitignore
+.github
+__pycache__/
+*.py[cod]
+*.pyc
+
+# 大文件：曾经让 COPY . . 多打包 75MB
+*.tar.gz
+*.zip
+*.7z
+*.rar
+sweetreader-*.tar.gz
+sweetreader.zip
+
+# 数据库与运行时数据（instance 是挂载卷）
+instance/
+*.db
+*.db-journal
+*.sqlite
+*.sqlite3
+
+# 备份与历史残留
+*.bak
+*.bak2
+*.bak3
+*.bak4
+*.bak_*
+*.bak_reader
+.bak*/
+.pre_sync_bak*/
+index.html.bak
+routes.py.bak*
+
+# 书库（运行时挂载，软链指向宿主机路径，打进镜像无意义且会断链）
+books/
+
+# 本地杂项
+cookies.txt
+logs/
+*.log
+.env
+.venv
+venv/

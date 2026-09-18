@@ -1,0 +1,9 @@
+* text=auto eol=lf
+*.sh text eol=lf
+Dockerfile text eol=lf
+*.py text eol=lf
+*.md text eol=lf
+*.yml text eol=lf
+*.ico binary
+*.jpg binary
+*.png binary

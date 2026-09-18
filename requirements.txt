@@ -1,0 +1,15 @@
+Flask==2.3.2
+Flask-SQLAlchemy==3.0.5
+SQLAlchemy==2.0.19
+Werkzeug==2.3.4
+Flask-Login==0.6.3
+Flask-Migrate==4.0.5
+EbookLib==0.18
+PyPDF2==3.0.1
+python-docx==1.1.0
+lxml==4.9.3
+Pillow==10.0.0
+# B3: 生产 WSGI 服务器，取代 Flask 单线程 dev server
+waitress>=3.0
+# 中文书名按拼音首字母归类
+pypinyin>=0.51

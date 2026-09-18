@@ -1,0 +1,815 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>SweetReader - 我的书库</title>
+    <link rel="icon" href="{{ url_for('static', filename='favicon.ico') }}" type="image/x-icon">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { 
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; 
+            background: #f5f0eb; 
+            min-height: 100vh; 
+            display: flex; 
+            flex-direction: column; 
+        }
+        .container { 
+            max-width: 1400px; 
+            margin: 0 auto; 
+            padding: 12px 16px; 
+            flex: 1; 
+            display: flex; 
+            flex-direction: column; 
+            width: 100%;
+        }
+        :root { --primary: #e8848a; --primary-dark: #d46a70; --primary-light: #f5d4d6; --bg-warm: #fdf6f3; --text-dark: #4a3a3a; --text-light: #8a7a7a; --shadow: 0 2px 12px rgba(232,132,138,0.12); }
+        .btn { padding: 6px 16px; border: none; border-radius: 20px; cursor: pointer; font-size: 18px; text-decoration: none; display: inline-block; transition: all 0.3s; font-weight: 500; }
+        .btn-primary { background: var(--primary); color: white; }
+        .btn-primary:hover { background: var(--primary-dark); }
+        .btn-primary:disabled { opacity: 0.6; cursor: not-allowed; }
+        .btn-outline { background: transparent; color: var(--text-dark); border: 2px solid var(--primary-light); }
+        .btn-outline:hover { background: var(--primary-light); border-color: var(--primary); }
+        .btn-success { background: #7bc8a4; color: white; }
+        .btn-success:hover { background: #5fb88e; }
+        .btn-danger { background: #e8848a; color: white; }
+        .btn-danger:hover { background: #d46a70; }
+        .btn-ghost { background: transparent; color: var(--text-light); }
+        .btn-ghost:hover { background: #f5f0eb; }
+        .btn-sm { font-size: 13px; padding: 3px 12px; border-radius: 16px; }
+
+        /* 扫描中动画 */
+        .btn-scanning {
+            position: relative;
+            padding-right: 36px !important;
+        }
+        .btn-scanning .spinner-dots::after {
+            content: '';
+            position: absolute;
+            right: 10px;
+            top: 50%;
+            transform: translateY(-50%);
+            width: 16px;
+            height: 16px;
+            border: 2px solid rgba(255,255,255,0.3);
+            border-top-color: white;
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+        }
+        @keyframes spin {
+            to { transform: translateY(-50%) rotate(360deg); }
+        }
+
+        /* ===== 顶部导航栏 ===== */
+        .navbar {
+            background: white;
+            padding: 8px 20px;
+            border-radius: 12px;
+            box-shadow: var(--shadow);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 16px;
+            flex-wrap: nowrap;
+            gap: 12px;
+            min-height: 56px;
+            width: 100%;
+            position: sticky;
+            top: 8px;
+            z-index: 70;
+        }
+        .navbar .logo {
+            display: flex;
+            align-items: center;
+            text-decoration: none;
+            flex-shrink: 0;
+        }
+        .navbar .logo img { 
+            height: 72px; 
+            width: 72px; 
+            display: block;
+        }
+        .navbar .current-time {
+            color: var(--text-light);
+            font-size: 13px;
+            font-weight: 400;
+            text-align: center;
+            flex: 0 0 auto;
+            white-space: nowrap;
+            opacity: .75;
+        }
+        /* ===== 页头：完整 logo + 全局搜索 + 用户入口 ===== */
+        .navbar .logo-sub {
+            font-size: 13px;
+            color: var(--text-light);
+            margin-left: 10px;
+            padding-left: 10px;
+            border-left: 1px solid rgba(127,127,127,.28);
+            white-space: nowrap;
+        }
+        .nav-search {
+            flex: 1 1 auto;
+            min-width: 0;
+            max-width: 460px;
+            margin: 0 auto;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            background: var(--bg-warm, #fdf6f3);
+            border: 1px solid rgba(127,127,127,.20);
+            border-radius: 999px;
+            padding: 7px 14px;
+            transition: border-color .18s, box-shadow .18s;
+        }
+        .nav-search:focus-within {
+            border-color: var(--primary, #e8848a);
+            box-shadow: 0 0 0 3px rgba(232,132,138,.16);
+        }
+        .nav-search .nav-search-icon { font-size: 13px; opacity: .55; flex: 0 0 auto; }
+        .nav-search input {
+            flex: 1 1 auto;
+            min-width: 0;
+            border: none;
+            outline: none;
+            background: transparent;
+            font-size: 14px;
+            color: var(--text-dark);
+            font-family: inherit;
+        }
+        body.dark-theme .nav-search { background: #23252b; border-color: #3a3d44; }
+        body.dark-theme .nav-search input { color: #e0e0e0; }
+        @media (max-width: 860px) {
+            .navbar .logo-sub { display: none; }
+            .nav-search { max-width: none; padding: 6px 12px; }
+            .nav-search input { font-size: 13px; }
+        }
+        @media (max-width: 520px) {
+            .nav-search .nav-search-icon { display: none; }
+            .navbar .current-time { display: none; }
+        }
+        .navbar .actions {
+            display: flex;
+            gap: 8px;
+            align-items: center;
+            flex-shrink: 0;
+        }
+        .navbar .actions .user-menu {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            background: #f5f0eb;
+            padding: 4px 12px 4px 16px;
+            border-radius: 20px;
+            cursor: pointer;
+            font-size: 17px;
+            white-space: nowrap;
+            flex-shrink: 0;
+        }
+        .navbar .actions .user-menu .username { 
+            color: var(--text-dark);
+            max-width: 120px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .navbar .actions .user-menu .dropdown-btn { 
+            font-size: 10px; 
+            color: #888;
+            flex-shrink: 0;
+            margin-left: 2px;
+        }
+
+        /* ===== 下拉菜单 ===== */
+        .dropdown { position: relative; display: inline-block; }
+        .dropdown-content {
+            display: none;
+            position: absolute;
+            right: 0;
+            top: 100%;
+            background: white;
+            min-width: 180px;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.15);
+            border-radius: 12px;
+            padding: 6px 0;
+            z-index: 1000;
+            margin-top: 6px;
+            border: 1px solid rgba(0,0,0,0.04);
+        }
+        .dropdown-content.show { display: block; }
+        .dropdown-content a {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 8px 18px;
+            text-decoration: none;
+            color: var(--text-dark);
+            font-size: 15px;
+            transition: background 0.2s;
+            white-space: nowrap;
+        }
+        .dropdown-content a:hover { background: #f5f0eb; }
+        .dropdown-content .divider {
+            height: 1px;
+            background: #f0f0f0;
+            margin: 4px 12px;
+        }
+
+        /* ===== Flash 消息 ===== */
+        .flash-messages { margin-bottom: 12px; }
+        .flash-messages .flash {
+            padding: 10px 16px;
+            border-radius: 10px;
+            font-size: 14px;
+            margin-bottom: 6px;
+        }
+        .flash-messages .flash.success { background: #e8f5e9; color: #2e7d32; border: 1px solid #c8e6c9; }
+        .flash-messages .flash.error { background: #fce4ec; color: #c62828; border: 1px solid #f8bbd0; }
+        .flash-messages .flash.info { background: #e3f2fd; color: #0d47a1; border: 1px solid #bbdefb; }
+
+        .content { flex: 1; display: flex; flex-direction: column; }
+
+        /* ===== 全局主题适配 ===== */
+        body.dark-theme {
+            background: #1a1a2e !important;
+        }
+        body.dark-theme .navbar,
+        body.dark-theme .dropdown-content {
+            background: #222244 !important;
+        }
+        body.dark-theme .navbar .current-time {
+            color: #888 !important;
+        }
+        body.dark-theme .navbar .actions .user-menu {
+            background: rgba(255,255,255,0.08) !important;
+            color: #e0e0e0 !important;
+        }
+        body.dark-theme .navbar .actions .user-menu .username {
+            color: #e0e0e0 !important;
+        }
+        body.dark-theme .dropdown-content a {
+            color: #e0e0e0 !important;
+        }
+        body.dark-theme .dropdown-content a:hover {
+            background: rgba(255,255,255,0.08) !important;
+        }
+        body.dark-theme .dropdown-content .divider {
+            background: rgba(255,255,255,0.06) !important;
+        }
+        body.dark-theme .btn-outline {
+            color: #e0e0e0 !important;
+            border-color: rgba(255,255,255,0.2) !important;
+        }
+        body.dark-theme .btn-outline:hover {
+            background: rgba(255,255,255,0.1) !important;
+        }
+        body.dark-theme .flash.success {
+            background: rgba(39,174,96,0.15) !important;
+            color: #7bc8a4 !important;
+        }
+        body.dark-theme .flash.error {
+            background: rgba(231,76,60,0.15) !important;
+            color: #e8848a !important;
+        }
+        body.dark-theme .flash.info {
+            background: rgba(52,152,219,0.15) !important;
+            color: #5dade2 !important;
+        }
+
+        /* ===== 移动端适配 ===== */
+        @media (max-width: 768px) {
+            .container { padding: 8px 10px !important; }
+            .navbar {
+                padding: 6px 12px !important;
+                gap: 6px !important;
+                min-height: 48px !important;
+                border-radius: 8px !important;
+                margin-bottom: 10px !important;
+                flex-wrap: nowrap !important;
+            }
+            .navbar .logo img { height: 52px !important; width: 52px !important; }
+            .navbar .current-time {
+                font-size: 14px !important;
+                flex: 0 1 auto !important;
+                white-space: nowrap !important;
+            }
+            .navbar .actions { gap: 4px !important; }
+            .navbar .actions .user-menu {
+                font-size: 14px !important;
+                padding: 2px 8px 2px 12px !important;
+            }
+            .navbar .actions .user-menu .username {
+                max-width: 80px !important;
+                font-size: 14px !important;
+            }
+            .dropdown-content {
+                min-width: 160px !important;
+                right: -8px !important;
+            }
+            .dropdown-content a {
+                font-size: 14px !important;
+                padding: 7px 14px !important;
+            }
+            .btn { font-size: 14px !important; padding: 4px 12px !important; border-radius: 16px !important; }
+            .btn-sm { font-size: 12px !important; padding: 2px 10px !important; }
+        }
+        @media (max-width: 480px) {
+            .container { padding: 4px 6px !important; }
+            .navbar { 
+                padding: 4px 8px !important; 
+                min-height: 40px !important;
+                gap: 4px !important;
+            }
+            .navbar .logo img { height: 44px !important; width: 44px !important; }
+            .navbar .current-time { font-size: 12px !important; }
+            .navbar .actions .user-menu {
+                font-size: 12px !important;
+                padding: 1px 6px 1px 10px !important;
+            }
+            .navbar .actions .user-menu .username {
+                max-width: 60px !important;
+                font-size: 12px !important;
+            }
+            .dropdown-content {
+                min-width: 140px !important;
+                right: -4px !important;
+            }
+            .dropdown-content a {
+                font-size: 13px !important;
+                padding: 6px 12px !important;
+            }
+            .btn { font-size: 12px !important; padding: 3px 10px !important; }
+            .btn-sm { font-size: 11px !important; padding: 2px 8px !important; }
+        }
+        @media (max-width: 380px) {
+            .navbar .current-time { font-size: 11px !important; }
+            .navbar .actions .user-menu .username { max-width: 50px !important; font-size: 11px !important; }
+            .navbar .logo img { height: 40px !important; width: 40px !important; }
+        }
+    </style>
+    
+<style>
+/* ===== 底部：清晰 logo + 讨论群 / GitHub ===== */
+.site-footer { padding: 28px 0 24px; border-top: 1px solid rgba(0,0,0,0.06); margin-top: 32px; }
+.site-footer-inner {
+    max-width: 1200px; margin: 0 auto; padding: 0 20px;
+    display: flex; align-items: center; justify-content: center;
+    gap: 18px; flex-wrap: wrap;
+}
+.site-footer-logo { display: inline-flex; align-items: center; gap: 10px; text-decoration: none; flex: 0 0 auto; }
+.site-footer-logo img {
+    height: 44px; width: auto; display: block; flex: 0 0 auto;
+    border-radius: 0;
+    transition: transform .2s ease;
+}
+.site-footer-logo:hover img { transform: translateY(-2px); }
+.site-footer-name { font-size: 19px; font-weight: 700; color: var(--text-dark); letter-spacing: .5px; }
+.site-footer-sep { width: 1px; height: 28px; background: rgba(0,0,0,.10); flex: 0 0 auto; }
+.site-footer-links { display: inline-flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.site-footer-link {
+    display: inline-flex; align-items: center; gap: 6px;
+    height: 36px; padding: 0 14px; border-radius: 18px;
+    border: 1px solid rgba(0,0,0,.10); background: #fff;
+    color: #555; font-size: 13px; text-decoration: none; white-space: nowrap;
+    transition: color .2s, border-color .2s, background .2s, transform .2s;
+}
+.site-footer-link:hover {
+    color: var(--primary, #d48aa8); border-color: var(--primary, #d48aa8);
+    background: rgba(212,138,168,.06); transform: translateY(-1px);
+}
+.site-footer-link svg { flex: 0 0 auto; }
+body.dark-theme .site-footer { border-top-color: rgba(255,255,255,0.08); }
+body.dark-theme .site-footer-name { color: #e6e6e6; }
+body.dark-theme .site-footer-sep { background: rgba(255,255,255,.14); }
+body.dark-theme .site-footer-link { background: #2b2e35; border-color: rgba(255,255,255,.14); color: #cfcfcf; }
+body.dark-theme .site-footer-link:hover { color: #fff; border-color: var(--primary, #d48aa8); }
+@media (max-width: 520px) {
+    .site-footer { padding: 22px 0 calc(22px + env(safe-area-inset-bottom, 0px)); }
+    .site-footer-inner { gap: 12px; flex-direction: column; }
+    .site-footer-sep { display: none; }
+    .site-footer-logo img { height: 38px; width: auto; }
+    .site-footer-name { font-size: 17px; }
+    .site-footer-link { height: 38px; }
+}
+
+/* ===== logo（原「Sweet」糖果字，宽字标）===== */
+.navbar .logo img {
+    height: 46px;
+    width: auto;
+    max-width: 42vw;
+    display: block;
+    object-fit: contain;
+}
+@media (max-width: 768px) {
+    .navbar .logo img { height: 34px !important; width: auto !important; }
+    .navbar { top: 6px; }
+}
+@media (max-width: 480px) {
+    .navbar .logo img { height: 30px !important; width: auto !important; }
+}
+@media (max-width: 380px) {
+    .navbar .logo img { height: 28px !important; width: auto !important; }
+}
+    </style>
+
+{% block extra_css %}{% endblock %}
+</head>
+<body>
+    <div class="container">
+        <nav class="navbar">
+            <a href="/library" class="logo" title="SweetReader 书库">
+                <img src="/static/logo.png" alt="SweetReader">
+                <span class="logo-sub">本地书库</span>
+            </a>
+            {% if current_user.is_authenticated %}
+            <form class="nav-search" role="search" onsubmit="return navSearch(event)">
+                <span class="nav-search-icon" aria-hidden="true">🔍</span>
+                <input type="search" id="navSearchInput" placeholder="搜索书名 / 作者 / 文件名 / 标签" autocomplete="off">
+            </form>
+            {% endif %}
+            <div class="actions">
+                <div class="current-time" id="currentTime"></div>
+                {% if current_user.is_authenticated %}
+                    <div class="dropdown">
+                        <div class="user-menu" onclick="toggleDropdown()">
+                            <span class="username">{{ current_user.username }}</span>
+                            <span class="dropdown-btn">▼</span>
+                        </div>
+                        <div class="dropdown-content" id="dropdownMenu">
+                            <a href="/library">书库</a>
+                            <a href="/profile">个人资料</a>
+                            <a href="/settings">设置</a>
+                            {% if current_user.is_admin %}
+                                <div class="divider"></div>
+                                <a href="/admin/users">用户管理</a>
+                                <a href="/admin/invite">邀请码</a>
+                                <a href="/admin/logs">操作日志</a>
+                                <a href="/admin/plugins">插件管理</a>
+                                <a href="/admin/sub-admins">子管理员</a>
+                                <a href="/admin/categories">分类管理</a>
+                                <a href="/admin/books">书籍管理</a>
+                                <a href="/admin/broken">乱码与损坏文件</a>
+                                <div id="pluginAdminNav"></div>
+                                <a href="javascript:void(0)" id="scanBtn" onclick="scanBooks()" class="scan-link">扫描书籍</a>
+                            {% elif current_user.is_sub_admin %}
+                                <div class="divider"></div>
+                                <a href="/admin/books">书籍管理</a>
+                            {% endif %}
+                            <div class="divider"></div>
+                            <a href="/logout" style="color:#e8848a;">退出登录</a>
+                        </div>
+                    </div>
+                {% else %}
+                    <a href="/login" class="btn btn-primary">登录</a>
+                {% endif %}
+            </div>
+        </nav>
+
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                <div class="flash-messages">
+                    {% for category, message in messages %}
+                        <div class="flash {{ category }}">{{ message }}</div>
+                    {% endfor %}
+                </div>
+            {% endif %}
+        {% endwith %}
+
+        <div class="content">
+            {% block content %}{% endblock %}
+        </div>
+    </div>
+
+    <script>
+        function navSearch(e) {
+            if (e && e.preventDefault) e.preventDefault();
+            var inp = document.getElementById('navSearchInput');
+            var q = inp ? String(inp.value || '').trim() : '';
+            var target = q ? ('/library?q=' + encodeURIComponent(q)) : '/library';
+            window.location.href = target;
+            return false;
+        }
+        function toggleDropdown() {
+            document.getElementById('dropdownMenu').classList.toggle('show');
+        }
+        document.addEventListener('click', function(e) {
+            if (!e.target.closest('.dropdown')) {
+                document.getElementById('dropdownMenu').classList.remove('show');
+            }
+        });
+
+        function updateTime() {
+            var now = new Date();
+            var str = String(now.getHours()).padStart(2, '0') + ':' + String(now.getMinutes()).padStart(2, '0');
+            document.getElementById('currentTime').textContent = str;
+        }
+        setInterval(updateTime, 10000);
+        updateTime();
+
+        // ===== 扫描书籍 =====
+        function scanBooks() {
+            var btn = document.getElementById('scanBtn');
+            if (!btn) return;
+            
+            // 防止重复点击
+            if (btn.classList.contains('scanning')) return;
+            
+            // 保存原始文本
+            var originalText = btn.textContent;
+            
+            // 变为扫描中状态
+            btn.textContent = '⏳ 扫描中...';
+            btn.classList.add('scanning');
+            btn.style.pointerEvents = 'none';
+            btn.style.opacity = '0.7';
+            
+            // 发送扫描请求
+            fetch('/admin/sync', {
+                method: 'POST'
+            })
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                // 恢复按钮
+                btn.textContent = '✅ 扫描完成';
+                btn.classList.remove('scanning');
+                btn.style.pointerEvents = 'auto';
+                btn.style.opacity = '1';
+                
+                // 显示结果提示
+                var msg = '📂 扫描完成！';
+                if (data.categories_added !== undefined) {
+                    msg += ' 新增分类 ' + data.categories_added + ' 个，';
+                }
+                if (data.books_updated !== undefined) {
+                    msg += '更新书籍 ' + data.books_updated + ' 本';
+                }
+                showFlash(msg, 'success');
+                
+                // 3秒后恢复为"扫描书籍"
+                setTimeout(function() {
+                    btn.textContent = '扫描书籍';
+                }, 3000);
+            })
+            .catch(function(err) {
+                // 恢复按钮
+                btn.textContent = '扫描书籍';
+                btn.classList.remove('scanning');
+                btn.style.pointerEvents = 'auto';
+                btn.style.opacity = '1';
+                showFlash('❌ 扫描失败: ' + err.message, 'error');
+            });
+        }
+
+        function showFlash(message, type) {
+            var container = document.querySelector('.flash-messages');
+            if (!container) {
+                container = document.createElement('div');
+                container.className = 'flash-messages';
+                var content = document.querySelector('.content');
+                if (content) {
+                    content.parentNode.insertBefore(container, content);
+                }
+            }
+            var flash = document.createElement('div');
+            flash.className = 'flash ' + type;
+            flash.textContent = message;
+            container.appendChild(flash);
+            setTimeout(function() {
+                flash.remove();
+            }, 5000);
+        }
+    </script>
+    {% block extra_js %}{% endblock %}
+    <script>
+    (function(){
+        var box = document.getElementById('pluginAdminNav');
+        if (!box) return;
+        fetch('/api/plugins/nav', { credentials: 'same-origin' })
+            .then(function(r){ return r.json(); })
+            .then(function(d){
+                if (d.success && d.admin_nav && d.admin_nav.length) {
+                    d.admin_nav.forEach(function(n){
+                        var a = document.createElement('a');
+                        a.href = n.url; a.textContent = n.label;
+                        box.appendChild(a);
+                    });
+                }
+            })
+            .catch(function(){});
+    })();
+    </script>
+</body>
+</html>
+<style>
+/* Toast 通知动画 */
+.toast-container {
+    position: fixed;
+    top: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 9999;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    pointer-events: none;
+}
+.toast {
+    padding: 10px 24px;
+    border-radius: 12px;
+    font-size: 15px;
+    font-weight: 500;
+    color: white;
+    background: rgba(0,0,0,0.78);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    box-shadow: 0 8px 32px rgba(0,0,0,0.2);
+    animation: toastIn 0.4s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+    pointer-events: auto;
+    min-width: 160px;
+    text-align: center;
+}
+.toast.success { background: rgba(46, 125, 50, 0.92); }
+.toast.error { background: rgba(198, 40, 40, 0.92); }
+.toast.info { background: rgba(13, 71, 161, 0.92); }
+.toast.warning { background: rgba(237, 108, 2, 0.92); }
+
+.toast.out {
+    animation: toastOut 0.3s ease-in forwards;
+}
+@keyframes toastIn {
+    0% { opacity: 0; transform: translateY(-30px) scale(0.9); }
+    100% { opacity: 1; transform: translateY(0) scale(1); }
+}
+@keyframes toastOut {
+    0% { opacity: 1; transform: translateY(0) scale(1); }
+    100% { opacity: 0; transform: translateY(-20px) scale(0.9); }
+}
+</style>
+<script>
+// Toast 通知系统
+function showToast(message, type) {
+    type = type || 'info';
+    var container = document.getElementById('toastContainer');
+    if (!container) {
+        container = document.createElement('div');
+        container.id = 'toastContainer';
+        container.className = 'toast-container';
+        document.body.appendChild(container);
+    }
+    var toast = document.createElement('div');
+    toast.className = 'toast ' + type;
+    toast.textContent = message;
+    container.appendChild(toast);
+    
+    setTimeout(function() {
+        toast.classList.add('out');
+        setTimeout(function() {
+            if (toast.parentNode) toast.parentNode.removeChild(toast);
+        }, 300);
+    }, 2000);
+}
+
+// 替代 confirm 的确认对话框
+function showConfirm(message, onConfirm, onCancel) {
+    var container = document.getElementById('toastContainer');
+    if (!container) {
+        container = document.createElement('div');
+        container.id = 'toastContainer';
+        container.className = 'toast-container';
+        document.body.appendChild(container);
+    }
+    
+    var box = document.createElement('div');
+    box.className = 'toast';
+    box.style.cssText = 'background: rgba(30,30,40,0.95); backdrop-filter: blur(12px); padding: 16px 28px; min-width: 200px; pointer-events: auto; cursor: default;';
+    
+    var msg = document.createElement('div');
+    msg.textContent = message;
+    msg.style.cssText = 'margin-bottom: 12px; font-size: 15px;';
+    box.appendChild(msg);
+    
+    var btnRow = document.createElement('div');
+    btnRow.style.cssText = 'display: flex; gap: 10px; justify-content: center;';
+    
+    var confirmBtn = document.createElement('button');
+    confirmBtn.textContent = '确定';
+    confirmBtn.style.cssText = 'padding: 4px 20px; border: none; border-radius: 8px; background: var(--primary, #e8848a); color: white; cursor: pointer; font-size: 14px;';
+    confirmBtn.onclick = function() {
+        box.classList.add('out');
+        setTimeout(function() {
+            if (box.parentNode) box.parentNode.removeChild(box);
+            if (onConfirm) onConfirm();
+        }, 300);
+    };
+    
+    var cancelBtn = document.createElement('button');
+    cancelBtn.textContent = '取消';
+    cancelBtn.style.cssText = 'padding: 4px 20px; border: 1px solid rgba(255,255,255,0.2); border-radius: 8px; background: transparent; color: #ccc; cursor: pointer; font-size: 14px;';
+    cancelBtn.onclick = function() {
+        box.classList.add('out');
+        setTimeout(function() {
+            if (box.parentNode) box.parentNode.removeChild(box);
+            if (onCancel) onCancel();
+        }, 300);
+    };
+    
+    btnRow.appendChild(cancelBtn);
+    btnRow.appendChild(confirmBtn);
+    box.appendChild(btnRow);
+    container.appendChild(box);
+}
+
+// ===== 页脚：QQ 讨论群（1108560880）=====
+function openQQGroup(e) {
+    if (e && e.preventDefault) e.preventDefault();
+    var num = '1108560880';
+    var ua = navigator.userAgent || '';
+    var isMobile = /Android|iPhone|iPad|iPod|Mobile|HarmonyOS/i.test(ua);
+    if (!isMobile) { copyQQText(num); return; }
+    // 手机端直接唤起 QQ 加群卡片；若没装 QQ 或没唤起成功，则回退为复制群号
+    var deep = 'mqqapi://card/show_pslcard?src_type=internal&version=1&uin=' + num
+             + '&card_type=group&source=qrcode';
+    var t0 = Date.now();
+    try { window.location.href = deep; } catch (err) {}
+    setTimeout(function () {
+        if (!document.hidden && Date.now() - t0 < 1800) copyQQText(num);
+    }, 1200);
+}
+function copyQQText(num) {
+    var done = function () {
+        if (window.showToast) showToast('📋 群号 ' + num + ' 已复制，打开 QQ 搜索加入', 'success');
+    };
+    var fallback = function () {
+        try {
+            var ta = document.createElement('textarea');
+            ta.value = num;
+            ta.style.cssText = 'position:fixed;top:-1000px;opacity:0;';
+            document.body.appendChild(ta);
+            ta.select();
+            document.execCommand('copy');
+            document.body.removeChild(ta);
+            done();
+        } catch (err) {}
+    };
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(num).then(done, fallback);
+    } else {
+        fallback();
+    }
+}
+</script>
+<!-- ===== 底部 ===== -->
+<footer class="site-footer">
+    <div class="site-footer-inner">
+        <a href="/library" class="site-footer-logo" title="SweetReader 书库">
+            <img src="/static/logo.png" alt="SweetReader">
+            <span class="site-footer-name">SweetReader</span>
+        </a>
+        <span class="site-footer-sep"></span>
+        <nav class="site-footer-links">
+            <a class="site-footer-link" href="https://github.com/514475844/SweetReader"
+               target="_blank" rel="noopener noreferrer" title="GitHub 仓库">
+                <svg viewBox="0 0 16 16" width="16" height="16" fill="currentColor" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8z"/></svg>
+                <span>GitHub</span>
+            </a>
+            <a class="site-footer-link" href="javascript:void(0)" onclick="openQQGroup(event)" title="加入 QQ 讨论群 1108560880">
+                <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor" aria-hidden="true"><path d="M12 3C6.98 3 3 6.58 3 11c0 2.5 1.36 4.73 3.5 6.2V21l3.2-1.9c.73.14 1.5.22 2.3.22 5.02 0 9-3.58 9-8s-3.98-8-9-8z"/></svg>
+                <span>讨论群 1108560880</span>
+            </a>
+        </nav>
+    </div>
+</footer>
+<style>
+/* 强制继续阅读显示 */
+.continue-reading {
+    display: flex !important;
+}
+.continue-reading.show {
+    display: flex !important;
+}
+
+/* ===== 全站移动端兜底 ===== */
+.navbar, .main-layout, .card, .card-box { max-width: 100%; }
+.card-box, .card { overflow-wrap: break-word; }
+.table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+@media (max-width: 768px) {
+    .main-layout { padding: 12px !important; }
+    h2 { font-size: 19px !important; }
+    /* 后台宽表统一横向滚动，避免整页被撑出横向滚动条 */
+    table.book-table, table.bl, table.sa-table {
+        display: block; width: 100%; overflow-x: auto;
+        -webkit-overflow-scrolling: touch; white-space: nowrap;
+    }
+    /* 按钮/表单在窄屏不再挤压 */
+    .btn-row { display: flex; flex-wrap: wrap; gap: 8px; }
+    .btn-row .btn { flex: 1 1 auto; }
+    input, select, textarea { max-width: 100%; }
+    /* 页脚在窄屏居中并收紧间距 */
+    .site-footer-inner { gap: 12px; padding: 0 12px; }
+    .site-footer-logo img { height: 36px; }
+    .site-footer-name { font-size: 16px; }
+}
+@media (max-width: 480px) {
+    .main-layout { padding: 10px !important; }
+    .site-footer-inner { gap: 10px; }
+}
+</style>

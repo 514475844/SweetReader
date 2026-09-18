@@ -1,0 +1,249 @@
+{% extends "base.html" %}
+{% block title %}SweetReader - 用户管理{% endblock %}
+{% block extra_css %}
+<style>
+.user-table { width: 100%; border-collapse: collapse; font-size: 14px; background: white; border-radius: 12px; overflow: hidden; box-shadow: var(--shadow); }
+.user-table th { background: #f5f0eb; padding: 12px 16px; text-align: left; font-weight: 600; color: var(--text-dark); }
+.user-table td { padding: 10px 16px; border-bottom: 1px solid #f0f0f0; vertical-align: middle; }
+.user-table tr:hover { background: #faf8f8; }
+.status-badge { display: inline-block; padding: 2px 12px; border-radius: 30px; font-size: 12px; font-weight: 500; }
+.status-active { background: #e8f5e9; color: #27ae60; }
+.status-inactive { background: #fce4ec; color: #e74c3c; }
+.btn-sm { padding: 4px 12px; font-size: 12px; border-radius: 30px; border: none; cursor: pointer; transition: all 0.2s; }
+.btn-sm-danger { background: #e8848a; color: white; }
+.btn-sm-danger:hover { background: #d46a70; }
+.btn-sm-success { background: #7bc8a4; color: white; }
+.btn-sm-success:hover { background: #5fb88e; }
+.btn-sm-warning { background: #f0c27a; color: white; }
+.btn-sm-warning:hover { background: #dba85a; }
+.btn-sm-primary { background: var(--primary); color: white; }
+.btn-sm-primary:hover { background: var(--primary-dark); }
+.actions { display: flex; gap: 6px; flex-wrap: wrap; }
+.modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 999; justify-content: center; align-items: center; }
+.modal-overlay.show { display: flex; }
+.modal-box { background: white; padding: 32px 40px; border-radius: 16px; max-width: 420px; width: 95%; box-shadow: 0 20px 60px rgba(0,0,0,0.3); }
+.modal-box h3 { margin-bottom: 16px; color: var(--text-dark); }
+.modal-box input { width: 100%; padding: 10px 14px; border: 2px solid #f0e0e0; border-radius: 10px; font-size: 14px; margin-bottom: 12px; box-sizing: border-box; }
+.modal-box input:focus { outline: none; border-color: var(--primary); }
+.modal-box .modal-actions { display: flex; gap: 10px; justify-content: flex-end; margin-top: 8px; }
+.header-actions { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+.user-filter { display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+    background: white; border-radius: 12px; box-shadow: var(--shadow);
+    padding: 10px 14px; margin-bottom: 14px; }
+.user-filter-form { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; flex: 1 1 auto; }
+.user-filter-form input[type=text] { height: 32px; padding: 0 12px; border-radius: 16px;
+    border: 1px solid #ececf0; background: #fbfbfd; font-size: 13px; min-width: 180px; }
+.user-filter-form select { height: 32px; padding: 0 10px; border-radius: 16px;
+    border: 1px solid #ececf0; background: #fbfbfd; font-size: 13px; color: #5b5560; }
+.user-filter-form input:focus, .user-filter-form select:focus { outline: none; border-color: var(--primary); }
+.filter-count { font-size: 12px; color: var(--text-light); }
+.online-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%;
+    background: #27ae60; margin-left: 6px; vertical-align: middle;
+    box-shadow: 0 0 0 3px rgba(39,174,96,.16); }
+.online-badge { display: inline-block; padding: 2px 10px; border-radius: 30px;
+    font-size: 12px; font-weight: 500; background: #e8f5e9; color: #27ae60; }
+.offline-badge { display: inline-block; padding: 2px 10px; border-radius: 30px;
+    font-size: 12px; font-weight: 500; background: #f1efe9; color: #9a8f8f; }
+@media (max-width: 768px) {
+    .user-filter-form input[type=text] { min-width: 120px; flex: 1 1 100%; }
+    .user-filter-form select { flex: 1 1 45%; }
+}
+</style>
+{% endblock %}
+{% block content %}
+<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;flex-wrap:wrap;gap:12px;">
+    <h2 style="color:var(--text-dark);font-size:22px;">👥 用户管理</h2>
+    <div class="header-actions">
+        <button onclick="showCreateUser()" class="btn btn-success">➕ 创建账号</button>
+        <a href="/library" class="btn btn-outline">← 返回书库</a>
+    </div>
+</div>
+
+<div class="user-filter">
+    <form class="user-filter-form" method="get" action="/admin/users">
+        <input type="text" name="q" value="{{ q }}" placeholder="搜索用户名 / 邮箱">
+        <select name="role">
+            <option value="all">全部角色</option>
+            <option value="admin" {% if role == 'admin' %}selected{% endif %}>管理员</option>
+            <option value="sub" {% if role == 'sub' %}selected{% endif %}>子管理员</option>
+            <option value="user" {% if role == 'user' %}selected{% endif %}>普通用户</option>
+        </select>
+        <select name="status">
+            <option value="all">全部状态</option>
+            <option value="online" {% if status == 'online' %}selected{% endif %}>🟢 在线</option>
+            <option value="active" {% if status == 'active' %}selected{% endif %}>✅ 正常</option>
+            <option value="inactive" {% if status == 'inactive' %}selected{% endif %}>⛔ 禁用</option>
+        </select>
+        <button type="submit" class="btn-sm btn-sm-primary">筛选</button>
+        {% if q or role != 'all' or status != 'all' %}
+        <a href="/admin/users" class="btn-sm btn-sm-warning">重置</a>
+        {% endif %}
+    </form>
+    <span class="filter-count">共 {{ users|length }} 个用户（在线判定：{{ online_minutes }} 分钟内有活跃）</span>
+</div>
+
+<div style="overflow-x:auto;">
+    <table class="user-table">
+        <thead>
+            <tr>
+                <th>ID</th>
+                <th>用户名</th>
+                <th>邮箱</th>
+                <th>角色</th>
+                <th>状态</th>
+                <th>在线</th>
+                <th>最近活跃</th>
+                <th>注册时间</th>
+                <th>操作</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for user in users %}
+            <tr>
+                <td>{{ user.id }}</td>
+                <td>{{ user.username }}{% if user.id in online_ids %}<span class="online-dot" title="当前在线"></span>{% endif %}</td>
+                <td>{{ user.email }}</td>
+                <td>{% if user.is_admin %}👑 管理员{% else %}📖 用户{% endif %}</td>
+                <td><span class="status-badge {% if user.is_active %}status-active{% else %}status-inactive{% endif %}">{% if user.is_active %}✅ 正常{% else %}⛔ 禁用{% endif %}</span></td>
+                <td>{% if user.id in online_ids %}<span class="online-badge">🟢 在线</span>{% else %}<span class="offline-badge">离线</span>{% endif %}</td>
+                <td style="font-size:12px;color:var(--text-light);">{% if user.last_active %}{{ user.last_active.strftime('%Y-%m-%d %H:%M') }}{% else %}从未登录{% endif %}</td>
+                <td>{{ user.created_at.strftime('%Y-%m-%d %H:%M') }}</td>
+                <td class="actions">
+                    {% if not user.is_admin %}
+                        <button class="btn-sm btn-sm-warning" onclick="resetPassword({{ user.id }})">🔑 重置密码</button>
+                        <button class="btn-sm {% if user.is_active %}btn-sm-danger{% else %}btn-sm-success{% endif %}" onclick="toggleUser({{ user.id }})">
+                            {% if user.is_active %}⛔ 禁用{% else %}✅ 启用{% endif %}
+                        </button>
+                        <button class="btn-sm btn-sm-danger" onclick="deleteUser({{ user.id }})">🗑️ 删除</button>
+                    {% else %}
+                        <span style="color:#999;font-size:12px;">不可操作</span>
+                    {% endif %}
+                </td>
+            </tr>
+            {% else %}
+            <tr><td colspan="8" style="text-align:center;padding:30px;color:#999;">没有符合条件的用户</td></tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+<!-- 创建用户弹窗 -->
+<div id="createUserModal" class="modal-overlay">
+    <div class="modal-box">
+        <h3>➕ 创建新账号</h3>
+        <form id="createUserForm" onsubmit="createUser(event)">
+            <input type="text" id="newUsername" placeholder="用户名" required>
+            <input type="email" id="newEmail" placeholder="邮箱" required>
+            <input type="password" id="newPassword" placeholder="初始密码" required>
+            <label style="font-size:13px;color:var(--text-light);">
+                <input type="checkbox" id="newIsAdmin"> 设为管理员
+            </label>
+            <div class="modal-actions">
+                <button type="button" class="btn btn-ghost" onclick="closeCreateUser()">取消</button>
+                <button type="submit" class="btn btn-primary">创建</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- 重置密码弹窗 -->
+<div id="resetPasswordModal" class="modal-overlay">
+    <div class="modal-box">
+        <h3>🔑 重置密码</h3>
+        <form id="resetPasswordForm" onsubmit="resetPasswordSubmit(event)">
+            <input type="hidden" id="resetUserId">
+            <input type="password" id="resetPasswordInput" placeholder="新密码" required>
+            <input type="password" id="resetPasswordConfirm" placeholder="确认新密码" required>
+            <div class="modal-actions">
+                <button type="button" class="btn btn-ghost" onclick="closeResetPassword()">取消</button>
+                <button type="submit" class="btn btn-primary">确认重置</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<script>
+// 唯一一套实现：Toast 风格，无 alert/confirm
+function showCreateUser() { document.getElementById('createUserModal').classList.add('show'); }
+function closeCreateUser() { document.getElementById('createUserModal').classList.remove('show'); }
+
+function createUser(e) {
+    e.preventDefault();
+    const data = {
+        username: document.getElementById('newUsername').value,
+        email: document.getElementById('newEmail').value,
+        password: document.getElementById('newPassword').value,
+        is_admin: document.getElementById('newIsAdmin').checked
+    };
+    fetch('/admin/user/create', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(data)
+    }).then(function(r) { return r.json(); }).then(function(res) {
+        if (res.success) {
+            showToast('✅ 用户创建成功', 'success');
+            setTimeout(function() { location.reload(); }, 800);
+        } else {
+            showToast('❌ ' + (res.message || '创建失败'), 'error');
+        }
+    });
+}
+
+function toggleUser(id) {
+    showConfirm('确认操作该用户？', function() {
+        fetch('/admin/user/' + id + '/toggle', {method: 'POST'})
+            .then(function(r) { return r.json(); })
+            .then(function(res) {
+                if (res.success) {
+                    showToast('✅ 操作成功', 'success');
+                    setTimeout(function() { location.reload(); }, 800);
+                }
+            });
+    });
+}
+
+function deleteUser(id) {
+    showConfirm('确认删除该用户？此操作不可恢复！', function() {
+        fetch('/admin/user/' + id, {method: 'DELETE'})
+            .then(function(r) { return r.json(); })
+            .then(function(res) {
+                if (res.success) {
+                    showToast('✅ 用户已删除', 'success');
+                    setTimeout(function() { location.reload(); }, 800);
+                }
+            });
+    });
+}
+
+function resetPassword(id) {
+    document.getElementById('resetUserId').value = id;
+    document.getElementById('resetPasswordModal').classList.add('show');
+}
+function closeResetPassword() {
+    document.getElementById('resetPasswordModal').classList.remove('show');
+}
+
+function resetPasswordSubmit(e) {
+    e.preventDefault();
+    const pwd = document.getElementById('resetPasswordInput').value;
+    const confirm = document.getElementById('resetPasswordConfirm').value;
+    if (pwd !== confirm) {
+        showToast('❌ 两次密码不一致', 'error');
+        return;
+    }
+    const id = document.getElementById('resetUserId').value;
+    fetch('/admin/user/' + id + '/reset-password', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({password: pwd})
+    }).then(function(r) { return r.json(); }).then(function(res) {
+        if (res.success) {
+            showToast('✅ 密码已重置', 'success');
+            document.getElementById('resetPasswordModal').classList.remove('show');
+        } else {
+            showToast('❌ ' + (res.message || '重置失败'), 'error');
+        }
+    });
+}
+</script>
+{% endblock %}

@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% block title %}SweetReader - 全部书籍{% endblock %}
+{% block extra_css %}
+<style>
+.books-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 16px; }
+.book-card { background: white; padding: 16px; border-radius: 14px; box-shadow: var(--shadow); transition: transform 0.2s, box-shadow 0.2s; }
+.book-card:hover { transform: translateY(-4px); box-shadow: 0 8px 30px rgba(232,132,138,0.2); }
+.book-card .title { font-weight: 600; font-size: 14px; margin: 8px 0 4px; color: var(--text-dark); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.book-card .author { font-size: 13px; color: var(--text-light); }
+.book-card .meta { font-size: 12px; color: #bbb; margin: 4px 0 8px; }
+.book-card .actions { display: flex; gap: 6px; flex-wrap: wrap; }
+.book-card .actions .btn { font-size: 12px; padding: 4px 14px; }
+.book-card .actions .btn-read { background: var(--primary); color: white; border: none; border-radius: 30px; cursor: pointer; text-decoration: none; display: inline-block; transition: all 0.3s; font-weight: 500; }
+.book-card .actions .btn-read:hover { background: var(--primary-dark); }
+.empty-state { grid-column: 1/-1; text-align: center; padding: 60px; color: var(--text-light); }
+.empty-state .big-icon { font-size: 60px; display: block; margin-bottom: 16px; }
+</style>
+{% endblock %}
+{% block content %}
+<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;flex-wrap:wrap;gap:12px;">
+    <h2 style="color:var(--text-dark);font-size:22px;">📚 全部书籍</h2>
+    <span style="color:var(--text-light);font-size:14px;">共 {{ books|length }} 本</span>
+</div>
+
+<div class="books-grid">
+    {% for book in books %}
+        <div class="book-card">
+            <div class="title">{{ book.title or book.filename }}</div>
+            <div class="author">{{ book.author or '未知作者' }}</div>
+            <div class="meta">{{ book.file_type or '未知' }} · {{ (book.file_size or 0) // 1024 }}KB</div>
+            <div class="actions">
+                <a href="/read/{{ book.id }}" class="btn-read">阅读</a>
+            </div>
+        </div>
+    {% else %}
+        <div class="empty-state"><span class="big-icon">📭</span><p>还没有书籍</p></div>
+    {% endfor %}
+</div>
+{% endblock %}
