@@ -3,7 +3,7 @@
 {% block content %}
 <div class="container" style="max-width:1100px;margin:24px auto;padding:0 16px;">
   <h2>分类管理</h2>
-  <p style="color:#888;font-size:13px;margin-bottom:12px;">重命名 / 合并分类（仅修改数据库映射，不影响磁盘文件，书籍仍可正常打开）。合并会把源分类及其全部子分类下的书籍转移到目标分类并删除源分类，不可撤销。</p>
+  <p style="color:#888;font-size:13px;margin-bottom:12px;">重命名 / 合并 / 删除分类（仅修改数据库映射，不影响磁盘文件，书籍仍可正常打开）。合并会把源分类及其全部子分类下的书籍转移到目标分类并删除源分类，不可撤销。删除只允许「空分类」（其下无书、无子分类），按钮会自动置灰。</p>
   <div class="cat-bar">
     <input type="text" id="filterInput" placeholder="筛选分类路径…" oninput="filterRows()">
     <span class="merge-label">合并目标：</span>
@@ -13,6 +13,7 @@
     </select>
   </div>
   <div id="msg" style="margin:10px 0;min-height:20px;"></div>
+  <div class="table-scroll">
   <table class="cat-table">
     <thead><tr><th>分类路径</th><th>层级</th><th>书本数</th><th>重命名</th><th>操作</th></tr></thead>
     <tbody id="rows">
@@ -25,21 +26,30 @@
           <input type="text" class="newname" placeholder="新名称" style="width:120px;">
           <button class="btn btn-sm btn-outline" onclick="renameCat({{ c.id }}, this)">重命名</button>
         </td>
-        <td><button class="btn btn-sm btn-outline" onclick="mergeCat({{ c.id }})">合并到此分类</button></td>
+        <td>
+          <button class="btn btn-sm btn-outline" onclick="mergeCat({{ c.id }})">合并到此分类</button>
+          <button class="btn btn-sm btn-outline del-cat" data-id="{{ c.id }}" data-path="{{ c.path }}" data-count="{{ c.book_count }}" onclick="deleteCat(this)">删除空分类</button>
+        </td>
       </tr>
     {% endfor %}
     </tbody>
   </table>
+  </div>
 </div>
 <style>
 .cat-bar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 4px; }
-.cat-bar input[type=text] { height: 30px; padding: 0 10px; border: 1px solid #ddd; border-radius: 8px; font-size: 13px; min-width: 200px; }
+.cat-bar input[type=text] { height: 30px; padding: 0 10px; border: 1px solid #ddd; border-radius: 8px; font-size: 13px; min-width: 0; flex: 1 1 180px; }
 .cat-bar select { height: 30px; max-width: 340px; border: 1px solid #ddd; border-radius: 8px; font-size: 13px; }
 .merge-label { font-size: 13px; color: #888; }
 .cat-table { width:100%; border-collapse:collapse; font-size:13px; }
 .cat-table th, .cat-table td { border-bottom:1px solid #eee; padding:6px 10px; text-align:left; vertical-align:middle; }
 .cat-table th { background:#f7f7f7; font-weight:600; position: sticky; top: 0; }
 .cat-table .cpath { max-width: 420px; word-break: break-all; }
+@media (max-width: 768px) {
+    .cat-table th, .cat-table td { padding: 6px 8px; }
+    .cat-table .cpath { max-width: 190px; }
+    .cat-bar select { max-width: 100%; flex: 1 1 160px; }
+}
 </style>
 <script>
 function showMsg(t, ok){ var m=document.getElementById('msg'); m.textContent=t; m.style.color = ok ? '#2a9d4a' : '#c0392b'; }
@@ -59,6 +69,38 @@ function renameCat(id, btn){
   fetch('/api/admin/category/'+id+'/rename', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({name:name})})
     .then(function(r){return r.json();}).then(function(d){ if(d.success){ showMsg('已重命名', true); location.reload(); } else showMsg(d.message||'失败', false); });
 }
+function deleteCat(btn){
+  var id = btn.getAttribute('data-id');
+  var path = btn.getAttribute('data-path') || '';
+  var cnt = parseInt(btn.getAttribute('data-count') || '0', 10) || 0;
+  if (cnt > 0) { showMsg('该分类下还有 ' + cnt + ' 本书，只能删除空分类', false); return; }
+  if (!confirm('确定删除空分类「' + path + '」？\n仅删除数据库里的归类映射，磁盘文件与书籍内容不受影响。')) return;
+  fetch('/api/admin/category/' + id + '/delete', {method:'POST', headers:{'Content-Type':'application/json'}, body:'{}'})
+    .then(function(r){return r.json();}).then(function(d){ if(d.success){ showMsg('已删除空分类', true); location.reload(); } else showMsg(d.message||'删除失败', false); })
+    .catch(function(){ showMsg('网络错误', false); });
+}
+// 载入时把「有书 / 有子分类」的删除按钮置灰，避免点了才被服务端拒绝
+function markUndeletable(){
+  var paths = [];
+  var cells = document.querySelectorAll('#rows .cpath');
+  for (var i = 0; i < cells.length; i++) paths.push(cells[i].textContent);
+  var btns = document.querySelectorAll('.del-cat');
+  for (var j = 0; j < btns.length; j++){
+    var p = btns[j].getAttribute('data-path') || '';
+    var cnt = parseInt(btns[j].getAttribute('data-count') || '0', 10) || 0;
+    var hasChild = false;
+    for (var k = 0; k < paths.length; k++){
+      if (paths[k].length > p.length + 1 && paths[k].indexOf(p + '/') === 0) { hasChild = true; break; }
+    }
+    if (cnt > 0 || hasChild){
+      btns[j].disabled = true;
+      btns[j].title = cnt > 0 ? ('该分类下有 ' + cnt + ' 本书，不能删除') : '该分类下还有子分类，不能删除';
+      btns[j].style.opacity = '.45';
+      btns[j].style.cursor = 'not-allowed';
+    }
+  }
+}
+document.addEventListener('DOMContentLoaded', markUndeletable);
 function mergeCat(id){
   var sel = document.getElementById('mergeTarget');
   var tid = sel.value;

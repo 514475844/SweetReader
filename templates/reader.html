@@ -46,6 +46,40 @@
     border: none;
 }
 
+/* ===== #173 配色切换过渡：只过渡颜色类属性，简洁 200ms ===== */
+.reader-container,
+.reader-content,
+.reader-content .txt-content {
+    transition: background-color 200ms ease-out, color 200ms ease-out;
+}
+@media (prefers-reduced-motion: reduce) {
+    .reader-container,
+    .reader-content,
+    .reader-content .txt-content { transition: none; }
+}
+
+/* ===== #162 自定义 CSS 编辑区 ===== */
+.reader-settings-panel .css-row { display: block; padding: 8px 0 4px; }
+.reader-settings-panel .css-row > span {
+    display: block; margin-bottom: 6px; font-size: 14px; color: var(--text-color, #333);
+}
+.reader-settings-panel .css-row textarea {
+    width: 100%; min-height: 72px; resize: vertical; box-sizing: border-box;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 12px; line-height: 1.5; padding: 8px 10px; border-radius: 8px;
+    border: 1px solid rgba(0,0,0,0.12); background: rgba(0,0,0,0.03); color: inherit;
+}
+.reader-settings-panel .css-row .css-actions {
+    display: flex; gap: 8px; justify-content: flex-end; margin-top: 6px;
+}
+.reader-settings-panel .css-row .css-actions .btn-sm {
+    font-size: 13px; padding: 4px 14px; border-radius: 16px;
+}
+body.dark-theme .reader-settings-panel .css-row > span { color: #ccc; }
+body.dark-theme .reader-settings-panel .css-row textarea {
+    background: rgba(255,255,255,0.06); border-color: rgba(255,255,255,0.16); color: #ddd;
+}
+
 /* ===== 底部工具栏 ===== */
 .reader-toolbar {
     position: fixed;
@@ -157,6 +191,8 @@
     font-size: 13px;
     color: var(--text-light, #888);
 }
+.reader-settings-panel .preset-row { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 2px; }
+.reader-settings-panel .preset-row .btn-sm { padding: 3px 10px; }
 .reader-settings-panel .btn-row {
     display: flex;
     gap: 8px;
@@ -490,11 +526,95 @@ body.dark-theme .reader-toolbar .left .book-author { color: #888; }
     #chapterJump { max-width: 118px; }
     .reader-content { padding-bottom: 196px !important; }
 }
+
+/* ===== B04 阅读页交互：翻页按钮位置 / 快捷键浮层 / 首次指引 / 自动滚动 ===== */
+/* #120 翻页按钮位置（!important 用于压过 JS 写入的内联 display） */
+html[data-pagenav="left"] .page-next { display: none !important; }
+html[data-pagenav="right"] .page-prev { display: none !important; }
+html[data-pagenav="hide"] .page-nav { display: none !important; }
+
+/* #132 快捷键与手势浮层 */
+.kbd-panel {
+    display: none; position: fixed; inset: 0; z-index: 1200;
+    background: rgba(0, 0, 0, .45); align-items: center; justify-content: center; padding: 16px;
+    opacity: 0; transition: opacity 180ms ease-out;
+}
+.kbd-panel.show { display: flex; opacity: 1; }
+.kbd-card {
+    width: 100%; max-width: 560px; max-height: 82%; overflow-y: auto;
+    background: #fff; color: #333; border-radius: 14px; padding: 18px 20px;
+    box-shadow: 0 12px 40px rgba(0, 0, 0, .28);
+    transform: translateY(8px) scale(.98); transition: transform 180ms ease-out;
+}
+.kbd-panel.show .kbd-card { transform: none; }
+.kbd-card h3 { margin: 0 0 4px; font-size: 16px; font-weight: 600; }
+.kbd-card .kbd-sub { font-size: 12px; color: #999; margin-bottom: 14px; }
+.kbd-group { margin-bottom: 14px; }
+.kbd-group h4 { margin: 0 0 6px; font-size: 13px; color: #888; font-weight: 500; }
+.kbd-row {
+    display: flex; align-items: center; justify-content: space-between; gap: 12px;
+    padding: 5px 0; font-size: 13px;
+}
+.kbd-row .kbd-desc { min-width: 0; }
+.kbd-keys { flex: 0 0 auto; display: flex; gap: 4px; flex-wrap: wrap; justify-content: flex-end; }
+.kbd-key {
+    display: inline-block; min-width: 22px; text-align: center; padding: 2px 7px;
+    border-radius: 6px; font-size: 12px;
+    background: rgba(127, 127, 127, .14); border: 1px solid rgba(127, 127, 127, .24);
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+.kbd-foot { display: flex; justify-content: flex-end; margin-top: 6px; }
+body.dark-theme .kbd-card { background: #23262c; color: #e8e8e8; }
+body.dark-theme .kbd-card h3 { color: #f0f0f0; }
+body.dark-theme .kbd-key { background: rgba(255, 255, 255, .10); border-color: rgba(255, 255, 255, .18); }
+
+/* #133/#134 首次进入的操作指引条（一次性） */
+.reader-guide {
+    display: none; position: fixed; left: 50%;
+    bottom: calc(96px + env(safe-area-inset-bottom, 0px));
+    transform: translateX(-50%) translateY(10px); opacity: 0;
+    z-index: 900; max-width: calc(100% - 24px);
+    background: rgba(34, 34, 34, .94); color: #fff; border-radius: 12px;
+    padding: 10px 12px; font-size: 12.5px; line-height: 1.5;
+    align-items: center; gap: 10px; flex-wrap: wrap;
+    box-shadow: 0 8px 26px rgba(0, 0, 0, .26);
+    transition: opacity 200ms ease-out, transform 200ms ease-out;
+}
+.reader-guide.show { display: flex; opacity: 1; transform: translateX(-50%); }
+.reader-guide .guide-actions { display: flex; gap: 6px; margin-left: auto; }
+.reader-guide button {
+    background: rgba(255, 255, 255, .14); color: #fff; border: none; border-radius: 8px;
+    padding: 5px 10px; font-size: 12px; cursor: pointer; white-space: nowrap;
+}
+.reader-guide button:hover { background: rgba(255, 255, 255, .24); }
+
+/* #119 自动滚动浮动控制 */
+.auto-pill {
+    display: none; position: fixed; right: 12px;
+    bottom: calc(96px + env(safe-area-inset-bottom, 0px));
+    z-index: 900; align-items: center; gap: 8px;
+    background: rgba(34, 34, 34, .92); color: #fff; border: none; border-radius: 18px;
+    padding: 8px 13px; font-size: 12.5px; cursor: pointer; font-family: inherit;
+    opacity: 0; transition: opacity 180ms ease-out; box-shadow: 0 6px 20px rgba(0, 0, 0, .24);
+}
+.auto-pill.show { display: inline-flex; opacity: 1; }
+.auto-pill .auto-pill-dot {
+    width: 7px; height: 7px; border-radius: 50%; background: var(--primary, #e8848a);
+}
+body.zen-mode .reader-guide, body.zen-mode .auto-pill { display: none !important; }
+body.immersive .reader-guide, body.immersive .auto-pill { display: none !important; }
+
+@media (max-width: 768px) {
+    .kbd-card { max-height: 78%; padding: 16px; }
+    .kbd-row { font-size: 12.5px; }
+    .reader-guide { bottom: calc(172px + env(safe-area-inset-bottom, 0px)); }
+    .auto-pill { bottom: calc(172px + env(safe-area-inset-bottom, 0px)); }
+}
 </style>
 <style>
 /* 兜底：这三个浮层默认必须隐藏。若上方样式块再次出现语法错误，
    它们也不会以"浏览器默认按钮"的样子裸露在页面左下角。 */
-.sel-popup, .link-popup, .page-nav { display: none; }
+.sel-popup, .link-popup, .page-nav, .kbd-panel, .reader-guide, .auto-pill { display: none; }
 </style>
 {% endblock %}
 
@@ -503,9 +623,9 @@ body.dark-theme .reader-toolbar .left .book-author { color: #888; }
     <div class="reader-content" id="readerContent">
         {% set ext = book.filename.split('.')[-1].lower() %}
         {% if ext == 'epub' %}
-            <iframe src="/epub-reader?id={{ book.id }}" title="EPUB 阅读器"></iframe>
+            <iframe id="srEmbedFrame" data-embed="epub" src="/epub-reader?id={{ book.id }}" title="EPUB 阅读器"></iframe>
         {% elif ext == 'pdf' %}
-            <iframe src="/api/read/{{ book.id }}" title="PDF 阅读器"></iframe>
+            <iframe id="srEmbedFrame" data-embed="pdf" src="/api/read/{{ book.id }}" title="PDF 阅读器"></iframe>
         {% elif ext == 'txt' %}
             <div id="txtContent" class="txt-content">加载中...</div>
         {% else %}
@@ -550,6 +670,7 @@ body.dark-theme .reader-toolbar .left .book-author { color: #888; }
                 <button class="btn-icon" id="zenBtn" onclick="toggleZen()" title="禅模式：沉浸 + 全屏（快捷键 Z）">禅模式</button>
                 <button class="btn-icon" id="settingsToggle" onclick="toggleSettings()" title="设置">设置</button>
                 <button class="btn-icon" onclick="toggleTheme()" title="切换主题">主题</button>
+                <button class="btn-icon" onclick="toggleKbdHelp()" title="快捷键与手势（?）">快捷键</button>
                 <button class="btn-icon" id="returnLastBtn" onclick="returnToLast()" title="回到上次位置">回到上次</button>
                 {% for t in plugin_reader_tools %}
                 <a class="btn-icon" href="{{ t.url }}" title="{{ t.label }}">{{ t.label }}</a>
@@ -635,6 +756,15 @@ body.dark-theme .reader-toolbar .left .book-author { color: #888; }
             <span class="value" id="lineSpacingValue">2.0</span>
         </div>
         <div class="setting-row">
+            <span>主题预设</span>
+            <div class="preset-row">
+                <button class="btn btn-sm btn-outline" onclick="applyPreset('default')">默认</button>
+                <button class="btn btn-sm btn-outline" onclick="applyPreset('eye')">护眼</button>
+                <button class="btn btn-sm btn-outline" onclick="applyPreset('paper')">羊皮纸</button>
+                <button class="btn btn-sm btn-outline" onclick="applyPreset('midnight')">午夜</button>
+            </div>
+        </div>
+        <div class="setting-row">
             <span>跟随系统主题</span>
             <label class="switch"><input type="checkbox" id="autoThemeToggle" onchange="toggleAutoTheme(this.checked)"><span class="slider"></span></label>
         </div>
@@ -675,6 +805,36 @@ body.dark-theme .reader-toolbar .left .book-author { color: #888; }
             <input type="color" id="customPageColor" onchange="updatePageColor(this.value)" style="width:44px;height:24px;border:none;background:none;cursor:pointer;padding:0;">
         </div>
         <div class="setting-row">
+            <span>文字颜色</span>
+            <select id="textColorSelect" onchange="updateTextColor(this.value)">
+                <option value="">跟随主题</option>
+                <option value="#2a2a2a">暖黑</option>
+                <option value="#1a1a1a">墨黑</option>
+                <option value="#1f3a5f">墨蓝</option>
+                <option value="#4a3728">深棕</option>
+                <option value="#2d5016">护眼绿</option>
+            </select>
+        </div>
+        <div class="setting-row">
+            <span>自定义文字色</span>
+            <input type="color" id="customTextColor" onchange="updateTextColor(this.value)" style="width:44px;height:24px;border:none;background:none;cursor:pointer;padding:0;">
+        </div>
+        <div class="setting-row">
+            <span>强调色</span>
+            <select id="accentColorSelect" onchange="updateAccent(this.value)">
+                <option value="">默认</option>
+                <option value="#e8848a">樱粉</option>
+                <option value="#5b8def">雾蓝</option>
+                <option value="#3fa27a">青绿</option>
+                <option value="#9b6bd6">藕紫</option>
+                <option value="#e0932f">琥珀</option>
+            </select>
+        </div>
+        <div class="setting-row">
+            <span>自定义强调色</span>
+            <input type="color" id="customAccentColor" onchange="updateAccent(this.value)" style="width:44px;height:24px;border:none;background:none;cursor:pointer;padding:0;">
+        </div>
+        <div class="setting-row">
             <span>背景纹理</span>
             <select id="bgTextureSelect" onchange="updateBgTexture(this.value)">
                 <option value="">无</option>
@@ -705,17 +865,185 @@ body.dark-theme .reader-toolbar .left .book-author { color: #888; }
                 <option value="paginate">翻页</option>
             </select>
         </div>
+        <div class="setting-row">
+            <span>自动滚动</span>
+            <label class="switch"><input type="checkbox" id="autoScrollToggle" onchange="toggleAutoScroll(this.checked)"><span class="slider"></span></label>
+        </div>
+        <div class="setting-row">
+            <span>滚动速度</span>
+            <select id="autoSpeedSelect" onchange="setAutoScrollSpeed(this.value)">
+                <option value="1">慢</option>
+                <option value="2">中</option>
+                <option value="3">快</option>
+            </select>
+        </div>
+        <div class="setting-row">
+            <span>翻页按钮</span>
+            <select id="pageNavSelect" onchange="setPageNavPos(this.value)">
+                <option value="both">两侧</option>
+                <option value="left">仅左侧</option>
+                <option value="right">仅右侧</option>
+                <option value="hide">隐藏</option>
+            </select>
+        </div>
+        <div class="css-row">
+            <span>自定义样式（CSS）</span>
+            <textarea id="customCssInput" spellcheck="false" placeholder=".txt-content { letter-spacing: .02em; }"></textarea>
+            <div class="css-actions">
+                <button class="btn btn-sm btn-outline" onclick="applyCustomCssInput()">应用</button>
+                <button class="btn btn-sm btn-outline" onclick="clearCustomCss()">清空</button>
+            </div>
+        </div>
         <!-- 边距已隐藏（强制0） -->
                 <div class="btn-row">
             <button class="btn btn-sm btn-outline" onclick="resetSettings()">重置</button>
         </div>
     </div>
+
+    <!-- ===== #132 快捷键与手势浮层 ===== -->
+    <div class="kbd-panel" id="kbdPanel">
+        <div class="kbd-card">
+            <h3>快捷键与手势</h3>
+            <div class="kbd-sub">桌面用键盘，手机用触摸；按键组合不区分大小写</div>
+            <div class="kbd-group">
+                <h4>翻页</h4>
+                <div class="kbd-row"><span class="kbd-desc">下一页</span><span class="kbd-keys"><span class="kbd-key">→</span><span class="kbd-key">PgDn</span><span class="kbd-key">空格</span></span></div>
+                <div class="kbd-row"><span class="kbd-desc">上一页</span><span class="kbd-keys"><span class="kbd-key">←</span><span class="kbd-key">PgUp</span><span class="kbd-key">Shift+空格</span></span></div>
+                <div class="kbd-row"><span class="kbd-desc">上一章 / 下一章</span><span class="kbd-keys"><span class="kbd-key">[</span><span class="kbd-key">]</span></span></div>
+                <div class="kbd-row"><span class="kbd-desc">回到开头 / 结尾</span><span class="kbd-keys"><span class="kbd-key">Home</span><span class="kbd-key">End</span></span></div>
+            </div>
+            <div class="kbd-group">
+                <h4>显示</h4>
+                <div class="kbd-row"><span class="kbd-desc">放大 / 缩小字号</span><span class="kbd-keys"><span class="kbd-key">+</span><span class="kbd-key">-</span></span></div>
+                <div class="kbd-row"><span class="kbd-desc">切换主题</span><span class="kbd-keys"><span class="kbd-key">D</span></span></div>
+                <div class="kbd-row"><span class="kbd-desc">滚动 / 翻页模式</span><span class="kbd-keys"><span class="kbd-key">M</span></span></div>
+                <div class="kbd-row"><span class="kbd-desc">禅模式（沉浸 + 全屏）</span><span class="kbd-keys"><span class="kbd-key">Z</span></span></div>
+                <div class="kbd-row"><span class="kbd-desc">自动滚动开关</span><span class="kbd-keys"><span class="kbd-key">P</span></span></div>
+            </div>
+            <div class="kbd-group">
+                <h4>面板</h4>
+                <div class="kbd-row"><span class="kbd-desc">目录 / 设置</span><span class="kbd-keys"><span class="kbd-key">T</span><span class="kbd-key">S</span></span></div>
+                <div class="kbd-row"><span class="kbd-desc">页内搜索</span><span class="kbd-keys"><span class="kbd-key">Ctrl</span><span class="kbd-key">F</span></span></div>
+                <div class="kbd-row"><span class="kbd-desc">关闭面板 / 退出禅模式</span><span class="kbd-keys"><span class="kbd-key">Esc</span></span></div>
+                <div class="kbd-row"><span class="kbd-desc">打开本说明</span><span class="kbd-keys"><span class="kbd-key">?</span><span class="kbd-key">H</span></span></div>
+            </div>
+            <div class="kbd-group">
+                <h4>触摸手势</h4>
+                <div class="kbd-row"><span class="kbd-desc">左右滑动：上一章 / 下一章</span><span class="kbd-keys"><span class="kbd-key">滑动</span></span></div>
+                <div class="kbd-row"><span class="kbd-desc">双指捏合：调字号</span><span class="kbd-keys"><span class="kbd-key">双指</span></span></div>
+                <div class="kbd-row"><span class="kbd-desc">点左侧 30% / 右侧 30%：翻页</span><span class="kbd-keys"><span class="kbd-key">点按</span></span></div>
+                <div class="kbd-row"><span class="kbd-desc">点中间：收起 / 展开工具栏</span><span class="kbd-keys"><span class="kbd-key">点按</span></span></div>
+                <div class="kbd-row"><span class="kbd-desc">选中文字：复制 / 搜索</span><span class="kbd-keys"><span class="kbd-key">划选</span></span></div>
+            </div>
+            <div class="kbd-foot"><button class="btn btn-sm btn-outline" onclick="toggleKbdHelp(true)">关闭</button></div>
+        </div>
+    </div>
+
+    <!-- ===== #133/#134 首次进入的操作指引（一次性） ===== -->
+    <div class="reader-guide" id="readerGuide">
+        <span>👋 左右滑动切章 · 双指捏合调字号 · 点两侧翻页；按 <b>?</b> 查看全部快捷键与手势</span>
+        <span class="guide-actions">
+            <button onclick="srOpenGuideHelp()">查看说明</button>
+            <button onclick="srDismissGuide()">知道了</button>
+        </span>
+    </div>
+
+    <!-- ===== #119 自动滚动浮动控制 ===== -->
+    <button class="auto-pill" id="autoPill" onclick="toggleAutoScroll()" title="点击暂停自动滚动">
+        <span class="auto-pill-dot"></span><span class="auto-pill-text">自动滚动</span>
+    </button>
 </div>
 
 <script>
 var currentBookId = {{ book.id }};
 var DEFAULT_FONT_SIZE = 17;
 var DEFAULT_LINE_SPACING = 2.0;
+
+// ===== B06 设置落库：控件直接操作后就保存（原先要「点击面板外部」才存） =====
+// 字号 / 行距 / 字体 / 对齐 / 亮度 这五个控件之前都没有触发 saveSettings()，
+// 唯一保存时机是「点击设置面板外部」这个 document 级监听。结果是：拖完滑块直接
+// 刷新或关标签页，改动全丢。这里给它们加统一防抖保存（与 Ctrl+滚轮、双指捏合一致）。
+var srCtlSaveTimer = null;
+var srCtlSaveEnabled = false;   // 载入回填阶段不触发，避免每次打开阅读页都写库
+function srSaveSettingsSoon() {
+    if (!srCtlSaveEnabled) return;
+    clearTimeout(srCtlSaveTimer);
+    srCtlSaveTimer = setTimeout(function () { srCtlSaveTimer = null; saveSettings(); }, 400);
+}
+window.addEventListener('load', function () {
+    srCtlSaveEnabled = true;
+    hydrateEmbedPanel();
+});
+
+// EPUB/PDF：正文在内嵌 iframe 里，外层没有 #txtContent，loadUserSettings 会提前 return，
+// 导致设置面板停在写死的默认值（17px / 2.0），和用户真实偏好对不上 —— 面板会「骗人」。
+// 这里单独回填一次控件，保证面板显示的就是服务端保存的值。
+function hydrateEmbedPanel() {
+    if (document.getElementById('txtContent')) return;
+    fetch('/api/user/theme', { credentials: 'same-origin' })
+        .then(function (r) { return r.json(); })
+        .then(function (d) {
+            if (!d) return;
+            var fs = document.getElementById('fontSizeRange');
+            if (fs && d.font_size) {
+                fs.value = d.font_size;
+                var a = document.getElementById('fontSizeValue');
+                if (a) a.textContent = d.font_size;
+            }
+            var ls = document.getElementById('lineSpacingRange');
+            if (ls && d.line_spacing) {
+                ls.value = d.line_spacing;
+                var b = document.getElementById('lineSpacingValue');
+                if (b) b.textContent = d.line_spacing;
+            }
+            var ff = document.getElementById('fontFamilySelect');
+            if (ff) ff.value = d.font_family || '';
+            var ta = document.getElementById('textAlignSelect');
+            if (ta) ta.value = d.text_align || 'left';
+            if (typeof d.brightness === 'number' && d.brightness) {
+                currentBrightness = d.brightness;
+                var br = document.getElementById('brightnessRange');
+                if (br) br.value = d.brightness;
+                var bv = document.getElementById('brightnessValue');
+                if (bv) bv.textContent = d.brightness;
+            }
+            var emb = srEmbedFrame();
+            if (emb) emb.addEventListener('load', srPushToEmbed);
+            srPushToEmbed();
+        })
+        .catch(function () {});
+}
+
+function srFontFamilyCss(val) {
+    return val === 'serif' ? '"Songti SC", "SimSun", serif'
+         : val === 'sans' ? '"PingFang SC", "Microsoft YaHei", sans-serif'
+         : val === 'kai' ? '"Kaiti SC", "KaiTi", "STKaiti", serif'
+         : '';
+}
+
+// ===== B06 把排版参数转发给内嵌阅读器（EPUB/PDF iframe） =====
+// EPUB 正文渲染在 iframe 内部，外层 CSS 与 CSS 变量都够不着 —— 不转发的话，
+// 用户在设置面板里拖字号 / 行距 / 亮度「看起来完全没反应」。
+function srEmbedFrame() {
+    return document.getElementById('srEmbedFrame');
+}
+function srPushToEmbed() {
+    var f = srEmbedFrame();
+    if (!f || !f.contentWindow) return;
+    var fs = document.getElementById('fontSizeRange');
+    var ls = document.getElementById('lineSpacingRange');
+    var ff = document.getElementById('fontFamilySelect');
+    try {
+        f.contentWindow.postMessage({
+            type: 'sr-embed-settings',
+            font_size: fs ? parseFloat(fs.value) : DEFAULT_FONT_SIZE,
+            line_spacing: ls ? parseFloat(ls.value) : DEFAULT_LINE_SPACING,
+            brightness: currentBrightness,
+            font_family: (ff && ff.value) || '',
+            theme: (document.documentElement.style.getPropertyValue('--theme') || 'default').trim() || 'default'
+        }, window.location.origin);
+    } catch (e) {}
+}
 var DEFAULT_MARGIN = 30;
 var currentPageColor = '';
 var currentImageHide = false;
@@ -800,6 +1128,19 @@ function loadContent() {
         .then(function(res) { return res.text(); })
         .then(function(text) {
             fullText = cleanText(text);
+            var _srBad = (text.split('\uFFFD').length - 1);
+            if (!fullText || fullText.trim() === '') {
+                content.innerHTML = '<div style="padding:48px 20px;text-align:center;color:#888;line-height:2;">'
+                    + '📄<br>文件为空或内容无法解析<br>'
+                    + '<a href="/api/read/' + currentBookId + '" download style="color:#4a90d9;">下载原文件查看</a></div>';
+                return;
+            }
+            if (_srBad > Math.max(10, text.length / 20)) {
+                content.innerHTML = '<div style="padding:48px 20px;text-align:center;color:#c33;line-height:2;">'
+                    + '⚠️ 文件编码无法识别（疑似非文本文件）<br>'
+                    + '<a href="/api/read/' + currentBookId + '" download style="color:#4a90d9;">下载原文件查看</a></div>';
+                return;
+            }
             content.textContent = fullText;
             buildToc();
             loadUserSettings();
@@ -906,6 +1247,18 @@ function loadUserSettings() {
             var bt = document.getElementById('bgTextureSelect'); if (bt) bt.value = currentBgTexture;
             applyBgTexture();
             var cpc = document.getElementById('customPageColor'); if (cpc && currentPageColor) cpc.value = currentPageColor;
+            // #153 / #146 / #162 文字颜色 / 强调色 / 自定义样式
+            currentTextColor = data.text_color || '';
+            var tcs = document.getElementById('textColorSelect'); if (tcs) tcs.value = currentTextColor;
+            var ctc = document.getElementById('customTextColor'); if (ctc && currentTextColor) ctc.value = currentTextColor;
+            applyTextColor();
+            currentAccent = data.accent_color || '';
+            var acs = document.getElementById('accentColorSelect'); if (acs) acs.value = currentAccent;
+            var cac = document.getElementById('customAccentColor'); if (cac && currentAccent) cac.value = currentAccent;
+            applyAccent();
+            currentCustomCss = data.custom_css || '';
+            var cci = document.getElementById('customCssInput'); if (cci) cci.value = currentCustomCss;
+            applyCustomCss();
             // 阅读模式（滚动/翻页）本地记忆 + 选中菜单绑定（Batch2）
             var rm = document.getElementById('readModeSelect');
             var mode = 'scroll';
@@ -931,8 +1284,30 @@ function resolveTheme(theme) {
     } catch (e) { return 'default'; }
 }
 
+var SR_PRESETS = {
+  default: {fontSize:17,lineSpacing:2.0,textColor:'',accentColor:'',pageColor:'',brightness:100,bgTexture:''},
+  eye: {fontSize:17,lineSpacing:2.0,textColor:'#2d5016',accentColor:'#3fa27a',pageColor:'#d4edda',brightness:100,bgTexture:''},
+  paper: {fontSize:17,lineSpacing:2.1,textColor:'#4a3728',accentColor:'#9b6bd6',pageColor:'#f5e6c8',brightness:100,bgTexture:'paper'},
+  midnight: {fontSize:17,lineSpacing:2.0,textColor:'#cfd8e3',accentColor:'#5b8def',pageColor:'#1a1a2e',brightness:90,bgTexture:''}
+};
+function applyPreset(name) {
+  var p = SR_PRESETS[name]; if (!p) return;
+  var f = document.getElementById('fontSizeRange'); if (f) { f.value = p.fontSize; updateFontSize(p.fontSize); }
+  var ls = document.getElementById('lineSpacingRange'); if (ls) { ls.value = p.lineSpacing; updateLineSpacing(p.lineSpacing); }
+  var pc = document.getElementById('pageColorSelect'); if (pc) { pc.value = p.pageColor || ''; updatePageColor(p.pageColor || ''); }
+  var tc = document.getElementById('textColorSelect'); if (tc) { tc.value = p.textColor || ''; updateTextColor(p.textColor || ''); }
+  var ac = document.getElementById('accentColorSelect'); if (ac) { ac.value = p.accentColor || ''; updateAccent(p.accentColor || ''); }
+  var br = document.getElementById('brightnessRange'); if (br) { br.value = p.brightness; updateBrightness(p.brightness); }
+  var bg = document.getElementById('bgTextureSelect'); if (bg) { bg.value = p.bgTexture || ''; updateBgTexture(p.bgTexture || ''); }
+  saveSettings();
+  showToast('已套用主题：' + ({default:'默认',eye:'护眼',paper:'羊皮纸',midnight:'午夜'}[name] || name), 'success');
+}
 function applyTheme(theme) {
-    document.body.className = '';
+    // 只摘掉主题类：原先的 className = '' 会把 zen-mode / immersive 等状态类一起抹掉，
+    // 导致「禅模式中切主题」界面直接错乱（B04 修）
+    ['default-theme', 'dark-theme', 'light-theme', 'green-theme'].forEach(function(c) {
+        document.body.classList.remove(c);
+    });
     var effective = resolveTheme(theme);
     if (effective !== 'default' && effective !== 'light') {
         document.body.classList.add(effective + '-theme');
@@ -956,19 +1331,17 @@ function applyTheme(theme) {
     var sw = document.getElementById('autoThemeToggle');
     if (sw) sw.checked = (theme === 'auto');
     if (currentPageColor) applyPageColor();
+    if (currentTextColor) applyTextColor();
     applyBrightness();
     applyBgTexture();
+    srPushToEmbed();
 }
 
 // #142 手动开关「跟随系统主题」
 function toggleAutoTheme(enabled) {
     var next = enabled ? 'auto' : 'default';
     applyTheme(next);
-    fetch('/api/user/theme', {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({theme: next})
-    });
+    saveSettings();
 }
 
 // #142 系统深浅色变化时实时跟随
@@ -990,11 +1363,7 @@ function toggleTheme() {
     var idx = themes.indexOf(current);
     var next = themes[(idx + 1) % themes.length];
     applyTheme(next);
-    fetch('/api/user/theme', {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({theme: next})
-    });
+    saveSettings();
 }
 
 function updateFontSize(val) {
@@ -1004,6 +1373,8 @@ function updateFontSize(val) {
     var content = document.getElementById('txtContent');
     if (content) content.style.fontSize = val + 'px';
     srLayoutSoon();
+    srSaveSettingsSoon();
+    srPushToEmbed();
 }
 
 function updateLineSpacing(val) {
@@ -1013,6 +1384,8 @@ function updateLineSpacing(val) {
     var content = document.getElementById('txtContent');
     if (content) content.style.lineHeight = val;
     srLayoutSoon();
+    srSaveSettingsSoon();
+    srPushToEmbed();
 }
 
 function updateMargin(val) {
@@ -1022,19 +1395,19 @@ function updateMargin(val) {
 }
 
 function updateFontFamily(val) {
-    var ff = val === 'serif' ? '"Songti SC", "SimSun", serif'
-            : val === 'sans' ? '"PingFang SC", "Microsoft YaHei", sans-serif'
-            : val === 'kai' ? '"Kaiti SC", "KaiTi", "STKaiti", serif'
-            : '';
+    var ff = srFontFamilyCss(val);
     var content = document.getElementById('txtContent');
     if (content) content.style.fontFamily = ff;
     document.documentElement.style.setProperty('--font-family', ff);
     srLayoutSoon();
+    srSaveSettingsSoon();
+    srPushToEmbed();
 }
 function updateTextAlign(val) {
     var content = document.getElementById('txtContent');
     if (content) content.style.textAlign = val;
     document.documentElement.style.setProperty('--text-align', val);
+    srSaveSettingsSoon();
 }
 function applyPageColor() {
     if (!currentPageColor) return;
@@ -1091,6 +1464,93 @@ function updateBgTexture(v) {
     applyBgTexture();
     saveSettings();
 }
+
+// ===== #153 阅读页文字颜色自定义 =====
+var currentTextColor = '';
+function applyTextColor() {
+    var content = document.getElementById('txtContent');
+    if (!currentTextColor) return;
+    document.documentElement.style.setProperty('--text-color', currentTextColor);
+    if (content) content.style.color = currentTextColor;
+}
+function updateTextColor(v) {
+    currentTextColor = v || '';
+    if (currentTextColor) {
+        applyTextColor();
+    } else {
+        // 回到「跟随主题」：让主题把 --text-color 写回去
+        var t = document.documentElement.style.getPropertyValue('--theme') || 'default';
+        if (typeof applyTheme === 'function') applyTheme(t.trim() || 'default');
+    }
+    var cs = document.getElementById('textColorSelect'); if (cs) cs.value = currentTextColor;
+    var cc = document.getElementById('customTextColor'); if (cc && currentTextColor) cc.value = currentTextColor;
+    saveSettings();
+}
+
+// ===== #146 阅读页强调色自定义 =====
+var currentAccent = '';
+function applyAccent() {
+    var root = document.documentElement;
+    if (currentAccent) {
+        root.style.setProperty('--primary', currentAccent);
+    } else {
+        root.style.removeProperty('--primary');   // 交回 base.html 的 :root 默认值
+    }
+}
+function updateAccent(v) {
+    currentAccent = v || '';
+    applyAccent();
+    var as = document.getElementById('accentColorSelect'); if (as) as.value = currentAccent;
+    var ac = document.getElementById('customAccentColor'); if (ac && currentAccent) ac.value = currentAccent;
+    saveSettings();
+}
+
+// ===== #162 阅读页自定义 CSS =====
+var currentCustomCss = '';
+var SR_CSS_LIMIT = 4000;
+function applyCustomCss() {
+    var el = document.getElementById('srUserCss');
+    if (!el) {
+        el = document.createElement('style');
+        el.id = 'srUserCss';
+        document.head.appendChild(el);
+    }
+    el.textContent = currentCustomCss || '';
+}
+function srSanitizeCss(raw) {
+    var css = String(raw || '').slice(0, SR_CSS_LIMIT);
+    var low = css.toLowerCase();
+    var bad = ['</style', '<style', '</script', '<script', '<iframe', '<link', '<object', '<embed', 'javascript:', 'expression(', '@import'];
+    for (var i = 0; i < bad.length; i++) {
+        var b = bad[i];
+        while (low.indexOf(b) !== -1) {
+            var k = low.indexOf(b);
+            css = css.slice(0, k) + css.slice(k + b.length);
+            low = css.toLowerCase();
+        }
+    }
+    return css;
+}
+function applyCustomCssInput() {
+    var ta = document.getElementById('customCssInput');
+    if (!ta) return;
+    var raw = ta.value || '';
+    if (raw.length > SR_CSS_LIMIT) {
+        raw = raw.slice(0, SR_CSS_LIMIT);
+        ta.value = raw;
+        showToast('⚠️ 自定义样式已截断到 ' + SR_CSS_LIMIT + ' 字符', 'info');
+    }
+    currentCustomCss = srSanitizeCss(raw);
+    applyCustomCss();
+    saveSettings();
+}
+function clearCustomCss() {
+    var ta = document.getElementById('customCssInput');
+    if (ta) ta.value = '';
+    currentCustomCss = '';
+    applyCustomCss();
+    saveSettings();
+}
 function jumpToPercent() {
     var inp = document.getElementById('jumpPercent');
     if (!inp) return;
@@ -1121,6 +1581,17 @@ document.addEventListener('click', function(e) {
 });
 document.addEventListener('click', function(e) {
     if (e.target && e.target.closest && e.target.closest('#txtContent')) onLinkClick(e);
+});
+// #679 双击翻页（桌面端）：双击正文区翻页；图片/链接/按钮/表单/正在选词时不触发，避免与放大/选中冲突
+document.addEventListener('dblclick', function(e) {
+    var t = e.target;
+    if (!t || !t.closest) return;
+    if (!(t.closest('#txtContent') || t.closest('#readerContent') || t.closest('#epubViewer') || t.closest('#pdfCanvas'))) return;
+    if (t.closest('a') || t.closest('button') || t.closest('input') || t.closest('select') || t.closest('textarea') || t.tagName === 'IMG') return;
+    if (window.getSelection && String(window.getSelection()).trim().length) return;
+    var leftHalf = (e.clientX < window.innerWidth * 0.5);
+    if (srPaginate()) { srGoPage(srCurrentPage() + (leftHalf ? -1 : 1)); }
+    else { pageScroll(leftHalf ? -1 : 1); }
 });
 
 // ===== 弹出菜单定位兜底：坐标缺失/越界时不再跑到页面左下角 =====
@@ -1372,6 +1843,8 @@ function updateBrightness(val) {
     if (v) v.value = currentBrightness;
     if (t) t.textContent = currentBrightness;
     applyBrightness();
+    srSaveSettingsSoon();
+    srPushToEmbed();
 }
 function applyBrightness() {
     var content = document.getElementById('txtContent');
@@ -1433,6 +1906,11 @@ function resetSettings() {
     currentBrightness = 100;
     currentBgTexture = '';
     var bt = document.getElementById('bgTextureSelect'); if (bt) bt.value = '';
+    currentTextColor = ''; currentAccent = ''; currentCustomCss = '';
+    var tcs = document.getElementById('textColorSelect'); if (tcs) tcs.value = '';
+    var acs = document.getElementById('accentColorSelect'); if (acs) acs.value = '';
+    var cci = document.getElementById('customCssInput'); if (cci) cci.value = '';
+    applyAccent(); applyCustomCss();
     var cpc = document.getElementById('customPageColor'); if (cpc) cpc.value = '#f5f0eb';
     var br = document.getElementById('brightnessRange'); if (br) br.value = 100;
     var bv = document.getElementById('brightnessValue'); if (bv) bv.textContent = 100;
@@ -1452,16 +1930,45 @@ function saveSettings() {
         page_color: currentPageColor,
         image_hide: currentImageHide,
         brightness: currentBrightness,
-        bg_texture: currentBgTexture
+        bg_texture: currentBgTexture,
+        text_color: currentTextColor,
+        accent_color: currentAccent,
+        custom_css: currentCustomCss
     };
+    // 合并连续改动：快速连点设置时只把「最后一次的完整状态」发出去。
+    // 否则多个 fire-and-forget 请求到达顺序不定，旧值可能后到并覆盖新值（实测踩到过）。
+    srLastPending = data;
+    if (srSaveTimer) clearTimeout(srSaveTimer);
+    srSaveTimer = setTimeout(function() { srSaveTimer = null; srPushSettings(srLastPending); }, 260);
+}
+
+var srSaveTimer = null;
+var srLastPending = null;
+function srPushSettings(data) {
+    if (!data) return;
     fetch('/api/user/theme', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
         body: JSON.stringify(data)
     }).then(function(r) { return r.json(); }).then(function(res) {
         if (res.success) showToast('✅ 设置已保存', 'success');
-    });
+    }).catch(function() {});
 }
+// 关页面/切后台时把还没发出的最后一次改动补上，避免丢设置
+window.addEventListener('pagehide', function() {
+    if (!srSaveTimer || !srLastPending) return;
+    clearTimeout(srSaveTimer);
+    srSaveTimer = null;
+    try {
+        fetch('/api/user/theme', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(srLastPending),
+            keepalive: true
+        });
+    } catch (e) {}
+    srLastPending = null;
+});
 
 function toggleSettings() {
     document.getElementById('settingsPanel').classList.toggle('show');
@@ -1741,8 +2248,15 @@ function updatePositionDisplay() {
     var n = currentChapterIndex();
     var ch = chapters[n];
     var name = ch ? (ch.title || '') : '';
-    el.textContent = '第 ' + (n + 1) + '/' + chapters.length + ' 章'
-                   + (name ? ' · ' + name.slice(0, 14) : '');
+    var txt = '第 ' + (n + 1) + '/' + chapters.length + ' 章'
+            + (name ? ' · ' + name.slice(0, 14) : '');
+    // #94 页码显示（当前页/总页数）：只在分页模式且确实多于 1 页时追加；
+    // 滚动模式没有「页」的概念，硬加会误导。
+    if (srPaginate()) {
+        var total = srPageCount();
+        if (total > 1) txt += ' · 第 ' + Math.min(total, srCurrentPage() + 1) + '/' + total + ' 页';
+    }
+    el.textContent = txt;
     el.title = name || '';
 }
 function toggleImmersive(enabled) {
@@ -2081,8 +2595,7 @@ document.getElementById('readerContent').addEventListener('wheel', function(e) {
     fRange.value = fv; updateFontSize(fv);
     var lv = Math.max(1.2, Math.min(3.0, parseFloat(lRange.value) + (dir > 0 ? 0.1 : -0.1)));
     lRange.value = lv.toFixed(1); updateLineSpacing(lv);
-    clearTimeout(window.__zoomSaveTimer);
-    window.__zoomSaveTimer = setTimeout(function(){ saveSettings(); }, 400);
+    // 保存由 updateFontSize / updateLineSpacing 内的统一防抖负责，不再重复发请求
 }, { passive: false });
 
 // ===== 触摸手势（#114 左右滑动切章 / #121 双指捏合调字号） =====
@@ -2126,11 +2639,9 @@ document.getElementById('readerContent').addEventListener('wheel', function(e) {
     }, { passive: false });
 
     c.addEventListener('touchend', function(e) {
-        // 捏合结束：松手 400ms 后保存（与 Ctrl+滚轮一致）
+        // 捏合结束：保存由 updateFontSize 内的统一防抖负责
         if (pinchStart > 0 && e.touches.length < 2) {
             pinchStart = 0;
-            clearTimeout(window.__pinchSaveTimer);
-            window.__pinchSaveTimer = setTimeout(function() { saveSettings(); }, 400);
             return;
         }
         if (moved || !e.changedTouches || !e.changedTouches.length) { moved = false; return; }
@@ -2146,21 +2657,44 @@ document.getElementById('readerContent').addEventListener('wheel', function(e) {
     }, { passive: true });
 })();
 
+// ===== #115 键盘快捷键（补全）：翻页 / 导航 / 显示 / 面板 =====
 document.addEventListener('keydown', function(e) {
-    if (e.key === 'Escape') { toggleToc(true); toggleSearch(true); toggleBookmarks(true); toggleZen(false); }
+    if (e.key === 'Escape') {
+        toggleKbdHelp(true);
+        toggleToc(true); toggleSearch(true); toggleBookmarks(true); toggleZen(false);
+    }
     if (e.target && /INPUT|TEXTAREA/.test(e.target.tagName)) return;
-    if (e.key === 'z' || e.key === 'Z') { toggleZen(); e.preventDefault(); }
-    if (e.key === 'd' || e.key === 'D') { toggleTheme(); e.preventDefault(); }
-    // 只接管左右键与翻页键，上下键保留原生滚动（否则长文里没法微调）
-    if (e.key === 'ArrowLeft' || e.key === 'PageUp') {
+
+    // 翻页：左右键 / 翻页键 / 空格（Shift+空格回退）
+    if (e.key === 'ArrowLeft' || e.key === 'PageUp' || (e.key === ' ' && e.shiftKey)) {
+        if (srAutoActive()) srStopAutoScroll();
         if (srPaginate()) srGoPage(srCurrentPage() - 1); else pageScroll(-1);
         e.preventDefault();
-    }
-    if (e.key === 'ArrowRight' || e.key === 'PageDown') {
+    } else if (e.key === 'ArrowRight' || e.key === 'PageDown' || e.key === ' ') {
+        // 焦点在按钮/链接上时空格仍是「按下该元素」，不抢
+        if (e.key === ' ' && e.target && /BUTTON|A/.test(e.target.tagName)) return;
+        if (srAutoActive()) srStopAutoScroll();
         if (srPaginate()) srGoPage(srCurrentPage() + 1); else pageScroll(1);
         e.preventDefault();
     }
+    // 首尾跳转
+    if (e.key === 'Home') { jumpToProgress(0, true); e.preventDefault(); }
+    if (e.key === 'End') { jumpToProgress(1, true); e.preventDefault(); }
     if (e.key === 'f' && (e.ctrlKey || e.metaKey)) { toggleSearch(); e.preventDefault(); }
+    // 带 Ctrl/Cmd/Alt 的组合键（除上面两个）不参与单键快捷键，避免 Ctrl+Z / Ctrl+D 误触发
+    if (e.ctrlKey || e.metaKey || e.altKey) return;
+
+    if (e.key === 'z' || e.key === 'Z') { toggleZen(); e.preventDefault(); }
+    else if (e.key === 'd' || e.key === 'D') { toggleTheme(); e.preventDefault(); }
+    else if (e.key === 't' || e.key === 'T') { toggleToc(); e.preventDefault(); }
+    else if (e.key === 's' || e.key === 'S') { toggleSettings(); e.preventDefault(); }
+    else if (e.key === 'm' || e.key === 'M') { cycleReadMode(); e.preventDefault(); }
+    else if (e.key === 'p' || e.key === 'P') { toggleAutoScroll(); e.preventDefault(); }
+    else if (e.key === '[') { prevChapter(); e.preventDefault(); }
+    else if (e.key === ']') { nextChapter(); e.preventDefault(); }
+    else if (e.key === '+' || e.key === '=') { changeFontSize(1); srToastFontSize(); e.preventDefault(); }
+    else if (e.key === '-' || e.key === '_') { changeFontSize(-1); srToastFontSize(); e.preventDefault(); }
+    else if (e.key === '?' || e.key === 'h' || e.key === 'H') { toggleKbdHelp(); e.preventDefault(); }
 });
 
 // ===== 禅模式：沉浸 + 全屏二合一（隐藏导航/页脚/工具栏/面板，正文收窄居中） =====
@@ -2261,6 +2795,165 @@ function maybeShowRecommendations() {
         showToast('📚 已读完，下面为你推荐了几本');
     }
 }
+
+// ===== B04 阅读页交互 =====
+// #132 快捷键与手势浮层 / #133+#134 首次操作指引 / #119 自动滚动 / #120 翻页按钮位置
+function srMotionReduced() {
+    try { return window.matchMedia('(prefers-reduced-motion: reduce)').matches; } catch (e) { return false; }
+}
+
+// ---- #132 快捷键与手势浮层 ----
+function toggleKbdHelp(forceClose) {
+    var p = document.getElementById('kbdPanel');
+    if (!p) return;
+    if (forceClose) { p.classList.remove('show'); return; }
+    p.classList.toggle('show');
+}
+(function bindKbdPanel() {
+    var p = document.getElementById('kbdPanel');
+    if (p) p.addEventListener('click', function(e) { if (e.target === p) p.classList.remove('show'); });
+})();
+
+// ---- #133/#134 首次进入的操作指引（一次性，localStorage 记忆） ----
+var SR_GUIDE_KEY = 'sr_reader_guide_seen';
+var srGuideTimer = null;
+function srHideGuide() {
+    var g = document.getElementById('readerGuide');
+    if (g) g.classList.remove('show');
+}
+function srDismissGuide() {
+    if (srGuideTimer) { clearTimeout(srGuideTimer); srGuideTimer = null; }
+    try { localStorage.setItem(SR_GUIDE_KEY, '1'); } catch (e) {}
+    srHideGuide();
+}
+function srOpenGuideHelp() { srDismissGuide(); toggleKbdHelp(); }
+function maybeShowReaderGuide() {
+    var g = document.getElementById('readerGuide');
+    if (!g) return;
+    // 只对 TXT（手势/翻页都作用在正文容器上）提示；EPUB/PDF 由各自阅读器接管
+    if (!document.getElementById('txtContent')) return;
+    var seen = '0';
+    try { seen = localStorage.getItem(SR_GUIDE_KEY) || '0'; } catch (e) {}
+    if (seen === '1') return;
+    g.classList.add('show');
+    srGuideTimer = setTimeout(function() { srDismissGuide(); }, 12000);
+}
+
+// ---- #119 自动滚动 / 自动翻页 ----
+var AUTO_SCROLL_SPEED = { 1: { px: 20, page: 15000 }, 2: { px: 38, page: 9000 }, 3: { px: 66, page: 6000 } };
+var AUTO_SCROLL_LABEL = { 1: '慢', 2: '中', 3: '快' };
+var srAutoScrollTimer = null;
+var srAutoScrollSpeed = 2;
+function srAutoActive() { return !!srAutoScrollTimer; }
+function srAutoPill(show, text) {
+    var el = document.getElementById('autoPill');
+    if (!el) return;
+    if (text) {
+        var t = el.querySelector('.auto-pill-text');
+        if (t) t.textContent = text;
+    }
+    el.classList.toggle('show', !!show);
+}
+function toggleAutoScroll(force, silent) {
+    var on = (typeof force === 'boolean') ? force : !srAutoActive();
+    if (on) srStartAutoScroll(silent); else srStopAutoScroll(silent);
+}
+function srStartAutoScroll(silent) {
+    if (srAutoActive()) return;
+    if (!document.getElementById('txtContent')) { showToast('该格式暂不支持自动滚动', 'info'); return; }
+    var cfg = AUTO_SCROLL_SPEED[srAutoScrollSpeed] || AUTO_SCROLL_SPEED[2];
+    var sw = document.getElementById('autoScrollToggle');
+    if (sw) sw.checked = true;
+    srAutoPill(true, '自动滚动 · ' + AUTO_SCROLL_LABEL[srAutoScrollSpeed] + '（点此暂停）');
+    if (srPaginate()) {
+        srAutoScrollTimer = setInterval(function() {
+            if (srCurrentPage() >= srPageCount() - 1) {
+                srStopAutoScroll(true);
+                showToast('已到最后一页，自动翻页已停止');
+                return;
+            }
+            srGoPage(srCurrentPage() + 1, srMotionReduced());
+        }, cfg.page);
+    } else {
+        var acc = 0;
+        // 直接写 scrollTop（不经平滑滚动），既跟手又天然符合「减少动态效果」
+        srAutoScrollTimer = setInterval(function() {
+            var c = document.getElementById('readerContent');
+            if (!c) return;
+            var max = c.scrollHeight - c.clientHeight;
+            if (max <= 0 || c.scrollTop >= max - 1) {
+                srStopAutoScroll(true);
+                showToast('已到结尾，自动滚动已停止');
+                return;
+            }
+            acc += cfg.px * 0.05;
+            var step = Math.floor(acc);
+            if (step > 0) { c.scrollTop = c.scrollTop + step; acc -= step; }
+        }, 50);
+    }
+    if (!silent) showToast('▶ 自动滚动已开始（按 P 或点右下角暂停）');
+}
+function srStopAutoScroll(silent) {
+    if (srAutoScrollTimer) { clearInterval(srAutoScrollTimer); srAutoScrollTimer = null; }
+    var sw = document.getElementById('autoScrollToggle');
+    if (sw) sw.checked = false;
+    srAutoPill(false);
+    if (!silent) showToast('⏸ 自动滚动已暂停');
+}
+function setAutoScrollSpeed(v) {
+    var n = parseInt(v, 10);
+    srAutoScrollSpeed = AUTO_SCROLL_SPEED[n] ? n : 2;
+    var sel = document.getElementById('autoSpeedSelect');
+    if (sel) sel.value = String(srAutoScrollSpeed);
+    try { localStorage.setItem('sr_auto_speed', String(srAutoScrollSpeed)); } catch (e) {}
+    if (srAutoActive()) { srStopAutoScroll(true); srStartAutoScroll(true); }
+}
+function initAutoScrollPrefs() {
+    var v = '2';
+    try { v = localStorage.getItem('sr_auto_speed') || '2'; } catch (e) {}
+    setAutoScrollSpeed(v);
+}
+// 用户一动（滚轮 / 触摸 / 拖选）就暂停，避免和手动操作打架
+(function bindAutoPause() {
+    var c = document.getElementById('readerContent');
+    if (!c) return;
+    ['wheel', 'touchstart', 'mousedown'].forEach(function(ev) {
+        c.addEventListener(ev, function() { if (srAutoActive()) srStopAutoScroll(); }, { passive: true });
+    });
+})();
+
+// ---- #120 翻页按钮位置自定义（存在 documentElement 上，避免被 applyTheme 清 body class 波及） ----
+var SR_PAGENAV_KEY = 'sr_pagenav_pos';
+function setPageNavPos(pos) {
+    if (['both', 'left', 'right', 'hide'].indexOf(pos) < 0) pos = 'both';
+    document.documentElement.setAttribute('data-pagenav', pos);
+    var sel = document.getElementById('pageNavSelect');
+    if (sel) sel.value = pos;
+    try { localStorage.setItem(SR_PAGENAV_KEY, pos); } catch (e) {}
+}
+function initPageNavPos() {
+    var pos = 'both';
+    try { pos = localStorage.getItem(SR_PAGENAV_KEY) || 'both'; } catch (e) {}
+    setPageNavPos(pos);
+}
+
+// ---- M 键：滚动 / 翻页模式互切 ----
+function cycleReadMode() {
+    if (!document.getElementById('txtContent')) { showToast('该格式暂不支持切换阅读模式', 'info'); return; }
+    var next = srPaginate() ? 'scroll' : 'paginate';
+    var sel = document.getElementById('readModeSelect');
+    if (sel) sel.value = next;
+    applyReadMode(next);
+    showToast(next === 'paginate' ? '📖 已切到翻页模式' : '📜 已切到滚动模式');
+}
+function srToastFontSize() {
+    var el = document.getElementById('fontSizeRange');
+    if (el) showToast('字号 ' + el.value);
+}
+
+initPageNavPos();
+initAutoScrollPrefs();
+maybeShowReaderGuide();
 
 </script>
 {% endblock %}

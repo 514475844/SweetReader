@@ -8,12 +8,18 @@
         <h3>导入书籍</h3>
         <p class="hint">上传书籍文件，导入后默认归入「导入」分类；若文件名或压缩包子目录命中已有分类，会自动归入对应分类。支持单文件与 <b>.zip</b> 压缩包批量导入，会自动解压。可执行文件会被拒绝。</p>
         <div class="fmt-list">支持格式：
-            <span class="fmt-chip">.txt</span><span class="fmt-chip">.epub</span><span class="fmt-chip">.md</span><span class="fmt-chip">.pdf</span><span class="fmt-chip">.mobi</span><span class="fmt-chip">.azw3</span><span class="fmt-chip">.html</span><span class="fmt-chip">.log</span><span class="fmt-chip">.cn</span><span class="fmt-chip">.zip（批量）</span>
+            {% for f in import_formats %}<span class="fmt-chip" title="{{ f.note }}">{{ f.ext }}{% if f.kind == 'archive' %}（批量）{% endif %}</span>{% endfor %}
         </div>
         <form id="importForm" enctype="multipart/form-data">
-            <input type="file" name="files" multiple accept=".txt,.epub,.md,.log,.cn,.pdf,.mobi,.azw3,.zip,.html">
+            <input type="file" name="files" multiple accept="{{ import_accept }}" onchange="updateImpFileList()">
             <button type="button" class="btn btn-primary" onclick="doImport()">上传并导入</button>
+            <button type="button" class="btn btn-sm btn-outline" onclick="clearImpFiles()">清空</button>
         </form>
+        <div id="impFileList" class="imp-file-list"></div>
+        <div class="imp-opts">
+            <label><input type="checkbox" id="impAutoCat"> 为压缩包里的新目录自动创建分类</label>
+            <span class="imp-cap">默认归入「导入」分类；单次最多新建 20 个</span>
+        </div>
         <div id="importProgressWrap" class="imp-progress" style="display:none;">
             <div class="imp-bar"><div class="imp-fill" id="importProgressFill"></div></div>
             <span class="imp-pct" id="importProgressPct">0%</span>
@@ -38,6 +44,20 @@
             <button class="btn btn-sm btn-outline" onclick="batchDelete()">批量删除</button>
             {% if current_user.is_admin or current_user.can_export %}<a class="btn btn-sm btn-outline" href="/admin/export-meta">导出元数据CSV</a>{% endif %}
         </div>
+        {% if current_user.is_admin or current_user.can_export %}
+        <div class="exp-opts" style="margin:0 0 10px;">
+            <span style="font-size:13px;color:#888;">导出所选（最多 100 本）：</span>
+            <label><input type="checkbox" id="expMeta" checked> 含元数据 CSV</label>
+            <label><input type="checkbox" id="expCover"> 含封面</label>
+            <button class="btn btn-sm btn-outline" onclick="exportSelected()">打包下载 ZIP</button>
+        </div>
+        <div id="expProgressWrap" class="imp-progress" style="display:none;">
+            <div class="imp-bar"><div class="imp-fill" id="expProgressFill"></div></div>
+            <span class="imp-pct" id="expProgressPct">0%</span>
+            <span class="imp-pct" id="expProgressNote" style="min-width:0;"></span>
+        </div>
+        <div id="expResult" class="result-line"></div>
+        {% endif %}
         <div class="table-wrap">
         <table class="book-table">
             <thead>
@@ -54,6 +74,7 @@
                         {% if current_user.is_admin or current_user.can_export %}<button class="btn btn-sm btn-outline" onclick="doExport({{ b.id }})">导出</button>{% endif %}
                         {% if current_user.is_admin or current_user.can_manage_books %}<button class="btn btn-sm btn-outline" onclick="doConvert({{ b.id }})">转编码</button>{% endif %}
                         {% if current_user.is_admin or current_user.can_manage_books %}<button class="btn btn-sm btn-outline" onclick="editBook({{ b.id }})">编辑</button>{% endif %}
+                        {% if current_user.is_admin or current_user.can_manage_books %}<button class="btn btn-sm btn-outline" data-split-id="{{ b.id }}" data-split-name="{{ (b.title or b.filename) | e }}" onclick="openSplit(this)">拆分</button>{% endif %}
                         {% if current_user.is_admin or current_user.can_manage_books %}<button class="btn btn-sm btn-outline" onclick="deleteBook({{ b.id }}, this)">删除</button>{% endif %}
                     </td>
                 </tr>
@@ -82,6 +103,39 @@
         </div>
         <p class="hint" style="margin-top:8px;">「合并选中」把勾选的书顺序拼成一本书（仅 txt/md，≤20 本），<b>默认保留原件</b>；「扫描失效书籍」列出磁盘文件已丢失的记录（如手动挪走文件后的残留）。</p>
         <div id="toolsResult" style="display:none;"></div>
+    </div>
+
+    <div class="card">
+        <h3>整理工具</h3>
+        <p class="hint">下面四项都<b>只先扫描出方案、不自动改动</b>任何文件与数据；确认无误后再点各自的执行按钮。</p>
+        <div class="tidy-actions">
+            <button class="btn btn-sm btn-outline" onclick="scanRename()">扫描可整理的文件名</button>
+            <button class="btn btn-sm btn-outline" onclick="scanSeries('volume')">查找分册（上下册 / 第N部）</button>
+            <button class="btn btn-sm btn-outline" onclick="scanSeries('chapter')">查找分章（第N章 / 编号）</button>
+            <button class="btn btn-sm btn-outline" onclick="scanAutoTags()">扫描番外与衍生</button>
+        </div>
+        <div id="tidyResult"></div>
+    </div>
+
+    <div id="splitModal" class="modal-mask" style="display:none;">
+        <div class="modal-box">
+            <h3>拆分书籍</h3>
+            <p class="hint" id="splitBookName"></p>
+            <input type="hidden" id="splitId">
+            <label>拆分方式</label>
+            <select id="splitMode">
+                <option value="chapter">按章节标题（第N章 / Chapter N）</option>
+                <option value="size">按长度等分（在换行处切）</option>
+            </select>
+            <label>拆成几份（2~50）</label>
+            <input type="number" id="splitParts" value="2" min="2" max="50">
+            <div id="splitPreview" class="split-preview"></div>
+            <div class="modal-actions">
+                <button class="btn btn-outline" onclick="previewSplit()">预览方案</button>
+                <button class="btn btn-primary" onclick="doSplit()">确认拆分</button>
+                <button class="btn btn-outline" onclick="closeSplit()">取消</button>
+            </div>
+        </div>
     </div>
 
     <div id="editModal" class="modal-mask" style="display:none;">
@@ -147,9 +201,99 @@ body.dark-theme .admin-books .dup-group { border-color: #34373e; }
 .admin-books .imp-list li { margin-bottom: 3px; }
 .admin-books .imp-author { margin-left: 8px; color: #2f6fd0; }
 .admin-books .imp-type { margin-left: 8px; color: var(--text-light); }
+/* ===== 导入选项 / 失败原因分组 / 批量导出 ===== */
+.admin-books .imp-opts { display: flex; flex-wrap: wrap; gap: 14px; align-items: center; margin-top: 10px; font-size: 13px; color: var(--text-dark); }
+.admin-books .imp-opts label { display: inline-flex; align-items: center; gap: 6px; cursor: pointer; }
+.admin-books .imp-opts .imp-cap { color: var(--text-light); font-size: 12px; }
+.admin-books .imp-skip { margin-top: 9px; display: flex; flex-direction: column; gap: 4px; }
+.admin-books .imp-skip-row { display: flex; align-items: baseline; gap: 8px; font-size: 12.5px; }
+.admin-books .imp-skip-count { min-width: 44px; font-weight: 600; color: #c0392b; }
+.admin-books .imp-skip-names { color: var(--text-light); overflow-wrap: anywhere; }
+.admin-books .imp-warn { margin-top: 9px; font-size: 12.5px; color: #a8741a; overflow-wrap: anywhere; }
+.admin-books .imp-note { margin-top: 9px; font-size: 12.5px; color: #2f6fd0; overflow-wrap: anywhere; }
+.admin-books .imp-created { display: inline-flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.admin-books .imp-fade-in { animation: impFadeIn .18s ease-out; }
+@keyframes impFadeIn { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) { .admin-books .imp-fade-in { animation: none; } }
+.admin-books .exp-opts { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; font-size: 13px; color: var(--text-dark); }
+.admin-books .exp-opts label { display: inline-flex; align-items: center; gap: 6px; cursor: pointer; }
+/* ===== 整理工具 ===== */
+.admin-books .tidy-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.admin-books .tidy-scroll { max-height: 320px; overflow: auto; margin-top: 10px; border-radius: 6px; }
+.admin-books .tidy-scroll .book-table th { position: sticky; top: 0; background: #fff; }
+body.dark-theme .admin-books .tidy-scroll .book-table th { background: #23252b; }
+.admin-books .tidy-fade { animation: tidyFadeIn .18s ease-out; }
+.admin-books .split-preview { margin-top: 10px; max-height: 190px; overflow: auto; font-size: 12px; color: var(--text-light); }
+.admin-books .split-preview .imp-list { color: var(--text-dark); }
+@keyframes tidyFadeIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) { .admin-books .tidy-fade { animation: none; } }
+.admin-books .imp-file-list { margin-top: 8px; display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.admin-books .imp-file-head { width: 100%; font-size: 12.5px; color: var(--text-light); margin-bottom: 2px; }
+.admin-books .imp-file-chip { display: inline-flex; align-items: center; gap: 4px; background: #eef2f7; color: var(--text-dark); border-radius: 12px; padding: 2px 6px 2px 10px; font-size: 12.5px; max-width: 240px; animation: impFadeIn .18s ease-out; }
+body.dark-theme .admin-books .imp-file-chip { background: #2f333c; }
+.admin-books .imp-file-chip > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.admin-books .imp-file-x { border: none; background: transparent; color: #c0392b; cursor: pointer; font-size: 15px; line-height: 1; padding: 0 2px; }
+.admin-books .imp-file-x:hover { color: #e74c3c; }
+@media (prefers-reduced-motion: reduce) { .admin-books .imp-file-chip { animation: none; } }
 </style>
 
 <script>
+var __impFiles = [];
+function updateImpFileList() {
+    var input = document.querySelector('#importForm input[type=file]');
+    if (!input) { return; }
+    var dt = new DataTransfer();
+    for (var i = 0; i < input.files.length; i++) { dt.items.add(input.files[i]); }
+    __impFiles = [];
+    for (var j = 0; j < dt.files.length; j++) { __impFiles.push(dt.files[j]); }
+    renderImpFileList();
+}
+function renderImpFileList() {
+    var list = document.getElementById('impFileList');
+    if (!list) { return; }
+    list.innerHTML = '';
+    if (!__impFiles.length) { return; }
+    var head = document.createElement('div');
+    head.className = 'imp-file-head';
+    head.textContent = '已选 ' + __impFiles.length + ' 个文件：';
+    list.appendChild(head);
+    __impFiles.forEach(function(f, idx) {
+        var row = document.createElement('span');
+        row.className = 'imp-file-chip';
+        var name = document.createElement('span');
+        name.textContent = f.name;
+        var x = document.createElement('button');
+        x.type = 'button';
+        x.className = 'imp-file-x';
+        x.textContent = '×';
+        x.title = '移除';
+        x.onclick = function() { __impFiles.splice(idx, 1); rebuildImpInput(); };
+        row.appendChild(name); row.appendChild(x);
+        list.appendChild(row);
+    });
+}
+function rebuildImpInput() {
+    var input = document.querySelector('#importForm input[type=file]');
+    if (!input) { return; }
+    var dt = new DataTransfer();
+    __impFiles.forEach(function(f) { dt.items.add(f); });
+    try { input.files = dt.files; } catch (e) {}
+    renderImpFileList();
+}
+function clearImpFiles() {
+    __impFiles = [];
+    var input = document.querySelector('#importForm input[type=file]');
+    if (input) { try { input.value = ''; } catch (e) {} }
+    var list = document.getElementById('impFileList');
+    if (list) { list.innerHTML = ''; }
+}
+function fallbackCopy(text) {
+    var ta = document.createElement('textarea');
+    ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = '0';
+    document.body.appendChild(ta); ta.select();
+    try { document.execCommand('copy'); } catch (e) {}
+    document.body.removeChild(ta);
+}
 function doImport() {
     var form = document.getElementById('importForm');
     var input = form.querySelector('input[type=file]');
@@ -158,6 +302,8 @@ function doImport() {
         return;
     }
     var fd = new FormData(form);
+    var autoCat = document.getElementById('impAutoCat');
+    fd.append('auto_create_category', autoCat && autoCat.checked ? '1' : '0');
     var wrap = document.getElementById('importProgressWrap');
     var fill = document.getElementById('importProgressFill');
     var pct = document.getElementById('importProgressPct');
@@ -186,24 +332,114 @@ function doImport() {
             el.textContent = '失败：' + ((d && d.message) || '未知错误');
             return;
         }
-        var html = '已导入 ' + d.imported + ' 本';
-        if (d.skipped && d.skipped.length) {
-            html += '，跳过 ' + d.skipped.length + ' 个：'
-                 + d.skipped.map(function(s) {
-                       return escapeHtml(s.name) + '（' + escapeHtml(s.reason) + '）';
-                   }).join('、');
-        }
-        if (d.details && d.details.length) {
-            html += '<ul class="imp-list">';
-            d.details.forEach(function(x) {
-                html += '<li><b>' + escapeHtml(x.title) + '</b>'
-                     + (x.author ? '<span class="imp-author">作者：' + escapeHtml(x.author) + '</span>' : '')
-                     + '<span class="imp-type">' + escapeHtml(x.type) + '</span></li>';
-            });
-            html += '</ul>';
-        }
+        var html = '已导入 <b>' + d.imported + '</b> 本';
+        var skippedTotal = d.skipped_total || 0;
+        if (skippedTotal) { html += '，跳过 ' + skippedTotal + ' 个'; }
         el.innerHTML = html;
-        setTimeout(function() { location.reload(); }, 1600);
+        el.classList.remove('imp-fade-in');
+        void el.offsetWidth;
+        el.classList.add('imp-fade-in');
+
+        // 失败原因按类别分组，带计数与示例文件名，比一长串更好读
+        var summary = d.skipped_summary || [];
+        if (summary.length) {
+            var box = document.createElement('div');
+            box.className = 'imp-skip imp-fade-in';
+            summary.forEach(function(g) {
+                var names = (d.skipped || []).filter(function(x) { return x.code === g.code; })
+                                               .slice(0, 5)
+                                               .map(function(x) { return x.name; });
+                var row = document.createElement('div');
+                row.className = 'imp-skip-row';
+                var c = document.createElement('span');
+                c.className = 'imp-skip-count';
+                c.textContent = g.count + ' 个';
+                var r = document.createElement('span');
+                r.textContent = g.reason;
+                var nm = document.createElement('span');
+                nm.className = 'imp-skip-names';
+                nm.textContent = names.length ? '（如：' + names.join('、') +
+                    (g.count > names.length ? ' 等' : '') + '）' : '';
+                row.appendChild(nm);
+                box.appendChild(row);
+            });
+            el.appendChild(box);
+            var copyBtn = document.createElement('button');
+            copyBtn.type = 'button';
+            copyBtn.className = 'btn btn-sm btn-outline imp-fade-in';
+            copyBtn.textContent = '复制失败清单';
+            copyBtn.style.marginTop = '8px';
+            copyBtn.onclick = function() {
+                var names = (d.skipped || []).map(function(x) { return x.name + ' —— ' + (x.reason || x.code); });
+                if (!names.length) { return; }
+                var text = names.join('；');
+                if (navigator.clipboard && navigator.clipboard.writeText) {
+                    navigator.clipboard.writeText(text).then(function() {
+                        copyBtn.textContent = '已复制 ' + names.length + ' 条';
+                        setTimeout(function() { copyBtn.textContent = '复制失败清单'; }, 1800);
+                    }, function() { fallbackCopy(text); });
+                } else { fallbackCopy(text); }
+            };
+            el.appendChild(copyBtn);
+        }
+
+        // 扩展名与内容不符 / 不在支持清单：给出可读提示
+        var warns = d.warnings || [];
+        if (warns.length) {
+            var w = document.createElement('div');
+            w.className = 'imp-warn imp-fade-in';
+            w.textContent = '提示 ' + (d.warning_total || warns.length) + ' 条：' +
+                warns.slice(0, 3).map(function(x) { return x.name + ' —— ' + x.detail; }).join('；') +
+                ((d.warning_total || warns.length) > 3 ? ' 等' : '');
+            el.appendChild(w);
+        }
+
+        // 自动创建的分类
+        var created = d.created_categories || [];
+        if (created.length) {
+            var note = document.createElement('div');
+            note.className = 'imp-note imp-fade-in';
+            note.textContent = '新建分类 ' + created.length + ' 个';
+            var chips = document.createElement('div');
+            chips.className = 'imp-created';
+            created.forEach(function(c) {
+                var sp = document.createElement('span');
+                sp.className = 'fmt-chip';
+                sp.textContent = c.name;
+                chips.appendChild(sp);
+            });
+            el.appendChild(note); el.appendChild(chips);
+        }
+
+        if (d.details && d.details.length) {
+            var ul = document.createElement('ul');
+            ul.className = 'imp-list imp-fade-in';
+            d.details.forEach(function(x) {
+                var li = document.createElement('li');
+                var b = document.createElement('b');
+                b.textContent = x.title;
+                li.appendChild(b);
+                if (x.author) {
+                    var au = document.createElement('span');
+                    au.className = 'imp-author';
+                    au.textContent = '作者：' + x.author;
+                    li.appendChild(au);
+                }
+                var ty = document.createElement('span');
+                ty.className = 'imp-type';
+                ty.textContent = x.type;
+                li.appendChild(ty);
+                ul.appendChild(li);
+            });
+            var tail = document.createElement('div');
+            tail.className = 'imp-note';
+            if ((d.details_total || 0) > d.details.length) {
+                tail.textContent = '（共导入 ' + d.details_total + ' 本，仅列出前 ' + d.details.length + ' 本）';
+            }
+            el.appendChild(ul);
+            if (tail.textContent) { el.appendChild(tail); }
+        }
+        setTimeout(function() { location.reload(); }, skippedTotal || warns.length ? 3200 : 1600);
     };
     xhr.onerror = function() {
         document.getElementById('importResult').textContent = '导入失败（网络错误）';
@@ -211,6 +447,82 @@ function doImport() {
     xhr.send(fd);
 }
 function doExport(id) { window.location.href = '/api/admin/export/' + id; }
+function selectedIds() {
+    var out = [];
+    document.querySelectorAll('.bsel:checked').forEach(function(c) { out.push(parseInt(c.value, 10)); });
+    return out;
+}
+function exportSelected() {
+    var ids = selectedIds();
+    var res = document.getElementById('expResult');
+    if (!ids.length) { res.textContent = '请先勾选要导出的书籍'; return; }
+    if (ids.length > 100) {
+        res.textContent = '一次最多导出 100 本，当前选了 ' + ids.length + ' 本';
+        return;
+    }
+    var wrap = document.getElementById('expProgressWrap');
+    var fill = document.getElementById('expProgressFill');
+    var pct = document.getElementById('expProgressPct');
+    var note = document.getElementById('expProgressNote');
+    wrap.style.display = 'flex';
+    fill.style.width = '0%';
+    pct.textContent = '0%';
+    note.textContent = '正在打包 ' + ids.length + ' 本…';
+    res.textContent = '';
+
+    var xhr = new XMLHttpRequest();
+    xhr.open('POST', '/api/admin/export-batch');
+    xhr.setRequestHeader('Content-Type', 'application/json');
+    xhr.responseType = 'blob';
+    xhr.onprogress = function(e) {
+        if (e.lengthComputable && e.total) {
+            var p = Math.min(100, Math.round(e.loaded / e.total * 100));
+            fill.style.width = p + '%';
+            pct.textContent = p + '%';
+            note.textContent = formatBytes(e.loaded) + ' / ' + formatBytes(e.total);
+        }
+    };
+    xhr.onload = function() {
+        var ct = xhr.getResponseHeader('Content-Type') || '';
+        if (xhr.status === 200 && ct.indexOf('json') < 0) {
+            fill.style.width = '100%';
+            pct.textContent = '100%';
+            note.textContent = '打包完成';
+            var url = URL.createObjectURL(xhr.response);
+            var a = document.createElement('a');
+            a.href = url;
+            a.download = 'sweetreader_books.zip';
+            document.body.appendChild(a); a.click(); document.body.removeChild(a);
+            setTimeout(function() { URL.revokeObjectURL(url); }, 4000);
+            res.textContent = '已导出 ' + ids.length + ' 本，请查看浏览器下载';
+            return;
+        }
+        // 出错时后端返回 JSON，responseType 是 blob，需要读回文本才能拿到原因
+        var fr = new FileReader();
+        fr.onload = function() {
+            var d = {};
+            try { d = JSON.parse(fr.result); } catch (e) { d = {}; }
+            wrap.style.display = 'none';
+            res.textContent = '导出失败：' + (d.message || ('HTTP ' + xhr.status));
+        };
+        fr.readAsText(xhr.response);
+    };
+    xhr.onerror = function() {
+        wrap.style.display = 'none';
+        res.textContent = '导出失败（网络错误）';
+    };
+    xhr.send(JSON.stringify({
+        book_ids: ids,
+        with_meta: document.getElementById('expMeta').checked,
+        with_cover: document.getElementById('expCover').checked
+    }));
+}
+function formatBytes(n) {
+    if (!n && n !== 0) { return '-'; }
+    if (n < 1024) { return n + ' B'; }
+    if (n < 1024 * 1024) { return (n / 1024).toFixed(1) + ' KB'; }
+    return (n / 1024 / 1024).toFixed(1) + ' MB';
+}
 function doConvert(id) {
     fetch('/api/admin/convert-encoding', {
         method: 'POST',
@@ -501,6 +813,212 @@ function deleteDupIds(ids) {
         alert(msg);
         location.reload();
     }).catch(function(){ alert('网络错误，删除未完成'); });
+}
+// ===== 整理工具（ 文件名规范化 /  分册归组 /  番外标记 /  拆分） =====
+var RENAME_PLAN = [];
+var SERIES_GROUPS = [];
+function tidyBox() { return document.getElementById('tidyResult'); }
+function tidyMsg(msg) { tidyBox().innerHTML = '<p class="hint">' + escapeHtml(msg) + '</p>'; }
+
+function scanRename() {
+    RENAME_PLAN = [];
+    var scanned = 0;
+    function step(off) {
+        tidyMsg('正在扫描文件名… 已查 ' + off + ' 本，命中 ' + RENAME_PLAN.length + ' 条');
+        fetch('/api/admin/books/rename-plan?limit=800&offset=' + off)
+            .then(function(r){ return r.json(); })
+            .then(function(d){
+                if (!d.success) { tidyMsg(d.message || '扫描失败'); return; }
+                RENAME_PLAN = RENAME_PLAN.concat(d.items || []);
+                scanned = d.next_offset || scanned;
+                if (d.has_more && RENAME_PLAN.length < 600) { step(d.next_offset); return; }
+                renderRename(scanned);
+            }).catch(function(){ tidyMsg('扫描失败（网络错误）'); });
+    }
+    step(0);
+}
+function renderRename(scanned) {
+    var b = tidyBox();
+    if (!RENAME_PLAN.length) { tidyMsg('没有需要整理的文件名 ✅'); return; }
+    var h = '<p class="hint">扫描 ' + scanned + ' 本，命中 ' + RENAME_PLAN.length
+          + ' 条（默认全选，可逐条取消）：</p>'
+          + '<div class="tidy-scroll"><table class="book-table"><thead><tr>'
+          + '<th><input type="checkbox" checked onchange="tidyAll(this)"></th>'
+          + '<th>原名</th><th>建议名</th><th>理由</th></tr></thead><tbody>';
+    RENAME_PLAN.forEach(function(it){
+        h += '<tr><td><input type="checkbox" class="tidy-ck" data-id="' + it.id + '" checked></td>'
+           + '<td>' + escapeHtml(it.old_name) + '</td>'
+           + '<td>' + escapeHtml(it.new_name) + '</td>'
+           + '<td style="color:var(--text-light);">' + escapeHtml((it.reasons || []).join('、')) + '</td></tr>';
+    });
+    h += '</tbody></table></div>'
+       + '<button class="btn btn-sm btn-primary" style="margin-top:10px;" onclick="applyRename()">重命名选中项</button>';
+    b.innerHTML = h;
+}
+function tidyAll(cb) {
+    document.querySelectorAll('#tidyResult .tidy-ck').forEach(function(c){ c.checked = cb.checked; });
+}
+function applyRename() {
+    var ids = [];
+    document.querySelectorAll('#tidyResult .tidy-ck:checked').forEach(function(c){
+        ids.push(parseInt(c.getAttribute('data-id'), 10));
+    });
+    if (!ids.length) { alert('请先勾选要重命名的书'); return; }
+    if (!confirm('将重命名 ' + ids.length + ' 个磁盘文件（数据库记录同步更新）。\n\n只改文件名，不动文件内容；重名冲突会自动加序号。继续？')) return;
+    fetch('/api/admin/books/rename-apply', {
+        method: 'POST', headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ ids: ids })
+    }).then(function(r){ return r.json(); }).then(function(d){
+        alert((d && d.message) || (d && d.success ? '完成' : '重命名失败'));
+        if (d && d.success) location.reload();
+    }).catch(function(){ alert('网络错误，未执行'); });
+}
+
+function scanSeries(kind) {
+    tidyMsg(kind === 'volume' ? '正在查找分册…' : '正在查找分章…');
+    fetch('/api/admin/books/series?kind=' + kind)
+        .then(function(r){ return r.json(); })
+        .then(function(d){
+            if (!d.success) { tidyMsg(d.message || '查找失败'); return; }
+            var b = tidyBox();
+            var word = (kind === 'volume') ? '分册' : '分章';
+            if (!d.groups.length) { tidyMsg('没有发现成组的' + word + ' ✅'); return; }
+            var h = '<p class="hint">扫描 ' + d.scanned + ' 本，发现 ' + d.total_groups
+                  + ' 组' + word + '（合并默认<b>保留原件</b>，只额外生成一本合并本）：</p>';
+            d.groups.forEach(function(g, gi){
+                var names = g.books.map(function(x){ return escapeHtml(x.title); }).join(' → ');
+                h += '<div class="dup-group tidy-fade"><h4>' + escapeHtml(g.base)
+                   + '（' + g.count + ' 本）</h4>'
+                   + '<div style="font-size:12px;color:var(--text-light);">' + names + '</div>'
+                   + '<button class="btn btn-sm btn-outline" style="margin-top:8px;" onclick="mergeGroup(' + gi + ')">合并本组</button></div>';
+            });
+            b.innerHTML = h;
+            SERIES_GROUPS = d.groups;
+        }).catch(function(){ tidyMsg('查找失败（网络错误）'); });
+}
+function mergeGroup(gi) {
+    var g = SERIES_GROUPS[gi];
+    if (!g) return;
+    var ids = g.books.map(function(x){ return x.id; });
+    if (ids.length < 2) { alert('该组不足 2 本'); return; }
+    var bad = g.books.filter(function(x){
+        var t = (x.file_type || '').toLowerCase();
+        return t && t !== 'txt' && t !== 'md';
+    });
+    if (bad.length) { alert('该组含非纯文本（' + bad[0].file_type + '），合并仅支持 txt / md。'); return; }
+    if (!confirm('把「' + g.base + '」这 ' + ids.length + ' 本按上面顺序合并成一本？\n\n默认保留原件，不会删除任何文件。')) return;
+    fetch('/api/admin/books/merge', {
+        method: 'POST', headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ ids: ids, title: g.base, delete_sources: false })
+    }).then(function(r){ return r.json(); }).then(function(d){
+        if (d.success) { alert('已合并《' + d.title + '》：' + d.merged + ' 本'); location.reload(); }
+        else alert(d.message || '合并失败');
+    }).catch(function(){ alert('网络错误，未执行'); });
+}
+
+function scanAutoTags() {
+    tidyMsg('正在扫描番外与衍生内容…');
+    var items = [];
+    function step(off) {
+        fetch('/api/admin/books/auto-tags?limit=800&offset=' + off)
+            .then(function(r){ return r.json(); })
+            .then(function(d){
+                if (!d.success) { tidyMsg(d.message || '扫描失败'); return; }
+                items = items.concat(d.items || []);
+                if (d.has_more && items.length < 500) { step(d.next_offset); return; }
+                renderAutoTags(items, d.next_offset || 0);
+            }).catch(function(){ tidyMsg('扫描失败（网络错误）'); });
+    }
+    step(0);
+}
+function renderAutoTags(items, scanned) {
+    var b = tidyBox();
+    if (!items.length) { tidyMsg('没有识别到番外/衍生类书名 ✅'); return; }
+    var h = '<p class="hint">扫描 ' + scanned + ' 本，识别到 ' + items.length
+          + ' 本（勾选后按建议打标签，只写标签、不动文件）：</p>'
+          + '<div class="tidy-scroll"><table class="book-table"><thead><tr>'
+          + '<th><input type="checkbox" checked onchange="tidyAll(this)"></th>'
+          + '<th>书名</th><th>建议标签</th></tr></thead><tbody>';
+    items.forEach(function(it){
+        h += '<tr><td><input type="checkbox" class="tidy-ck" data-id="' + it.id
+           + '" data-tags="' + escapeHtml((it.tags || []).join(',')) + '" checked></td>'
+           + '<td>' + escapeHtml(it.title) + '</td>'
+           + '<td>' + escapeHtml((it.tags || []).join('、')) + '</td></tr>';
+    });
+    b.innerHTML = h + '</tbody></table></div>'
+        + '<button class="btn btn-sm btn-primary" style="margin-top:10px;" onclick="applyAutoTags()">为选中项打标签</button>';
+}
+function applyAutoTags() {
+    var picks = {};
+    document.querySelectorAll('#tidyResult .tidy-ck:checked').forEach(function(c){
+        var id = parseInt(c.getAttribute('data-id'), 10);
+        (c.getAttribute('data-tags') || '').split(',').forEach(function(t){
+            if (!t) return;
+            if (!picks[t]) picks[t] = [];
+            picks[t].push(id);
+        });
+    });
+    var tags = Object.keys(picks);
+    if (!tags.length) { alert('请先勾选条目'); return; }
+    var plan = tags.map(function(t){ return t + '：' + picks[t].length + ' 本'; }).join('\n');
+    if (!confirm('将按建议打标签（只写标签，不动文件）：\n\n' + plan + '\n\n继续？')) return;
+    var done = 0;
+    function next(i) {
+        if (i >= tags.length) { alert('已处理 ' + done + ' 本次打标签'); location.reload(); return; }
+        fetch('/api/admin/books/batch', {
+            method: 'POST', headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ ids: picks[tags[i]], action: 'tag', op: 'add', tag: tags[i] })
+        }).then(function(r){ return r.json(); }).then(function(d){
+            done += (d && d.affected) || 0;
+            next(i + 1);
+        }).catch(function(){ next(i + 1); });
+    }
+    next(0);
+}
+
+// ===== 拆分书籍 =====
+function openSplit(btn) {
+    document.getElementById('splitId').value = btn.getAttribute('data-split-id') || '';
+    document.getElementById('splitBookName').textContent = '《' + (btn.getAttribute('data-split-name') || '') + '》';
+    document.getElementById('splitPreview').innerHTML = '';
+    document.getElementById('splitModal').style.display = 'flex';
+}
+function closeSplit() { document.getElementById('splitModal').style.display = 'none'; }
+function splitPayload(dry) {
+    return {
+        mode: document.getElementById('splitMode').value,
+        parts: parseInt(document.getElementById('splitParts').value, 10) || 2,
+        dry_run: dry
+    };
+}
+function previewSplit() {
+    var id = document.getElementById('splitId').value;
+    var box = document.getElementById('splitPreview');
+    box.textContent = '正在计算切分点…';
+    fetch('/api/admin/book/' + id + '/split', {
+        method: 'POST', headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(splitPayload(true))
+    }).then(function(r){ return r.json(); }).then(function(d){
+        if (!d.success) { box.textContent = d.message || '无法拆分'; return; }
+        var h = '<p class="hint">编码识别为 ' + escapeHtml(d.encoding) + '，共 '
+              + d.total_chars + ' 字，将拆成 ' + d.segments.length + ' 份：</p><ul class="imp-list">';
+        d.segments.forEach(function(sg){
+            h += '<li>' + escapeHtml(sg.title) + ' · ' + sg.chars + ' 字'
+               + (sg.hint ? '（起：' + escapeHtml(sg.hint) + '）' : '') + '</li>';
+        });
+        box.innerHTML = h + '</ul>';
+    }).catch(function(){ box.textContent = '预览失败'; });
+}
+function doSplit() {
+    var id = document.getElementById('splitId').value;
+    if (!confirm('确认拆分？\n\n将生成新的分卷文件并入库；原书保留不动。')) return;
+    fetch('/api/admin/book/' + id + '/split', {
+        method: 'POST', headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(splitPayload(false))
+    }).then(function(r){ return r.json(); }).then(function(d){
+        alert((d && d.message) || (d && d.success ? '完成' : '拆分失败'));
+        if (d && d.success) location.reload();
+    }).catch(function(){ alert('网络错误，未执行'); });
 }
 function escapeHtml(s) {
     return (s || '').replace(/[&<>]/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;'}[c]; });

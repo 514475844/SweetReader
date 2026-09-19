@@ -2,51 +2,236 @@
 {% block title %}SweetReader - 分类浏览{% endblock %}
 {% block extra_css %}
 <style>
-.mode-select { padding: 6px 12px; border: 2px solid var(--primary-light); border-radius: 8px; font-size: 14px; background: white; cursor: pointer; outline: none; }
-.mode-select:focus { border-color: var(--primary); }
-.tree-view ul { list-style: none; padding-left: 0; }
+.cat-toolbar { background:white; padding:16px 24px; border-radius:14px; box-shadow:var(--shadow); margin-bottom:20px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px; }
+.cat-toolbar .cat-title { color:var(--text-dark); font-size:20px; font-weight:600; display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
+.cat-stat { font-size:13px; font-weight:400; color:var(--text-light); }
+.cat-tools { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+.cat-search-input { height:32px; padding:0 12px; border:1px solid rgba(0,0,0,.14); border-radius:16px; font-size:13px; outline:none; min-width:180px; background:white; color:var(--text-dark); }
+.cat-search-input:focus { border-color:var(--primary); }
+.mode-select { padding:6px 12px; border:2px solid var(--primary-light); border-radius:8px; font-size:14px; background: white; cursor: pointer; outline: none; color: var(--text-dark); }
+.mode-select:focus { border-color:var(--primary); }
+mark.hit { background:#ffe9a8; color:inherit; border-radius:3px; padding:0 1px; }
+@keyframes catFadeIn { from { opacity:0; transform:translateY(-2px); } to { opacity:1; transform:none; } }
+.cat-fade { animation: catFadeIn .18s ease-out; }
+
+/* ===== 树形视图 =====
+   注意：容器必须带 .tree-view 类，否则下面这一族选择器全是死代码
+   （历史遗留：renderTree 只吐裸 <ul>，没有任何祖先带 .tree-view）。 */
+.tree-view ul { list-style: none; padding-left: 0; margin: 0; }
 .tree-view ul ul { padding-left: 18px; border-left: 2px solid var(--primary-light); margin-left: 6px; }
 .tree-view .cat-item { display: flex; align-items: center; padding: 4px 8px; border-radius: 6px; text-decoration: none; color: var(--text-dark); font-size: 14px; transition: background 0.2s; }
 .tree-view .cat-item:hover { background: var(--primary-light); }
 .tree-view .cat-item .badge { background: var(--primary-light); padding: 0 10px; border-radius: 12px; font-size: 11px; color: var(--text-light); margin-left: auto; }
-.tree-view .folder-toggle { cursor: pointer; margin-right: 4px; font-size: 12px; color: var(--text-light); user-select: none; }
+.tree-view a.cat-item { flex: 1 1 auto; min-width: 0; }
+.tree-view a.cat-item .name-txt { overflow-wrap: anywhere; }
+.tree-view .folder-toggle { cursor: pointer; margin-right: 4px; font-size: 12px; color: var(--text-light); user-select: none; width: 18px; display: inline-block; text-align: center; transition: transform .18s ease-out; }
 .tree-view .folder-toggle.open { transform: rotate(90deg); }
+/* 乱码分类名可能是一整串无断点字符（U+FFFD 连排），必须允许任意位置换行，
+   否则单个名字就能把整页顶宽（实测树形视图 375px 下 1125px、900px 下 1135px）。 */
+.cat-item, .flat-view .flat-item .name { overflow-wrap: anywhere; }
 .tree-view .children.hidden { display: none; }
+
+/* ===== 扁平视图 ===== */
 .flat-view { display: block; }
 .flat-view .flat-item { display: flex; align-items: center; padding: 6px 12px; background: white; border-bottom: 1px solid #f5f0eb; text-decoration: none; color: var(--text-dark); font-size: 14px; transition: background 0.2s; }
 .flat-view .flat-item:hover { background: #faf6f2; }
-.flat-view .flat-item .name { flex: 0 0 auto; }
+/* flex-shrink 必须为 1：flex:0 0 auto + nowrap 会让超长分类名拒绝收缩
+   （实测 900px 下单个 name 宽 861-981px，把整页顶宽）。 */
+.flat-view .flat-item .name { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .flat-view .flat-item .path { font-size: 12px; color: #bbb; margin: 0 16px; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .flat-view .flat-item .badge { background: #f0e8e4; padding: 0 12px; border-radius: 12px; font-size: 12px; color: var(--text-light); flex-shrink: 0; }
 .empty-state { text-align: center; padding: 60px; color: var(--text-light); }
+@media (max-width: 768px) {
+    .cat-toolbar { padding: 12px 14px; }
+    .cat-search-input { min-width: 130px; }
+    .tree-view .cat-item { padding: 3px 6px; font-size: 13px; }
+    .tree-view ul ul { padding-left: 10px; margin-left: 3px; }
+    .flat-view .flat-item { padding: 6px 8px; font-size: 13px; }
+    /* 窄屏隐藏冗余「完整路径」列，避免深层缩进把名称挤没 */
+    .flat-view .flat-item .path { display: none; }
+    .flat-view .flat-item .name { flex: 1 1 auto; }
+    .empty-state { padding: 40px 12px; }
+}
+@media (max-width: 480px) {
+    .tree-view ul ul { padding-left: 8px; margin-left: 2px; }
+}
 </style>
 {% endblock %}
 {% block content %}
-<div style="background:white;padding:16px 24px;border-radius:14px;box-shadow:var(--shadow);margin-bottom:20px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;">
-    <div><h2 style="color:var(--text-dark);font-size:20px;">📂 全部</h2></div>
-    <div>
+<div class="cat-toolbar">
+    <div class="cat-title">📂 全部分类 <span class="cat-stat" id="catStat"></span> <span class="cat-stat" id="bookStat"></span></div>
+    <div class="cat-tools">
+        <input type="text" id="catSearch" class="cat-search-input" placeholder="搜索分类名称…" autocomplete="off" oninput="onSearchInput(this.value)">
+        <select id="sortSelect" class="mode-select" onchange="changeSort(this.value)" title="分类排序方式">
+            <option value="default">默认顺序</option>
+            <option value="name">按名称</option>
+            <option value="count">按书籍数</option>
+        </select>
         <select id="modeSelect" class="mode-select" onchange="changeMode(this.value)">
             <option value="flat">📋 扁平模式</option>
             <option value="tree">🌳 树形模式</option>
         </select>
+        <button class="btn btn-outline btn-sm" id="expandAllBtn" onclick="toggleExpandAll()" style="display:none;">全部展开</button>
     </div>
 </div>
 <div id="container"><div class="empty-state">加载中...</div></div>
 <script>
-var currentMode = 'flat', expanded = new Set();
-function changeMode(mode) { currentMode = mode; loadData(); }
-function fetchData(mode) { return fetch('/api/categories?mode=' + mode).then(function(r) { return r.json(); }); }
+// ===== 浏览偏好（本地记忆，不落库）=====
+var CAT_MODE_KEY = 'sr_cats_mode';
+var CAT_EXP_KEY = 'sr_cats_expanded';
+var currentMode = 'flat';
+var sortBy = 'default';
+var keyword = '';
+var expanded = {};
+var cache = { tree: null, flat: null };
+
+function lsGet(k, dft) { try { var v = localStorage.getItem(k); return (v === null || v === '') ? dft : v; } catch (e) { return dft; } }
+function lsSet(k, v) { try { localStorage.setItem(k, v); } catch (e) {} }
+
+function loadExpanded() {
+    try {
+        var a = JSON.parse(localStorage.getItem(CAT_EXP_KEY) || '[]');
+        if (Object.prototype.toString.call(a) === '[object Array]') {
+            for (var i = 0; i < a.length; i++) expanded[String(a[i])] = true;
+        }
+    } catch (e) {}
+}
+function saveExpanded() {
+    var arr = [];
+    for (var k in expanded) { if (expanded[k]) arr.push(k); }
+    lsSet(CAT_EXP_KEY, JSON.stringify(arr));
+}
+
+// ===== 工具 =====
+function escapeHtml(s) {
+    return String(s).replace(/[&<>"']/g, function(c) {
+        return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+    });
+}
+function escapeReg(s) { return String(s).replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); }
+function markText(text, kw) {
+    var esc = escapeHtml(text);
+    if (!kw) return esc;
+    try { return esc.replace(new RegExp('(' + escapeReg(escapeHtml(kw)) + ')', 'gi'), '<mark class="hit">$1</mark>'); }
+    catch (e) { return esc; }
+}
+function cleanCatName(s) {
+    // 磁盘目录名可能带前导 BOM / 零宽字符 / 多余空白（实测大量存在）：
+    // 直接显示会出现看不见的字符，且让「按名称排序」把本该相邻的名字排散。
+    // 只清洗显示与排序键，node.path 一律不动，链接照旧。
+    return String(s === null || s === undefined ? '' : s)
+        .replace(/[\uFEFF\u200B-\u200F\u202A-\u202E]/g, '')
+        .replace(/[\s\u3000]+/g, ' ')
+        .trim();
+}
+function byName(a, b) { return cleanCatName(a.name).localeCompare(cleanCatName(b.name), 'zh'); }
+
+// ===== 排序 =====
+function sortList(nodes) {
+    var arr = nodes.slice();
+    if (sortBy === 'name') arr.sort(byName);
+    else if (sortBy === 'count') arr.sort(function(a, b) { return (b.book_count || 0) - (a.book_count || 0) || byName(a, b); });
+    return arr;
+}
+function sortTree(nodes) {
+    return sortList(nodes).map(function(n) {
+        var c = { id: n.id, name: n.name, path: n.path, level: n.level, book_count: n.book_count };
+        c.children = (n.children && n.children.length) ? sortTree(n.children) : [];
+        return c;
+    });
+}
+
+// ===== 筛选 =====
+function matchName(name, path) {
+    if (!keyword) return true;
+    var k = keyword.toLowerCase();
+    return cleanCatName(name).toLowerCase().indexOf(k) >= 0 || String(path || '').toLowerCase().indexOf(k) >= 0;
+}
+function filterTree(nodes) {
+    var out = [];
+    for (var i = 0; i < nodes.length; i++) {
+        var n = nodes[i], kids = filterTree(n.children || []);
+        if (matchName(n.name, n.path) || kids.length) {
+            out.push({ id: n.id, name: n.name, path: n.path, level: n.level, book_count: n.book_count, children: kids });
+        }
+    }
+    return out;
+}
+function filterFlat(list) {
+    if (!keyword) return list;
+    return list.filter(function(c) { return matchName(c.name, c.full_path); });
+}
+function currentNodes() {
+    var data = cache[currentMode] || [];
+    if (currentMode === 'tree') return filterTree(sortTree(data));
+    return filterFlat(data);
+}
+
+// ===== 展开态 =====
+function collectBranchIds(nodes, acc) {
+    for (var i = 0; i < nodes.length; i++) {
+        var n = nodes[i];
+        if (n.children && n.children.length) { acc.push(String(n.id)); collectBranchIds(n.children, acc); }
+    }
+    return acc;
+}
+function isOpen(id, hasChildren) {
+    if (!hasChildren) return false;
+    if (keyword) return true;              // 搜索态一律展开，否则深层命中被藏着
+    return !!expanded[String(id)];
+}
+function toggleFolder(e, id) {
+    e.stopPropagation();
+    e.preventDefault();
+    var children = document.getElementById('children-' + id);
+    var toggle = e.target;
+    var key = String(id);
+    if (expanded[key]) {
+        delete expanded[key];
+        if (children) children.classList.add('hidden');
+        toggle.classList.remove('open');
+    } else {
+        expanded[key] = true;
+        if (children) {
+            children.classList.remove('hidden');
+            try { children.style.animation = 'catFadeIn .18s ease-out'; } catch (err) {}
+        }
+        toggle.classList.add('open');
+    }
+    saveExpanded();
+    updateExpandBtn(currentNodes());
+}
+function toggleExpandAll() {
+    var ids = collectBranchIds(currentNodes(), []);
+    var allOpen = ids.length > 0 && ids.every(function(id) { return expanded[id]; });
+    expanded = {};
+    if (!allOpen) { for (var i = 0; i < ids.length; i++) expanded[ids[i]] = true; }
+    saveExpanded();
+    render();
+}
+function updateExpandBtn(nodes) {
+    var btn = document.getElementById('expandAllBtn');
+    if (!btn) return;
+    if (currentMode !== 'tree') { btn.style.display = 'none'; return; }
+    if (keyword) { btn.style.display = 'none'; return; }   // 搜索态强制全展开，按钮无意义
+    btn.style.display = '';
+    var ids = collectBranchIds(nodes || [], []);
+    var allOpen = ids.length > 0 && ids.every(function(id) { return expanded[id]; });
+    btn.textContent = allOpen ? '全部收起' : '全部展开';
+}
+
+// ===== 渲染 =====
 function renderTree(nodes, level) {
     if (!nodes || nodes.length === 0) return '<div class="empty-state">暂无分类</div>';
     var html = '<ul>';
     for (var i = 0; i < nodes.length; i++) {
-        var node = nodes[i], hasChildren = node.children && node.children.length > 0, isOpen = expanded.has(node.id);
-        html += '<li><div class="cat-item" style="padding-left:' + (level * 12) + 'px;">';
-        if (hasChildren) html += '<span class="folder-toggle ' + (isOpen ? 'open' : '') + '" onclick="toggleFolder(event, ' + node.id + ')">▶</span>';
+        var node = nodes[i], hasChildren = node.children && node.children.length > 0, isOpen_ = isOpen(node.id, hasChildren);
+        html += '<li><div class="cat-item">';
+        if (hasChildren) html += '<span class="folder-toggle ' + (isOpen_ ? 'open' : '') + '" onclick="toggleFolder(event, ' + node.id + ')">▶</span>';
         else html += '<span style="width:18px;display:inline-block;"></span>';
-        html += '<a href="/category/' + node.path + '" class="cat-item">' + node.name + '<span class="badge">' + (node.book_count || 0) + '</span></a></div>';
+        html += '<a href="/category/' + node.path + '" class="cat-item"><span class="name-txt">' + markText(cleanCatName(node.name), keyword) + '</span><span class="badge">' + (node.book_count || 0) + '</span></a></div>';
         if (hasChildren) {
-            html += '<ul class="children ' + (isOpen ? '' : 'hidden') + '" id="children-' + node.id + '">';
+            html += '<ul class="children ' + (isOpen_ ? '' : 'hidden') + '" id="children-' + node.id + '">';
             html += renderTree(node.children, level + 1);
             html += '</ul>';
         }
@@ -57,40 +242,87 @@ function renderTree(nodes, level) {
 }
 function renderFlat(data) {
     if (!data || data.length === 0) return '<div class="empty-state">暂无分类</div>';
-    data.sort(function(a, b) { return a.level - b.level || a.full_path.localeCompare(b.full_path); });
-    var html = '<div class="flat-view">';
-    for (var i = 0; i < data.length; i++) {
-        var cat = data[i], space = '';
+    var list = data.slice().sort(function(a, b) { return a.level - b.level || String(a.full_path || '').localeCompare(String(b.full_path || ''), 'zh'); });
+    if (sortBy === 'count') list.sort(function(a, b) { return (b.book_count || 0) - (a.book_count || 0) || byName(a, b); });
+    else if (sortBy === 'name') list.sort(byName);
+    var html = '';
+    for (var i = 0; i < list.length; i++) {
+        var cat = list[i], space = '';
         for (var j = 0; j < cat.level; j++) space += '　';
-        html += '<a href="/category/' + cat.path + '" class="flat-item"><span class="name">' + space + '📄 ' + cat.name + '</span><span class="path">' + cat.full_path + '</span><span class="badge">' + (cat.book_count || 0) + '</span></a>';
+        html += '<a href="/category/' + cat.path + '" class="flat-item"><span class="name">' + space + '📄 ' + markText(cleanCatName(cat.name), keyword) + '</span><span class="path">' + escapeHtml(cat.full_path) + '</span><span class="badge">' + (cat.book_count || 0) + '</span></a>';
     }
-    html += '</div>';
     return html;
 }
-function toggleFolder(e, id) {
-    e.stopPropagation();
-    var children = document.getElementById('children-' + id), toggle = e.target;
-    if (expanded.has(id)) { expanded.delete(id); children.classList.add('hidden'); toggle.classList.remove('open'); }
-    else { expanded.add(id); children.classList.remove('hidden'); toggle.classList.add('open'); }
+function updateStat(shown, total) {
+    var el = document.getElementById('catStat');
+    if (el) el.textContent = keyword ? ('匹配 ' + shown + ' / ' + total + ' 个分类') : (total + ' 个分类');
 }
-function countNodes(nodes) { var c = nodes.length; for (var i = 0; i < nodes.length; i++) { if (nodes[i].children) c += countNodes(nodes[i].children); } return c; }
+function replayFade(el) {
+    // 只在结构化切换时重放 180ms 淡入；搜索逐字重渲染不播，避免闪烁
+    el.classList.remove('cat-fade');
+    void el.offsetWidth;
+    el.classList.add('cat-fade');
+}
+function render(animate) {
+    var container = document.getElementById('container');
+    if (cache[currentMode] === null) return;          // 数据还没回来，保持「加载中」
+    var total = (cache[currentMode] || []).length;
+    var nodes = currentNodes();
+    container.className = (currentMode === 'tree' ? 'tree-view' : 'flat-view');
+    if (animate) replayFade(container); else container.classList.remove('cat-fade');
+    if (!nodes.length) {
+        container.innerHTML = '<div class="empty-state">' + (keyword ? '没有匹配「' + escapeHtml(keyword) + '」的分类' : '暂无分类') + '</div>';
+    } else {
+        container.innerHTML = (currentMode === 'tree') ? renderTree(nodes, 0) : renderFlat(nodes);
+    }
+    updateExpandBtn(nodes);
+    updateStat(nodes.length, total);
+}
+
+// ===== 数据 =====
+function fetchData(mode) { return fetch('/api/categories?mode=' + mode).then(function(r) { return r.json(); }); }
+function loadBookTotal() {
+    var el = document.getElementById('bookStat');
+    if (!el) return;
+    fetch('/api/books/page?page=1&per_page=1').then(function(r) { return r.json(); }).then(function(d) {
+        el.textContent = ((d && d.total) || 0) + ' 本藏书';
+    }).catch(function() {});
+}
 function loadData() {
     var container = document.getElementById('container');
-    container.innerHTML = '加载中...';
+    container.innerHTML = '<div class="empty-state">加载中...</div>';
     fetchData(currentMode).then(function(data) {
-        var total = 0;
-        if (currentMode === 'tree') { container.innerHTML = renderTree(data, 0); total = countNodes(data); }
-        else { container.innerHTML = renderFlat(data); total = data.length; }
-        document.getElementById('totalCats').textContent = total;
-        // 用分页接口的 total 拿总书数，避免全量拉取书籍列表
-        return fetch('/api/books/page?page=1&per_page=1');
-    }).then(function(r) { return r.json(); }).then(function(data) { document.getElementById('totalBooks').textContent = (data && data.total) || 0; });
+        cache[currentMode] = data || [];
+        render(true);
+        loadBookTotal();
+    }).catch(function() {
+        container.innerHTML = '<div class="empty-state">加载失败，请稍后重试</div>';
+    });
 }
+function changeMode(mode) {
+    currentMode = (mode === 'tree') ? 'tree' : 'flat';
+    lsSet(CAT_MODE_KEY, currentMode);
+    if (cache[currentMode] === null) loadData();
+    else { render(true); loadBookTotal(); }
+}
+function changeSort(v) { sortBy = v || 'default'; render(); }
+var catSearchTimer = null;
+function onSearchInput(v) {
+    keyword = (v || '').trim();
+    if (catSearchTimer) clearTimeout(catSearchTimer);
+    catSearchTimer = setTimeout(render, 120);
+}
+
 document.addEventListener('DOMContentLoaded', function() {
-    document.getElementById('modeSelect').value = 'flat';
-    currentMode = 'flat';
+    loadExpanded();
+    currentMode = (lsGet(CAT_MODE_KEY, 'flat') === 'tree') ? 'tree' : 'flat';
+    var sel = document.getElementById('modeSelect');
+    if (sel) sel.value = currentMode;
+    var ss = document.getElementById('sortSelect');
+    if (ss) ss.value = sortBy;
     loadData();
 });
-window.changeMode = changeMode; window.toggleFolder = toggleFolder;
+window.changeMode = changeMode; window.changeSort = changeSort; window.toggleFolder = toggleFolder;
+window.toggleExpandAll = toggleExpandAll; window.onSearchInput = onSearchInput;
 </script>
 {% endblock %}

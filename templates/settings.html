@@ -66,6 +66,16 @@
         .switch input:checked + .slider:before {
             transform: translateX(22px);
         }
+        /* 首页扩展配置 */
+        .ext-pref-row {
+            display: flex; align-items: center; justify-content: space-between;
+            gap: 12px; padding: 8px 0; border-bottom: 1px dashed #eee;
+        }
+        .ext-pref-row:last-child { border-bottom: none; }
+        .ext-pref-row .ext-pref-name { font-size: 14px; color: var(--text-dark); }
+        .ext-pref-row .ext-pref-id { font-size: 11px; color: #aaa; margin-left: 6px; }
+        .ext-pref-empty { font-size: 13px; color: var(--text-light); }
+
         .setting-row .hint {
             font-size: 12px;
             color: #999;
@@ -121,7 +131,16 @@
         </div>
         <p style="color:var(--text-light);font-size:13px;margin-top:8px;">关闭后阅读页将不加载推荐书目</p>
     </div>
+    <div class="settings-card">
+        <h3>🧩 首页扩展</h3>
+        <p style="color:var(--text-light);font-size:13px;margin-bottom:4px;">勾选要在首页「扩展功能」里显示的卡片</p>
+        <div id="extPrefList"><p class="ext-pref-empty">加载中…</p></div>
+    </div>
 </div>
+<script>
+// 首页扩展卡片清单（由 settings_page 下发；含已隐藏项，否则用户无法恢复）
+window.SR_HOME_PLUGINS = {{ plugins_json | safe }};
+</script>
 <script>
 var currentSettings = {};
 var selectedTheme = 'default';
@@ -232,8 +251,82 @@ fetch('/api/user/theme').then(function(r) { return r.json(); }).then(function(da
                 });
         }
 
+        // ===== 首页扩展：逐插件开关（用户级隐藏列表）=====
+        var hiddenPlugins = [];
+
+        function renderExtPrefs() {
+            var box = document.getElementById('extPrefList');
+            if (!box) return;
+            var entries = window.SR_HOME_PLUGINS || [];
+            if (!entries.length) {
+                box.innerHTML = '<p class="ext-pref-empty">当前没有可配置的扩展卡片</p>';
+                return;
+            }
+            box.innerHTML = '';
+            entries.forEach(function(e) {
+                var row = document.createElement('div');
+                row.className = 'ext-pref-row';
+                var name = document.createElement('span');
+                name.className = 'ext-pref-name';
+                name.textContent = e.label || e.plugin_id;
+                var code = document.createElement('span');
+                code.className = 'ext-pref-id';
+                code.textContent = e.plugin_id;
+                name.appendChild(code);
+                var sw = document.createElement('label');
+                sw.className = 'switch';
+                var cb = document.createElement('input');
+                cb.type = 'checkbox';
+                cb.checked = hiddenPlugins.indexOf(e.plugin_id) === -1;
+                cb.setAttribute('aria-label', name.textContent);
+                cb.onchange = function() { saveExtPref(e.plugin_id, this.checked); };
+                var sl = document.createElement('span');
+                sl.className = 'slider';
+                sw.appendChild(cb);
+                sw.appendChild(sl);
+                row.appendChild(name);
+                row.appendChild(sw);
+                box.appendChild(row);
+            });
+        }
+
+        function saveExtPref(pluginId, visible) {
+            var next = hiddenPlugins.slice();
+            var i = next.indexOf(pluginId);
+            if (visible) {
+                if (i !== -1) next.splice(i, 1);
+            } else if (i === -1) {
+                next.push(pluginId);
+            }
+            fetch('/api/user/settings', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({key: 'hidden_plugins', value: next})
+            }).then(function(r) { return r.json(); })
+              .then(function(data) {
+                  if (data.success) {
+                      hiddenPlugins = data.hidden_plugins || next;
+                      showToast('✅ 已保存');
+                  } else {
+                      showToast('❌ 保存失败，请重试', 'error');
+                  }
+              })
+              .catch(function() { showToast('❌ 保存失败，请重试', 'error'); });
+        }
+
+        function loadExtPrefs() {
+            fetch('/api/user/settings')
+                .then(function(r) { return r.json(); })
+                .then(function(data) {
+                    hiddenPlugins = (data && data.hidden_plugins) ? data.hidden_plugins : [];
+                    renderExtPrefs();
+                })
+                .catch(function() { renderExtPrefs(); });
+        }
+
         // 初始化推荐开关状态
         loadRecommendSetting();
+        loadExtPrefs();
 
 </script>
 {% endblock %}

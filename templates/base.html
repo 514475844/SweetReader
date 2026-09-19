@@ -410,6 +410,68 @@ body.dark-theme .site-footer-link:hover { color: #fff; border-color: var(--prima
 }
     </style>
 
+<style>
+/* ===== 全局响应式收尾（B02）：媒体元素 / 长串 / 横向安全网 / 表格滚动工具类 ===== */
+html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
+
+/* 内容媒体不得撑破容器（内联 height 也算） */
+img, video, canvas, iframe, embed, object { max-width: 100%; }
+img { height: auto; }
+
+/* 长串（路径 / 邮箱 / 邀请码 / 日志行）必须换行，不得撑出横向滚动 */
+pre, code, .sr-anywhere { overflow-wrap: anywhere; word-break: break-word; }
+
+/* 统一表格横向滚动容器（与既有 .table-wrap 等价；新页面优先用它） */
+.table-scroll {
+    width: 100%;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior-x: contain;
+}
+
+/* 触屏：去掉双击缩放延迟 */
+a, button, .btn, input, select, textarea, label { touch-action: manipulation; }
+
+/* 按钮过渡统一进 150-250ms 区间（原 transition:all .3s 偏慢） */
+.btn {
+    transition: background-color .18s ease-out, border-color .18s ease-out,
+                color .18s ease-out, box-shadow .18s ease-out, transform .18s ease-out;
+}
+.btn:active { transform: scale(.97); }
+.btn:disabled:active { transform: none; }
+
+@media (max-width: 768px) {
+    /* 横向安全网：真实溢出已在各页修掉，这里只兜底 */
+    body { overflow-x: hidden; }
+
+    /* 触摸目标：移动端按钮不再缩到难以点中 */
+    .btn { min-height: 34px; display: inline-flex; align-items: center; justify-content: center; }
+    .btn-sm { min-height: 30px; }
+}
+
+@media (max-width: 480px) {
+    .btn { min-height: 32px; }
+    .btn-sm { min-height: 28px; }
+}
+
+/* 窄屏（含平板）实测发现：.content 的直接子元素会被「收缩到内容宽」而非填满容器，
+   宽表格 / 长串会把整页顶宽（375px 下 /admin/books 撑到 886px、/admin/invite 529px）。
+   限定在 ≤920px（= 桌面容器内宽 880 + 边距），桌面布局零改动。 */
+@media (max-width: 920px) {
+    .content > * { width: 100%; }
+}
+
+/* 尊重系统「减少动态效果」偏好（全站此前无任何处理） */
+@media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+        animation-duration: .01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: .01ms !important;
+        scroll-behavior: auto !important;
+    }
+}
+</style>
+
 {% block extra_css %}{% endblock %}
 </head>
 <body>

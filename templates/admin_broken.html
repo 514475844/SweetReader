@@ -34,6 +34,15 @@ body.dark-theme table.bl input[type=text] { background: #2a2d34; color: #e0e0e0;
 .cat-list { display: flex; flex-wrap: wrap; gap: 8px; }
 .cat-chip { font-size: 12px; padding: 4px 10px; border-radius: 999px; background: #f2f2f6; color: #555; }
 body.dark-theme .cat-chip { background: #2c2f36; color: #b8bcc4; }
+/* 分类路径可能极长；作为 row flex 子项若不限制，min-width:auto 会让
+   单个 chip 拒绝收缩（实测 428px）从而顶破窄屏。 */
+.cat-list .cat-chip {
+    max-width: 100%;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
 .empty { color: var(--text-light); font-size: 13px; padding: 10px 0; }
 .link-btn { font-size: 13px; padding: 6px 12px; border-radius: 8px; border: 1px solid #ccc;
     background: #fff; color: var(--text-dark); text-decoration: none; }

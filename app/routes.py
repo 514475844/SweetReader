@@ -19,6 +19,8 @@ from app.utils import BookUtils
 from app.category_scanner import CategoryScanner
 from app.plugins import registry
 from app import broken_files
+from app import book_tools
+from app import file_types
 
 bp = Blueprint('main', __name__)
 
@@ -124,6 +126,32 @@ def _require_cap(cap):
     return False
 
 
+def _hidden_plugins_of(user):
+    """取该用户在首页隐藏的扩展卡片插件 id 集合。
+
+    存储格式为 ',a,b,'（逗号包裹），避免 'stats' 命中 'stats_x' 这类前缀误判。
+    """
+    try:
+        theme = UserTheme.query.filter_by(user_id=user.id).first()
+    except Exception:
+        return set()
+    if not theme or not theme.hidden_plugins:
+        return set()
+    return {p for p in str(theme.hidden_plugins).split(',') if p}
+
+
+def _set_hidden_plugins(user, ids):
+    """写回用户隐藏的首页插件 id 集合（去重、限长、排序后逗号包裹存储）。"""
+    clean = sorted({str(i).strip() for i in (ids or []) if str(i).strip()})
+    theme = UserTheme.query.filter_by(user_id=user.id).first()
+    if not theme:
+        theme = UserTheme(user_id=user.id)
+        db.session.add(theme)
+    theme.hidden_plugins = (',' + ','.join(clean) + ',') if clean else ''
+    db.session.commit()
+    return clean
+
+
 # ============ 首页 ============
 @bp.route('/')
 def home():
@@ -173,10 +201,15 @@ def library():
                 'valid': _cat_valid(c, 1)} for c in top_cats]
     total_books = Book.query.count()
     total_categories = Category.query.count()
+    # 首页扩展卡片：插件侧的总开关（管理员在插件管理页控制）之外，
+    # 再叠加「用户级隐藏」（设置页可配）——用户只能让卡片更少，不能越过管理员启用的插件。
+    hidden_plugins = _hidden_plugins_of(current_user)
+    home_entries = [e for e in registry.homepage_entries()
+                    if e['plugin_id'] not in hidden_plugins]
     return render_template('index.html',
                          books=books, categories=categories, cat_top=cat_top,
                          total_books=total_books, total_categories=total_categories,
-                         plugins=registry.homepage_entries(),
+                         plugins=home_entries,
                          is_admin=current_user.is_admin)
 
 # ============ 登录/注册 ============
@@ -252,17 +285,85 @@ def logout():
     return redirect(url_for('main.login'))
 
 # ============ API ============
+def _file_type_variants(value):
+    """格式筛选的大小写变体。
+
+    库里主流存大写（TXT / EPUB），但存在个别小写残留行（file_type='txt'），
+    直接等值比较会让这些书在任何格式筛选下都消失。
+    """
+    v = (value or '').strip()
+    if not v:
+        return []
+    return list(dict.fromkeys([v, v.upper(), v.lower(), v.capitalize()]))
+
+
+def _descendant_category_ids(root):
+    """一次查询取回全部分类关系，在内存里展开 root 的整棵子树（含自己）。
+
+    原实现只遍历 `root.children`（直接子分类，且每层各发一次查询），
+    实测最深有 11 层分类、29 个分类带孙辈，挂在它们下面的 2349 本书会被漏掉。
+    """
+    if root is None:
+        return []
+    rows = db.session.query(Category.id, Category.parent_id).all()
+    kids = {}
+    for cid, pid in rows:
+        kids.setdefault(pid, []).append(cid)
+    out, stack, seen = [], [root.id], set()
+    while stack:
+        cid = stack.pop()
+        if cid in seen:
+            continue
+        seen.add(cid)
+        out.append(cid)
+        stack.extend(kids.get(cid, []))
+    return out
+
+
 @bp.route('/api/books')
 @login_required
 def api_books():
-    books = Book.query.all()
-    return jsonify([{
+    """书籍列表（分页）。
+
+    原实现 `Book.query.all()` 一次吐出全库（数据量大时响应极慢、JSON 体积与客户端解析开销都很高，
+    客户端解析同样吃内存）。改为分页：默认 50 条、上限 200 条；
+    返回结构仍是数组（旧调用方不受影响），总数与分页信息放在响应头。
+    """
+    try:
+        page = max(1, int(request.args.get('page', 1)))
+    except (TypeError, ValueError):
+        page = 1
+    try:
+        per_page = int(request.args.get('per_page', 50))
+    except (TypeError, ValueError):
+        per_page = 50
+    per_page = max(1, min(200, per_page))
+
+    fmt = (request.args.get('format') or '').strip()
+    keyword = (request.args.get('q') or request.args.get('search') or '').strip()
+
+    query = Book.query
+    if fmt:
+        query = query.filter(Book.file_type.in_(_file_type_variants(fmt)))
+    if keyword:
+        like = '%%%s%%' % keyword
+        query = query.filter(db.or_(Book.title.ilike(like), Book.author.ilike(like)))
+
+    total = query.count()
+    books = (query.order_by(Book.title.asc(), Book.id.asc())
+             .offset((page - 1) * per_page).limit(per_page).all())
+    resp = jsonify([{
         'id': b.id,
         'title': b.title or b.filename,
         'author': b.author or '',
         'file_type': b.file_type or '未知',
         'file_size_str': BookUtils.format_file_size(b.file_size) if b.file_size else '0 B'
     } for b in books])
+    resp.headers['X-Total-Count'] = str(total)
+    resp.headers['X-Page'] = str(page)
+    resp.headers['X-Per-Page'] = str(per_page)
+    return resp
+
 
 @bp.route('/api/all-books')
 @login_required
@@ -279,28 +380,54 @@ def api_all_books():
 @login_required
 def api_categories():
     mode = request.args.get('mode', 'tree')
+    # 一次性取回全部分类，在内存里建树 / 拼全路径。
+    # 原实现 flat 模式逐个调 get_full_path()（沿 parent 链一路查库）、tree 模式逐个取
+    # cat.children，2028 个分类要发上千次查询 —— 实测 tree 模式 7.2s。
+    rows = db.session.query(
+        Category.id, Category.name, Category.path, Category.parent_id,
+        Category.level, Category.book_count, Category.sort_order
+    ).all()
+    by_id = {r.id: r for r in rows}
+    by_parent = {}
+    for r in rows:
+        by_parent.setdefault(r.parent_id, []).append(r)
+
+    def _order(rs):
+        return sorted(rs, key=lambda r: (r.sort_order if r.sort_order is not None else 0, r.id))
+
+    def _full_path(cid):
+        parts, cur, guard = [], cid, 0
+        while cur is not None and guard < 128:
+            row = by_id.get(cur)
+            if row is None:
+                break
+            parts.append(row.name)
+            cur = row.parent_id
+            guard += 1
+        return '/'.join(reversed(parts))
+
     if mode == 'flat':
-        categories = Category.query.order_by(Category.path).all()
         return jsonify([{
-            'id': cat.id,
-            'name': cat.name,
-            'full_path': cat.get_full_path(),
-            'level': cat.level,
-            'book_count': cat.book_count,
-            'path': cat.path
-        } for cat in categories])
-    else:
-        categories = Category.query.filter_by(parent_id=None).order_by(Category.sort_order).all()
-        def build_tree(cat):
-            return {
-                'id': cat.id,
-                'name': cat.name,
-                'path': cat.path,
-                'level': cat.level,
-                'book_count': cat.book_count,
-                'children': [build_tree(child) for child in sorted(cat.children, key=lambda x: x.sort_order)]
-            }
-        return jsonify([build_tree(cat) for cat in categories])
+            'id': r.id,
+            'name': r.name,
+            'full_path': _full_path(r.id),
+            'level': r.level,
+            'book_count': r.book_count,
+            'path': r.path
+        } for r in sorted(rows, key=lambda r: (r.path or ''))])
+
+    def _node(r):
+        return {
+            'id': r.id,
+            'name': r.name,
+            'path': r.path,
+            'level': r.level,
+            'book_count': r.book_count,
+            'children': [_node(c) for c in _order(by_parent.get(r.id, []))]
+        }
+
+    return jsonify([_node(r) for r in _order(by_parent.get(None, []))])
+
 
 @bp.route('/api/categories/<int:parent_id>/children')
 @login_required
@@ -552,9 +679,11 @@ def admin_users():
         return redirect(url_for('main.library'))
     # 隐藏账号不暴露在用户列表里
     import datetime as _dt
+    from sqlalchemy import func
     q = request.args.get('q', '').strip()
     role = request.args.get('role', 'all')
     status = request.args.get('status', 'all')
+    sort = request.args.get('sort', 'created')
     online_since = datetime.utcnow() - _dt.timedelta(minutes=ONLINE_WINDOW_MINUTES)
 
     query = User.query.filter(db.or_(User.is_hidden.is_(None),
@@ -575,12 +704,26 @@ def admin_users():
     elif status == 'online':
         query = query.filter(User.last_active >= online_since)
 
-    users = query.order_by(User.created_at.desc()).all()
+    if sort == 'active':
+        # 最近活跃：NULL（从未登录）排到最后
+        query = query.order_by(User.last_active.isnot(None), User.last_active.desc())
+    else:
+        query = query.order_by(User.created_at.desc())
+    users = query.all()
     online_ids = {u.id for u in users
                   if u.last_active and u.last_active >= online_since}
+    # 阅读状态计数（在读/已读/未读）单次聚合，避免 N+1
+    rp_rows = db.session.query(ReadingProgress.user_id, ReadingProgress.status,
+                               func.count()).group_by(ReadingProgress.user_id,
+                                                      ReadingProgress.status).all()
+    reading_counts = {}
+    for _uid, _st, _cnt in rp_rows:
+        reading_counts.setdefault(_uid, {'unread': 0, 'reading': 0, 'finished': 0})
+        reading_counts[_uid][_st] = _cnt
     return render_template('admin_users.html', users=users, q=q, role=role,
-                           status=status, online_ids=online_ids,
-                           online_minutes=ONLINE_WINDOW_MINUTES)
+                           status=status, sort=sort, online_ids=online_ids,
+                           online_minutes=ONLINE_WINDOW_MINUTES,
+                           reading_counts=reading_counts)
 
 @bp.route('/admin/user/<int:user_id>/toggle', methods=['POST'])
 @login_required
@@ -664,6 +807,57 @@ def create_user():
     log_action(current_user, '创建用户', f'{username}（{"管理员" if user.is_admin else "普通用户"}）')
     return jsonify({'success': True, 'message': '用户创建成功'})
 
+@bp.route('/admin/users/export')
+@login_required
+def export_users():
+    if not current_user.is_admin:
+        return jsonify({'success': False, 'error': '需要管理员权限'}), 403
+    import datetime as _dt
+    import csv, io as _io
+    from sqlalchemy import func
+    online_since = datetime.utcnow() - _dt.timedelta(minutes=ONLINE_WINDOW_MINUTES)
+    users = User.query.filter(db.or_(User.is_hidden.is_(None),
+                                      User.is_hidden.is_(False))).order_by(User.created_at.desc()).all()
+    rp_rows = db.session.query(ReadingProgress.user_id, ReadingProgress.status,
+                               func.count()).group_by(ReadingProgress.user_id,
+                                                      ReadingProgress.status).all()
+    rc = {}
+    for _uid, _st, _cnt in rp_rows:
+        rc.setdefault(_uid, {'unread': 0, 'reading': 0, 'finished': 0})
+        rc[_uid][_st] = _cnt
+    buf = _io.StringIO()
+    w = csv.writer(buf)
+    w.writerow(['用户名', '邮箱', '角色', '状态', '在线', '最近活跃', '注册时间',
+                '在读', '已读', '未读', '备注'])
+    for u in users:
+        online = '是' if (u.last_active and u.last_active >= online_since) else '否'
+        role = '管理员' if u.is_admin else ('子管理员' if u.is_sub_admin else '用户')
+        c = rc.get(u.id, {'unread': 0, 'reading': 0, 'finished': 0})
+        w.writerow([u.username, u.email, role,
+                    '正常' if u.is_active else '禁用', online,
+                    u.last_active.strftime('%Y-%m-%d %H:%M') if u.last_active else '从未登录',
+                    u.created_at.strftime('%Y-%m-%d %H:%M'),
+                    c['reading'], c['finished'], c['unread'], u.admin_note or ''])
+    body = '\ufeff' + buf.getvalue()
+    resp = current_app.response_class(body, mimetype='text/csv; charset=utf-8')
+    resp.headers['Content-Disposition'] = 'attachment; filename="users.csv"'
+    log_action(current_user, '用户管理', '导出用户列表 CSV（%d 人）' % len(users))
+    return resp
+
+@bp.route('/admin/user/<int:user_id>/note', methods=['POST'])
+@login_required
+def set_user_note(user_id):
+    if not current_user.is_admin:
+        return jsonify({'success': False, 'error': '需要管理员权限'}), 403
+    user = User.query.get_or_404(user_id)
+    if user.is_hidden:
+        return jsonify({'success': False, 'message': '该账号不可操作'}), 400
+    data = request.json or {}
+    user.admin_note = (data.get('note') or '')[:500]
+    db.session.commit()
+    log_action(current_user, '用户管理', f'更新账号 {user.username} 的备注')
+    return jsonify({'success': True})
+
 @bp.route('/admin/logs')
 @login_required
 def admin_logs():
@@ -685,7 +879,13 @@ def admin_logs():
 @bp.route('/settings')
 @login_required
 def settings_page():
-    return render_template('settings.html')
+    # 下发「全部」首页扩展入口（不过滤隐藏项），否则用户一旦隐藏就再也看不到开关，
+    # 只能改数据库才能恢复。
+    entries = [{'plugin_id': e['plugin_id'], 'label': e.get('label') or e['plugin_id']}
+               for e in registry.homepage_entries()
+               if e.get('widget') != 'random']
+    return render_template('settings.html',
+                           plugins_json=json.dumps(entries, ensure_ascii=False))
 
 @bp.route('/profile', methods=['GET', 'POST'])
 @login_required
@@ -730,6 +930,26 @@ def profile():
             flash('✅ 个人信息已更新', 'success')
     return render_template('profile.html')
 
+
+def _sanitize_user_css(raw):
+    """阅读页自定义 CSS 收口：限长 + 去掉能跳出 <style> 或执行脚本的片段。
+
+    自定义样式是纯前端能力，用户只可能对自己生效；这里主要防「写坏整页」
+    与「把自己的 CSS 变成一个能加载外部资源的入口」两类问题。
+    """
+    if not isinstance(raw, str):
+        return ''
+    css = raw[:4000]
+    low = css.lower()
+    for bad in ('</style', '<style', '<script', '</script', '<iframe', '<link',
+                '<object', '<embed', 'javascript:', 'expression(', '@import'):
+        while bad in low:
+            i = low.find(bad)
+            css = css[:i] + css[i + len(bad):]
+            low = css.lower()
+    return css
+
+
 @bp.route('/api/user/theme', methods=['GET', 'POST'])
 @login_required
 def user_theme():
@@ -739,10 +959,12 @@ def user_theme():
         db.session.add(theme)
         db.session.commit()
     if request.method == 'POST':
-        data = request.json
-        for key in ['theme', 'font_size', 'line_spacing', 'page_margin', 'language', 'detail_mode', 'recommend', 'immersive', 'font_family', 'text_align', 'page_color', 'image_hide', 'brightness', 'bg_texture']:
+        data = request.json or {}
+        for key in ['theme', 'font_size', 'line_spacing', 'page_margin', 'language', 'detail_mode', 'recommend', 'immersive', 'font_family', 'text_align', 'page_color', 'image_hide', 'brightness', 'bg_texture', 'text_color', 'accent_color']:
             if key in data:
                 setattr(theme, key, data[key])
+        if 'custom_css' in data:
+            theme.custom_css = _sanitize_user_css(data.get('custom_css'))
         # 统一主题命名（旧数据里的 light 与默认主题视为 default）
         if theme.theme == 'light':
             theme.theme = 'default'
@@ -765,7 +987,10 @@ def user_theme():
         'page_color': theme.page_color or '',
         'image_hide': bool(theme.image_hide),
         'brightness': theme.brightness if theme.brightness is not None else 100,
-        'bg_texture': theme.bg_texture or ''
+        'bg_texture': theme.bg_texture or '',
+        'text_color': theme.text_color or '',
+        'custom_css': theme.custom_css or '',
+        'accent_color': theme.accent_color or ''
     })
 
 
@@ -790,6 +1015,13 @@ def user_settings():
             theme.detail_mode = bool(value)
         elif key == 'immersive':
             theme.immersive = bool(value)
+        elif key == 'hidden_plugins':
+            # 首页扩展卡片：用户级隐藏列表（收成逗号包裹字符串存储）
+            if isinstance(value, str):
+                value = [x for x in value.split(',') if x]
+            _set_hidden_plugins(current_user, value)
+            return jsonify({'success': True,
+                            'hidden_plugins': sorted({str(x) for x in (value or [])})})
         else:
             return jsonify({'success': False, 'error': f'未知设置项: {key}'}), 400
         db.session.commit()
@@ -799,8 +1031,53 @@ def user_settings():
         'show_recommend': bool(theme.recommend),
         'language': theme.language or 'zh',
         'detail_mode': bool(theme.detail_mode),
-        'immersive': bool(theme.immersive)
+        'immersive': bool(theme.immersive),
+        'hidden_plugins': sorted(_hidden_plugins_of(current_user))
     })
+
+# ============ 首页书库总览 ============
+@bp.route('/api/library-overview')
+@login_required
+def api_library_overview():
+    """首页「书库总览」卡片数据。
+
+    全部走 SQL 聚合（count / group by），**不把书行拉进 Python** —— 大库上
+    7 万行级别一旦 query.all() 就是秒级，这里三条聚合查询在 10ms 量级。
+    """
+    total = db.session.query(db.func.count(Book.id)).scalar() or 0
+    cat_total = db.session.query(db.func.count(Category.id)).scalar() or 0
+
+    fmt_rows = (db.session.query(Book.file_type, db.func.count(Book.id))
+                .group_by(Book.file_type)
+                .order_by(db.func.count(Book.id).desc()).all())
+    formats = [{'type': (r[0] or '未知').upper(), 'count': int(r[1])}
+               for r in fmt_rows if r[1]]
+    other_formats = sum(f['count'] for f in formats[5:])
+    formats = formats[:5]
+    if other_formats:
+        formats.append({'type': '其它', 'count': other_formats})
+
+    # 阅读状态：只查当前用户的进度记录（数量级远小于书库），未记录的归为「未读」
+    st_rows = (db.session.query(ReadingProgress.status,
+                                db.func.count(ReadingProgress.id))
+               .filter(ReadingProgress.user_id == current_user.id)
+               .group_by(ReadingProgress.status).all())
+    reading = finished = 0
+    for st, n in st_rows:
+        if st == 'reading':
+            reading += int(n)
+        elif st == 'finished':
+            finished += int(n)
+    unread = max(0, total - reading - finished)
+
+    return jsonify({
+        'success': True,
+        'total': int(total),
+        'categories': int(cat_total),
+        'formats': formats,
+        'status': {'unread': unread, 'reading': reading, 'finished': finished},
+    })
+
 
 # ============ 阅读进度 API ============
 @bp.route('/api/progress/<int:book_id>', methods=['GET'])
@@ -1639,6 +1916,78 @@ def parse_title_author(stem):
     return s, ''
 
 
+# ---- 导入跳过原因（失败可读原因）与上限 ----
+SKIP_REASONS = {
+    'blocked_type': '可执行文件，已拒绝导入',
+    'archive_broken': '压缩包损坏或无法读取',
+    'archive_unsupported': '服务端缺少该压缩格式的解压支持',
+    'save_failed': '写入书库目录失败',
+    'empty_file': '空文件（0 字节）',
+    'too_large': '文件过大，超出单文件上限',
+    'no_filename': '缺少文件名',
+}
+MAX_IMPORT_FILE_BYTES = 512 * 1024 * 1024      # 单文件 512MB
+MAX_IMPORT_AUTO_CATEGORIES = 20                # 单次自动创建分类上限
+MAX_IMPORT_LIST = 50                           # 结果里每条清单最多返回多少项
+
+
+def _src_size(src):
+    """取待导入文件的字节数（FileStorage 或临时文件路径）。"""
+    try:
+        if hasattr(src, 'stream'):
+            pos = src.stream.tell()
+            src.stream.seek(0, 2)
+            size = src.stream.tell()
+            src.stream.seek(pos)
+            return size
+        return os.path.getsize(src)
+    except Exception:
+        return -1
+
+
+def _src_sniff(src, raw_name):
+    """嗅探真实格式（FileStorage 或临时文件路径）。"""
+    try:
+        if hasattr(src, 'stream'):
+            return file_types.sniff_stream(src.stream, raw_name)
+        with open(src, 'rb') as fh:
+            return file_types.sniff_stream(fh, raw_name)
+    except Exception:
+        return None
+
+
+def _autocreate_category(hint, parent_id, created):
+    """按压缩包内目录名自动创建分类（仅在开关打开时调用）。
+
+    只取形态正常的目录名，长度 2~30，跳过通用目录名；单次上限 20 个，
+    避免一个杂乱的压缩包把分类树灌满。
+    """
+    name = re.sub(r'[\r\n\t]+', ' ', (hint or '')).strip(' .-_')
+    name = name.replace('/', '').replace('\\', '')
+    if not (2 <= len(name) <= 30):
+        return None
+    if len(created) >= MAX_IMPORT_AUTO_CATEGORIES:
+        return None
+    if name.lower() in ('books', 'book', 'txt', 'text', 'epub', 'pdf', '小说',
+                        '电子书', '新建文件夹', '下载', 'download', 'downloads'):
+        return None
+    if Category.query.filter_by(name=name).first():
+        return None
+    parent = Category.query.get(parent_id)
+    if parent is None:
+        return None
+    try:
+        cat = Category(parent_id=parent.id, level=(parent.level or 0) + 1, name=name,
+                       path=((parent.path or parent.name) + '/' + name), book_count=0)
+        db.session.add(cat)
+        db.session.flush()
+        created.append({'id': cat.id, 'name': name})
+        return cat.id
+    except Exception:
+        db.session.rollback()
+        return None
+
+
 @bp.route('/api/admin/import', methods=['POST'])
 @login_required
 def admin_import_books():
@@ -1647,15 +1996,21 @@ def admin_import_books():
     files = request.files.getlist('files')
     if not files:
         return jsonify({'success': False, 'message': '未收到文件'}), 400
+    auto_create = str(request.form.get('auto_create_category', '')).lower() in ('1', 'true', 'on', 'yes')
     import_cat_id = _ensure_import_category()
     books_dir = Path(current_app.config['BOOKS_DIR'])
     books_dir.mkdir(parents=True, exist_ok=True)
     imported = 0
     details = []
     skipped = []
+    warnings = []
+    created_categories = []
     affected_cats = {import_cat_id}
 
-    #  /  批量导入：先展开压缩包（.zip 原生支持；.rar 需 rarfile 库）
+    def _skip(raw_name, code):
+        skipped.append({'name': raw_name, 'code': code,
+                        'reason': SKIP_REASONS.get(code, code)})
+
     import tempfile
     tmp_root = tempfile.mkdtemp(prefix='sr_imp_')
     expanded = []  # (raw_name, src, cat_hint)
@@ -1669,7 +2024,7 @@ def admin_import_books():
             elif ext == '.rar':
                 r = _expand_archive(f, tmp_root, kind='rar')
                 if r is None:
-                    skipped.append({'name': f.filename, 'reason': 'RAR 解压需服务端安装 rarfile 库'})
+                    _skip(f.filename, 'archive_unsupported')
                 else:
                     expanded.extend(r)
             else:
@@ -1677,15 +2032,42 @@ def admin_import_books():
 
         for raw_name, src, cat_hint in expanded:
             if src is None:
-                skipped.append({'name': raw_name, 'reason': '压缩包损坏或无法读取'})
+                _skip(raw_name, 'archive_broken')
+                continue
+            if not raw_name:
+                _skip(raw_name, 'no_filename')
                 continue
             ext = Path(raw_name).suffix.lower()
             #  自动识别格式：危险/可执行类型一律拒绝
             if ext in IMPORT_BLOCK_EXTS:
-                skipped.append({'name': raw_name, 'reason': '不支持的文件类型'})
+                _skip(raw_name, 'blocked_type')
                 continue
-            #  导入自动分类：文件名 / 压缩包子目录命中已有分类则归入，否则归入「导入」
-            cat_id = _match_category(raw_name, cat_hint) or import_cat_id
+            #  失败可读原因：空文件与超大文件在入库前就拦下，不再产生 0 字节书
+            size = _src_size(src)
+            if size == 0:
+                _skip(raw_name, 'empty_file')
+                continue
+            if size > MAX_IMPORT_FILE_BYTES:
+                _skip(raw_name, 'too_large')
+                continue
+            #  格式识别：按文件内容（而非扩展名）确认真实格式
+            sniffed = _src_sniff(src, raw_name)
+            file_type, fmt_warn = file_types.resolve_format(ext, sniffed)
+            if ext not in file_types.EXT_TYPE_MAP and not sniffed:
+                warnings.append({'name': raw_name, 'code': 'unknown_type',
+                                 'detail': '扩展名 %s 不在支持格式清单内，且无法从内容判定真实格式，'
+                                           '将按其名称作为格式入库，可能无法在阅读器中打开'
+                                           % (ext or '（无）')})
+            if fmt_warn:
+                warnings.append({'name': raw_name, 'code': 'format_mismatch',
+                                 'detail': fmt_warn})
+
+            #  导入自动分类：文件名 / 压缩包子目录命中已有分类则归入
+            cat_id = _match_category(raw_name, cat_hint)
+            if cat_id is None and auto_create and cat_hint:
+                cat_id = _autocreate_category(cat_hint, import_cat_id, created_categories)
+            if cat_id is None:
+                cat_id = import_cat_id
             affected_cats.add(cat_id)
             safe = re.sub(r'[^\w\-.一-鿿]+', '_', raw_name)
             if not safe:
@@ -1703,19 +2085,27 @@ def admin_import_books():
                 else:
                     import shutil
                     shutil.copyfile(src, str(target))
-            except Exception as e:
-                skipped.append({'name': raw_name, 'reason': '保存失败: %s' % e})
+            except Exception:
+                _skip(raw_name, 'save_failed')
                 continue
             #  自动识别作者：必须用「原始文件名」解析
             title, author = parse_title_author(Path(raw_name).stem)
-            file_type = EXT_TYPE_MAP.get(ext, (ext.lstrip('.') or 'txt')).lower()
             b = Book(filename=target.name, relative_path=target.name, title=title,
                      author=author or None, file_type=file_type,
                      category_id=cat_id, upload_date=datetime.utcnow())
+            # 补全入库字段：首字母归类键决定首页字母筛选（Book.initial），
+            # 文件大小决定首页排序与详情页显示，导入路径此前两者都没写。
+            try:
+                b.file_size = target.stat().st_size
+            except Exception:
+                b.file_size = None
+            b.initial = BookUtils.get_title_initial(title)
+            b.modified_time = datetime.utcnow()
             db.session.add(b)
             imported += 1
             details.append({'name': raw_name, 'title': title,
-                            'author': author, 'type': file_type})
+                            'author': author, 'type': file_type,
+                            'detected': sniffed or ext.lstrip('.')})
         db.session.commit()
     finally:
         import shutil
@@ -1731,8 +2121,41 @@ def admin_import_books():
     except Exception:
         db.session.rollback()
 
+    #  失败可读原因：按原因归并计数，前端可直接分组展示
+    summary = {}
+    for item in skipped:
+        slot = summary.setdefault(item['code'], {'code': item['code'],
+                                                 'reason': item['reason'], 'count': 0})
+        slot['count'] += 1
+    skipped_summary = sorted(summary.values(), key=lambda x: -x['count'])
+
+    if imported or created_categories:
+        log_action(current_user, '导入书籍',
+                   '%d 本，跳过 %d 个，新增分类 %d 个'
+                   % (imported, len(skipped), len(created_categories)))
+
     return jsonify({'success': True, 'imported': imported,
-                    'skipped': skipped, 'details': details[:20]})
+                    'skipped': skipped[:MAX_IMPORT_LIST],
+                    'skipped_total': len(skipped),
+                    'skipped_summary': skipped_summary,
+                    'warnings': warnings[:MAX_IMPORT_LIST],
+                    'warning_total': len(warnings),
+                    'created_categories': created_categories,
+                    'details': details[:MAX_IMPORT_LIST],
+                    'details_total': len(details)})
+
+
+@bp.route('/api/admin/import/formats', methods=['GET'])
+@login_required
+def admin_import_formats():
+    """支持格式清单（后端单一来源，避免前后端两套硬编码走偏）。"""
+    if not _require_cap('import'):
+        return jsonify({'success': False, 'message': '无导入权限'}), 403
+    return jsonify({'success': True,
+                    'formats': file_types.importable_formats(),
+                    'accept': file_types.accept_attribute(),
+                    'max_file_bytes': MAX_IMPORT_FILE_BYTES,
+                    'max_auto_categories': MAX_IMPORT_AUTO_CATEGORIES})
 
 
 @bp.route('/api/admin/export/<int:book_id>')
@@ -1746,7 +2169,166 @@ def admin_export_book(book_id):
         file_path = Path(current_app.config['BOOKS_DIR']) / book.filename
     if not file_path.exists():
         return jsonify({'success': False, 'message': '文件不存在'}), 404
+    log_action(current_user, '导出书籍', '《%s》(%s)' % (book.title or book.filename,
+                                                     book.file_type or ''))
     return send_file(file_path, as_attachment=True)
+
+
+MAX_EXPORT_BOOKS = 100                              # 单次打包导出的书籍数上限
+MAX_EXPORT_BYTES = 500 * 1024 * 1024                 # 单次打包导出的原始大小上限
+
+
+@bp.route('/api/admin/export-batch', methods=['POST'])
+@login_required
+def admin_export_batch():
+    """批量导出：把选中的书打包成 ZIP（可选带元数据 CSV 与封面）。
+
+    先落临时文件再发送，因此 Content-Length 已知，浏览器可显示真实下载进度；
+    响应结束后立即删除临时文件，不在书库目录留任何产物。
+    """
+    if not _require_cap('export'):
+        return jsonify({'success': False, 'message': '无导出权限'}), 403
+    data = request.get_json(silent=True) or {}
+    raw_ids = data.get('book_ids') or []
+    if not isinstance(raw_ids, list) or not raw_ids:
+        return jsonify({'success': False, 'message': '未选择要导出的书籍'}), 400
+    book_ids = []
+    for x in raw_ids:
+        try:
+            bid = int(x)
+        except (TypeError, ValueError):
+            continue
+        if bid not in book_ids:
+            book_ids.append(bid)
+    if len(book_ids) > MAX_EXPORT_BOOKS:
+        return jsonify({'success': False,
+                        'message': '一次最多导出 %d 本，当前选了 %d 本'
+                                   % (MAX_EXPORT_BOOKS, len(book_ids))}), 400
+    with_meta = bool(data.get('with_meta', True))
+    with_cover = bool(data.get('with_cover', False))
+
+    books = Book.query.filter(Book.id.in_(book_ids)).all()
+    if not books:
+        return jsonify({'success': False, 'message': '选中的书籍不存在'}), 404
+    books.sort(key=lambda b: book_ids.index(b.id))
+
+    books_dir = Path(current_app.config['BOOKS_DIR'])
+    static_dir = Path(current_app.static_folder or 'static')
+    missing = []
+    planned = []          # (book, 磁盘绝对路径)
+    total_bytes = 0
+    for b in books:
+        fp = books_dir / (b.relative_path or b.filename)
+        if not fp.exists():
+            fp = books_dir / b.filename
+        if not fp.exists():
+            missing.append({'id': b.id, 'title': b.title or b.filename})
+            continue
+        planned.append((b, fp))
+        try:
+            total_bytes += fp.stat().st_size
+        except Exception:
+            pass
+    if not planned:
+        return jsonify({'success': False,
+                        'message': '选中的书籍在磁盘上都找不到文件'}), 404
+    if total_bytes > MAX_EXPORT_BYTES:
+        return jsonify({'success': False,
+                        'message': '选中书籍合计 %s，超出单次导出上限 %s'
+                                   % (BookUtils.format_file_size(total_bytes),
+                                      BookUtils.format_file_size(MAX_EXPORT_BYTES))}), 400
+
+    import csv
+    import uuid
+    tmp_path = os.path.join(tempfile.gettempdir(), 'sr_exp_%s.zip' % uuid.uuid4().hex)
+    used = set()
+    exported = 0
+    with zipfile.ZipFile(tmp_path, 'w', zipfile.ZIP_DEFLATED) as zf:
+
+        def _arcname(name):
+            # 保留原文件名（用户导出后拿回的就是自己的书），只去掉路径与控制字符
+            clean = (name or '').replace('\\', '/').split('/')[-1]
+            clean = re.sub(r'[\x00-\x1f]+', '', clean).strip()
+            if clean in ('', '.', '..'):
+                clean = 'book'
+            if clean not in used:
+                used.add(clean)
+                return clean
+            stem, ext2 = os.path.splitext(clean)
+            i = 2
+            while ('%s_%d%s' % (stem, i, ext2)) in used:
+                i += 1
+            clean = '%s_%d%s' % (stem, i, ext2)
+            used.add(clean)
+            return clean
+
+        #  元数据（导出包含元数据）
+        if with_meta:
+            buf = io.StringIO()
+            w = csv.writer(buf)
+            w.writerow(['id', 'title', 'author', 'filename', 'format', 'size_bytes',
+                        'category_id', 'tags', 'upload_date'])
+            for b, _fp in planned:
+                w.writerow([b.id, b.title or '', b.author or '', b.filename,
+                            b.file_type or '', b.file_size or 0, b.category_id or '',
+                            b.tags or '',
+                            b.upload_date.strftime('%Y-%m-%d %H:%M:%S') if b.upload_date else ''])
+            zf.writestr('books_metadata.csv', '\ufeff' + buf.getvalue())
+
+        for b, fp in planned:
+            arc = _arcname(b.filename or fp.name)
+            try:
+                zf.write(str(fp), arcname=arc)
+            except Exception as e:
+                missing.append({'id': b.id, 'title': b.title or b.filename,
+                                'reason': '打包失败: %s' % e})
+                continue
+            exported += 1
+            #  导出包含封面
+            if with_cover:
+                cp = (b.cover_path or '').strip()
+                if cp:
+                    cover_src = Path(cp) if os.path.isabs(cp) else (static_dir / cp)
+                    try:
+                        if cover_src.exists():
+                            zf.write(str(cover_src),
+                                     arcname='covers/' + _arcname(cover_src.name))
+                    except Exception:
+                        pass
+
+        zf.writestr('README.txt',
+                    'SweetReader 批量导出\n'
+                    '书籍 %d 个%s\n'
+                    'books_metadata.csv 为随包元数据（若已勾选）。\n'
+                    % (exported, '，封面在 covers/ 目录' if with_cover else ''))
+
+    try:
+        size = os.path.getsize(tmp_path)
+    except Exception:
+        size = 0
+    if size <= 0:
+        try:
+            os.remove(tmp_path)
+        except Exception:
+            pass
+        return jsonify({'success': False, 'message': '打包失败，未生成任何内容'}), 500
+
+    from flask import after_this_request
+
+    @after_this_request
+    def _cleanup(resp):
+        try:
+            os.remove(tmp_path)
+        except Exception:
+            pass
+        return resp
+
+    log_action(current_user, '批量导出书籍',
+               '%d 本打包为 ZIP（%s）' % (exported, BookUtils.format_file_size(size)))
+    stamp = datetime.now().strftime('%Y%m%d_%H%M')
+    resp = send_file(tmp_path, as_attachment=True, mimetype='application/zip',
+                     download_name='sweetreader_books_%s.zip' % stamp)
+    return resp
 
 
 @bp.route('/api/admin/convert-encoding', methods=['POST'])
@@ -1800,6 +2382,8 @@ def admin_books():
     pagination = query.order_by(Book.id.desc()).paginate(page=page, per_page=30, error_out=False)
     return render_template('admin_books.html', books=pagination.items, page=page,
                            total=pagination.total, q=q,
+                           import_formats=file_types.importable_formats(),
+                           import_accept=file_types.accept_attribute(),
                            categories=Category.query.order_by(Category.path).all())
 
 # ============ 书籍管理增强（ 信息编辑 /   查重去重） ============
@@ -1882,7 +2466,10 @@ def admin_book_duplicates():
             if not os.path.exists(p):
                 return ''
             ext = (book.file_type or '').lower() or os.path.splitext(p)[1].lower().lstrip('.')
-            MAX = 200000
+            # 相似度判定取正文前 50KB 已足够（重复书的正文开头必然高度一致）；
+            # 原 200KB 让每对候选的文件读取量与 4-gram 构造成本都放大 4 倍，
+            # 在上限 3000 对的规模下，这是查重耗时的主要来源。
+            MAX = 50000
             if ext in ('txt', 'md', 'text'):
                 with open(p, 'r', encoding='utf-8', errors='ignore') as f:
                     return f.read(MAX)
@@ -1987,10 +2574,13 @@ def admin_book_duplicates():
             ra, rb = find(a), find(b)
             if ra != rb:
                 parent[ra] = rb
+        # 原实现用 next((x for x in books if x['id'] == bid), None) 线性扫全库，
+        # 每对候选要查两次 × 最多 3000 对 —— 直接导致查重 9.2s。改成一次建字典。
+        book_by_id = {b['id']: b for b in books}
         text_cache = {}
         def get_text(bid):
             if bid not in text_cache:
-                bk = next((x for x in books if x['id'] == bid), None)
+                bk = book_by_id.get(bid)
                 text_cache[bid] = _norm(_book_text(bk)) if bk else ''
             return text_cache[bid]
         MAX_PAIRS = 3000
@@ -2465,6 +3055,252 @@ def admin_books_batch():
                     'files_deleted': files_deleted, 'files_failed': files_failed})
 
 
+# ============ 书籍整理工具（ 文件名规范化 /  分册归组 /  番外标记 /  拆分） ============
+MAX_RENAME_BATCH = 200      # 单次重命名上限，避免一次性动用过多磁盘文件
+MAX_SPLIT_BYTES = 32 * 1024 * 1024   # 拆分只处理 32MB 以内的纯文本
+MAX_SPLIT_PARTS = 50
+
+
+def _tidy_rows(offset=0, limit=800):
+    """按 id 顺序分段取整理所需的轻量字段（只读）。"""
+    return (db.session.query(Book.id, Book.title, Book.filename,
+                             Book.file_type, Book.category_id)
+            .order_by(Book.id.asc()).offset(offset).limit(limit).all())
+
+
+@bp.route('/api/admin/books/rename-plan')
+@login_required
+def admin_books_rename_plan():
+    """ 文件名智能整理（预览）：只读扫描，列出「建议文件名 ≠ 当前文件名」的书。
+
+    只给方案不动盘；真正执行走 rename-apply。
+    """
+    if not _require_cap('manage_books'):
+        return jsonify({'success': False, 'message': '无书籍管理权限'}), 403
+    offset = max(0, request.args.get('offset', 0, type=int))
+    limit = min(max(request.args.get('limit', 800, type=int), 1), 2000)
+    rows = _tidy_rows(offset, limit)
+    items = []
+    for bid, title, fn, ft, cid in rows:
+        sug = book_tools.suggest_filename(title, fn, ft)
+        if not sug:
+            continue
+        items.append({'id': bid, 'title': title or '', 'file_type': ft or '',
+                      'old_name': sug['old_name'], 'new_name': sug['new_name'],
+                      'reasons': sug['reasons']})
+    scanned = len(rows)
+    return jsonify({'success': True, 'items': items, 'scanned': scanned,
+                    'offset': offset, 'next_offset': offset + scanned,
+                    'has_more': scanned == limit})
+
+
+@bp.route('/api/admin/books/rename-apply', methods=['POST'])
+@login_required
+def admin_books_rename_apply():
+    """ 执行文件重命名：复用 _rename_book_file（保留原目录/扩展名，重名自动加序号）。"""
+    if not _require_cap('manage_books'):
+        return jsonify({'success': False, 'message': '无书籍管理权限'}), 403
+    data = request.get_json(silent=True) or {}
+    ids = [int(i) for i in (data.get('ids') or []) if str(i).isdigit()]
+    ids = list(dict.fromkeys(ids))
+    if not ids:
+        return jsonify({'success': False, 'message': '没有选中要重命名的书籍'}), 400
+    if len(ids) > MAX_RENAME_BATCH:
+        return jsonify({'success': False,
+                        'message': '单次最多重命名 %d 本' % MAX_RENAME_BATCH}), 400
+    renamed, skipped, failed = [], [], []
+    for bid in ids:
+        book = Book.query.get(bid)
+        if book is None:
+            failed.append({'id': bid, 'message': '书籍不存在'})
+            continue
+        sug = book_tools.suggest_filename(book.title, book.filename, book.file_type)
+        if not sug:
+            skipped.append({'id': bid, 'message': '文件名已规范，无需变更'})
+            continue
+        stem = os.path.splitext(sug['new_name'])[0][:200]
+        okr, msg, newrel = _rename_book_file(book, stem)
+        if not okr:
+            failed.append({'id': bid, 'message': msg})
+            continue
+        if not newrel:
+            skipped.append({'id': bid, 'message': msg})
+            continue
+        book.filename = os.path.basename(newrel)
+        book.relative_path = newrel
+        renamed.append({'id': bid, 'old_name': sug['old_name'],
+                        'new_name': os.path.basename(newrel)})
+    try:
+        db.session.commit()
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'success': False, 'message': '保存失败：' + str(e)}), 500
+    if renamed:
+        log_action(current_user, '整理书籍文件名', '%d 本' % len(renamed))
+    return jsonify({'success': True, 'renamed': renamed, 'skipped': skipped,
+                    'failed': failed, 'renamed_count': len(renamed),
+                    'message': '已重命名 %d 本，跳过 %d 本，失败 %d 本'
+                               % (len(renamed), len(skipped), len(failed))})
+
+
+@bp.route('/api/admin/books/series')
+@login_required
+def admin_books_series():
+    """ /  分册归组预览：按「上下册 / 第N部 / 第N章」把同系列的书聚在一起（只读）。
+
+    只出分组清单；合并仍走已有的 /api/admin/books/merge（默认保留原件）。
+    """
+    if not _require_cap('manage_books'):
+        return jsonify({'success': False, 'message': '无书籍管理权限'}), 403
+    kind = request.args.get('kind', 'volume')
+    if kind not in ('volume', 'chapter'):
+        return jsonify({'success': False, 'message': 'kind 只能是 volume 或 chapter'}), 400
+    rows = (db.session.query(Book.id, Book.title, Book.filename, Book.file_type)
+            .order_by(Book.id.asc()).all())
+    data = [{'id': r[0], 'title': r[1], 'filename': r[2], 'file_type': r[3]}
+            for r in rows]
+    groups = [g for g in book_tools.group_series(data) if g['kind'] == kind]
+    return jsonify({'success': True, 'kind': kind, 'scanned': len(data),
+                    'total_groups': len(groups), 'groups': groups})
+
+
+@bp.route('/api/admin/books/auto-tags')
+@login_required
+def admin_books_auto_tags():
+    """ 番外/前传/短篇等建议标签（只读预览）。
+
+    只给建议不写库；执行沿用已有的批量打标签接口（人工确认后调用）。
+    """
+    if not _require_cap('manage_books'):
+        return jsonify({'success': False, 'message': '无书籍管理权限'}), 403
+    offset = max(0, request.args.get('offset', 0, type=int))
+    limit = min(max(request.args.get('limit', 800, type=int), 1), 2000)
+    rows = _tidy_rows(offset, limit)
+    items = []
+    for bid, title, fn, ft, cid in rows:
+        tags = book_tools.extra_tags(title, fn)
+        if not tags:
+            continue
+        items.append({'id': bid, 'title': title or fn or '', 'filename': fn or '',
+                      'file_type': ft or '', 'tags': tags})
+    scanned = len(rows)
+    return jsonify({'success': True, 'items': items, 'scanned': scanned,
+                    'offset': offset, 'next_offset': offset + scanned,
+                    'has_more': scanned == limit})
+
+
+@bp.route('/api/admin/book/<int:book_id>/split', methods=['POST'])
+@login_required
+def admin_book_split(book_id):
+    """ 书籍拆分：把一个纯文本按章节或按长度拆成多本。
+
+    **默认 dry_run=true 只返回方案**，必须显式 dry_run=false 才写盘；
+    写盘过程中若任一步失败，会删掉本次已生成的分册，不留半成品。
+    """
+    if not _require_cap('manage_books'):
+        return jsonify({'success': False, 'message': '无书籍管理权限'}), 403
+    book = Book.query.get_or_404(book_id)
+    ft = (book.file_type or '').lower()
+    if ft and ft not in ('txt', 'md', 'log', 'cn'):
+        return jsonify({'success': False, 'message': '仅支持纯文本（txt/md）拆分'}), 400
+    data = request.get_json(silent=True) or {}
+    mode = data.get('mode') or 'chapter'
+    if mode not in ('chapter', 'size'):
+        return jsonify({'success': False, 'message': 'mode 只能是 chapter 或 size'}), 400
+    try:
+        parts = int(data.get('parts') or 2)
+    except (TypeError, ValueError):
+        return jsonify({'success': False, 'message': 'parts 必须是数字'}), 400
+    if parts < 2 or parts > MAX_SPLIT_PARTS:
+        return jsonify({'success': False,
+                        'message': '份数需在 2~%d 之间' % MAX_SPLIT_PARTS}), 400
+
+    src = _book_abs_path(book)
+    if not src or not os.path.exists(src):
+        return jsonify({'success': False, 'message': '磁盘上找不到原文件'}), 404
+    try:
+        if os.path.getsize(src) > MAX_SPLIT_BYTES:
+            return jsonify({'success': False,
+                            'message': '文件超过 %dMB，建议先用其它工具分卷'
+                                       % (MAX_SPLIT_BYTES // 1048576)}), 400
+        with open(src, 'rb') as f:
+            raw = f.read()
+    except Exception as e:
+        return jsonify({'success': False, 'message': '读取失败：' + str(e)}), 500
+
+    text, enc = broken_files.decode_best(raw)
+    text = text.replace('\r\n', '\n').replace('\r', '\n')
+    plan = book_tools.plan_split(text, mode, parts)
+    if len(plan) < 2:
+        return jsonify({'success': False,
+                        'message': '没有找到可用切分点（文件过小或章节标记不足）'}), 400
+
+    base_title = os.path.splitext(book.title or book.filename or 'book')[0]
+    segs = [{'index': s['index'],
+             'title': '%s（%d/%d）' % (base_title, s['index'], len(plan)),
+             'chars': s['chars'], 'hint': s['hint']} for s in plan]
+    dry = data.get('dry_run', True)
+    if isinstance(dry, str):
+        dry = dry.strip().lower() not in ('0', 'false', 'no', '')
+    if dry:
+        return jsonify({'success': True, 'dry_run': True, 'encoding': enc,
+                        'book_id': book.id, 'source': book.filename,
+                        'total_chars': len(text), 'segments': segs})
+
+    out_dir = os.path.dirname(src)
+    ext = os.path.splitext(src)[1] or '.txt'
+    books_dir = str(current_app.config['BOOKS_DIR'])
+    created, created_books = [], []
+    try:
+        for seg, s in zip(segs, plan):
+            safe = book_tools.safe_stem(seg['title'], 80) or ('%s_%d' % (base_title, seg['index']))
+            cand = os.path.join(out_dir, safe + ext)
+            n = 2
+            while os.path.exists(cand):
+                cand = os.path.join(out_dir, '%s_%d%s' % (safe, n, ext))
+                n += 1
+            payload = text[s['start']:s['end']]
+            with open(cand, 'w', encoding='utf-8') as fp:
+                fp.write(payload)
+            created.append(cand)
+            try:
+                rel = os.path.relpath(cand, books_dir)
+            except Exception:
+                rel = os.path.basename(cand)
+            nb = Book(filename=os.path.basename(cand), title=seg['title'],
+                      author=book.author, file_type=(book.file_type or 'TXT'),
+                      file_size=len(payload.encode('utf-8')), relative_path=rel,
+                      initial=BookUtils.get_title_initial(seg['title']),
+                      category_id=book.category_id,
+                      description='由《%s》拆分生成（%d/%d）'
+                                  % (base_title, seg['index'], len(segs)))
+            db.session.add(nb)
+            created_books.append(nb)
+        db.session.commit()
+    except Exception as e:
+        db.session.rollback()
+        for p in created:
+            try:
+                if os.path.exists(p):
+                    os.remove(p)
+            except Exception:
+                pass
+        return jsonify({'success': False, 'message': '拆分失败并已回滚：' + str(e)}), 500
+    try:
+        if book.category_id:
+            cat = Category.query.get(book.category_id)
+            if cat:
+                cat.book_count = Book.query.filter_by(category_id=cat.id).count()
+                db.session.commit()
+    except Exception:
+        db.session.rollback()
+    log_action(current_user, '拆分书籍', '《%s》→ %d 本' % (base_title, len(created_books)))
+    return jsonify({'success': True, 'dry_run': False, 'created': len(created_books),
+                    'books': [{'id': b.id, 'title': b.title, 'filename': b.filename}
+                              for b in created_books],
+                    'message': '已生成 %d 本（原书保留）' % len(created_books)})
+
+
 @bp.route('/admin/export-meta')
 @login_required
 def admin_export_meta():
@@ -2473,7 +3309,7 @@ def admin_export_meta():
         flash('无导出权限', 'error')
         return redirect(url_for('main.library'))
     import csv, io as _io
-    from flask import Response
+    from flask import Response, stream_with_context
     cats = {c.id: c.path for c in Category.query.all()}
 
     def generate():
@@ -2494,7 +3330,10 @@ def admin_export_meta():
                 buf.seek(0); buf.truncate(0)
         yield buf.getvalue()
 
-    return Response(generate(), mimetype='text/csv; charset=utf-8', headers={
+    # 流式响应必须在请求上下文内迭代：生成器里访问 db 是在请求结束后才执行的，
+    # 不包 stream_with_context 会抛 "Working outside of application context"，导出直接失败。
+    log_action(current_user, '导出元数据', 'CSV（全库）')
+    return Response(stream_with_context(generate()), mimetype='text/csv; charset=utf-8', headers={
         'Content-Disposition': 'attachment; filename="books_metadata.csv"'})
 
 
@@ -2785,26 +3624,23 @@ def api_books_page():
     
     query = Book.query
     
-    # 分类筛选
+    # 分类筛选：含所有层级的下级分类（单次查询 + 内存展开，见 _descendant_category_ids）
     if category != 'all':
         category_obj = Category.query.filter_by(path=category).first()
         if category_obj:
-            # 获取该分类及其子分类的所有书籍
-            category_ids = [category_obj.id]
-            for child in category_obj.children:
-                category_ids.append(child.id)
-            query = query.filter(Book.category_id.in_(category_ids))
+            query = query.filter(Book.category_id.in_(_descendant_category_ids(category_obj)))
     
-    # 格式筛选
-    if format_filter != 'all':
-        query = query.filter(Book.file_type == format_filter)
+    # 格式筛选（大小写不敏感：库里有个别小写残留行，等值比较会让它消失）
+    if format_filter and format_filter != 'all':
+        query = query.filter(Book.file_type.in_(_file_type_variants(format_filter)))
     
     # 搜索
     if search:
         query = query.filter(
             db.or_(
                 Book.title.ilike(f'%{search}%'),
-                Book.author.ilike(f'%{search}%')
+                Book.author.ilike(f'%{search}%'),
+                Book.filename.ilike(f'%{search}%')
             )
         )
     
@@ -2829,17 +3665,17 @@ def api_books_page():
                 rp2, db.and_(rp2.book_id == Book.id, rp2.user_id == current_user.id)
             ).filter(rp2.status == status)
 
-    # 字母筛选（按标题首字母）
-    if letter != 'all' and letter != 'random':
-        if letter == 'Num':
-            # 数字开头
-            query = query.filter(Book.title.op('GLOB')('[0-9]*'))
-        elif letter == 'Other':
-            # 特殊字符开头（非字母、非数字）
-            query = query.filter(Book.title.op('GLOB')('[^A-Za-z0-9]*'))
-        else:
-            # 字母开头
-            query = query.filter(Book.title.ilike(f'{letter}%'))
+    # 字母筛选：改用入库时算好的 initial（中文按拼音首字母），走 ix_book_initial 索引。
+    # 原实现用 title LIKE 'A%' / GLOB，与首页按 initial 聚合出来的按钮计数完全对不上：
+    # 实测 initial='Y' 有 5197 本而 title LIKE 'Y%' 只有 1 本；'#' 用的
+    # GLOB '[^A-Za-z0-9]*' 更会把全部中文都匹配进来 —— 点字母后本数与列表严重不符。
+    if letter not in ('all', 'random', ''):
+        if letter == 'Other':
+            query = query.filter(db.or_(Book.initial == 'Other', Book.initial.is_(None)))
+        elif letter == 'Num':
+            query = query.filter(Book.initial == 'Num')
+        elif len(letter) == 1 and letter.isalpha():
+            query = query.filter(Book.initial == letter.upper())
     
     # 总数
     total = query.count()

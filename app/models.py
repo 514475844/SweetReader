@@ -29,6 +29,8 @@ class User(UserMixin, db.Model):
     last_login = db.Column(db.DateTime)
     # 最近活跃时间：由 before_request 每分钟最多更新一次，用于判断「在线」
     last_active = db.Column(db.DateTime)
+    # 管理员备注：仅管理员在用户管理页可见，用于辨识用户，不对外展示
+    admin_note = db.Column(db.Text, default='')
 
     def set_password(self, password):
         self.password_hash = generate_password_hash(password)
@@ -145,6 +147,12 @@ class UserTheme(db.Model):
     image_hide = db.Column(db.Boolean, default=False)      # True=隐藏书中图片
     brightness = db.Column(db.Integer, default=100)        # 阅读页亮度 30~150，100=正常
     bg_texture = db.Column(db.String(20), default='')      # 阅读页背景纹理 ''/grid/dots/lines/paper
+    text_color = db.Column(db.String(20), default='')      # 阅读页文字颜色 ''=跟随主题，或 #rrggbb
+    custom_css = db.Column(db.Text, default='')            # 阅读页自定义 CSS（高级用户，长度受限）
+    accent_color = db.Column(db.String(20), default='')    # 阅读页强调色（按钮/开关/进度点）
+    # 用户级隐藏的首页扩展卡片：插件 id 用逗号包起来存储（',a,b,'），空串=全部显示。
+    # 用逗号包裹是为了避免 'stats' 与 'stats_x' 这种前缀误判。
+    hidden_plugins = db.Column(db.String(500), default='')
 
 
 def ensure_schema():
@@ -163,6 +171,9 @@ def ensure_schema():
     add_column('user_theme', 'detail_mode', 'BOOLEAN DEFAULT 0')
     add_column('user_theme', 'recommend', 'BOOLEAN DEFAULT 1')
     add_column('user_theme', 'immersive', 'BOOLEAN DEFAULT 0')
+    add_column('user_theme', 'text_color', "VARCHAR(20) DEFAULT ''")
+    add_column('user_theme', 'custom_css', "TEXT DEFAULT ''")
+    add_column('user_theme', 'accent_color', "VARCHAR(20) DEFAULT ''")
     add_column('reading_progress', 'status', "VARCHAR(16) DEFAULT 'reading'")
     add_column('user', 'is_hidden', 'BOOLEAN DEFAULT 0')
     add_column('user', 'is_sub_admin', 'BOOLEAN DEFAULT 0')
@@ -172,6 +183,7 @@ def ensure_schema():
     add_column('user', 'granted_by', 'INTEGER')
     add_column('user', 'granted_at', 'DATETIME')
     add_column('user', 'last_active', 'DATETIME')
+    add_column('user', 'admin_note', "TEXT DEFAULT ''")
 
     # 兜底：按模型声明自动补齐所有缺失列。
     # 事故背景：granted_by 只加进了模型、忘了登记到上面的列表，结果线上

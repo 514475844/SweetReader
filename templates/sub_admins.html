@@ -7,6 +7,7 @@
     <div class="card">
         <h3>当前子管理员（{{ subs|length }} / {{ max_sub_admins }}）</h3>
         {% if subs %}
+        <div class="table-scroll">
         <table class="sa-table">
             <thead>
                 <tr><th>用户名</th><th>邮箱</th><th>导入</th><th>导出</th><th>书籍管理</th><th>授权时间</th><th>操作</th></tr>
@@ -25,6 +26,7 @@
             {% endfor %}
             </tbody>
         </table>
+        </div>
         {% else %}
         <p class="empty">尚未授权任何子管理员。</p>
         {% endif %}
@@ -67,11 +69,19 @@ body.dark-theme .sub-admin .card { background: #23252b; }
 .sub-admin .sa-table { width: 100%; border-collapse: collapse; font-size: 13px; }
 .sub-admin .sa-table th, .sub-admin .sa-table td { text-align: left; padding: 7px 8px; border-bottom: 1px solid #eee; }
 body.dark-theme .sub-admin .sa-table th, body.dark-theme .sub-admin .sa-table td { border-color: #34373e; }
+.sub-admin .sa-table th { white-space: nowrap; }
 .sub-admin .form-row { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; flex-wrap: wrap; }
 .sub-admin .form-row label { font-size: 13px; }
 .sub-admin .form-row.caps label { gap: 6px; display: inline-flex; align-items: center; margin-right: 16px; }
 .sub-admin .form-row select { flex: 1; padding: 6px 10px; border-radius: 8px; border: 1px solid var(--primary-light); font-size: 14px; }
 .sub-admin .result-line { margin-top: 10px; color: var(--primary); font-size: 13px; }
+@media (max-width: 768px) {
+    .sub-admin { padding: 0 8px; }
+    .sub-admin .sa-table { font-size: 12px; }
+    .sub-admin .sa-table th, .sub-admin .sa-table td { padding: 6px 6px; }
+    .sub-admin .form-row select { flex: 1 1 100%; width: 100%; }
+    .sub-admin .form-row.caps label { margin-right: 10px; }
+}
 </style>
 
 <script>

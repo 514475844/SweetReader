@@ -2,6 +2,8 @@
 {% block title %}SweetReader - 用户管理{% endblock %}
 {% block extra_css %}
 <style>
+.modal-box textarea { width: 100%; padding: 10px 14px; border: 2px solid #f0e0e0; border-radius: 10px; font-size: 14px; margin-bottom: 12px; box-sizing: border-box; resize: vertical; font-family: inherit; }
+.modal-box textarea:focus { outline: none; border-color: var(--primary); }
 .user-table { width: 100%; border-collapse: collapse; font-size: 14px; background: white; border-radius: 12px; overflow: hidden; box-shadow: var(--shadow); }
 .user-table th { background: #f5f0eb; padding: 12px 16px; text-align: left; font-weight: 600; color: var(--text-dark); }
 .user-table td { padding: 10px 16px; border-bottom: 1px solid #f0f0f0; vertical-align: middle; }
@@ -55,6 +57,7 @@
     <h2 style="color:var(--text-dark);font-size:22px;">👥 用户管理</h2>
     <div class="header-actions">
         <button onclick="showCreateUser()" class="btn btn-success">➕ 创建账号</button>
+        <a href="/admin/users/export" class="btn btn-outline">⬇️ 导出</a>
         <a href="/library" class="btn btn-outline">← 返回书库</a>
     </div>
 </div>
@@ -74,8 +77,12 @@
             <option value="active" {% if status == 'active' %}selected{% endif %}>✅ 正常</option>
             <option value="inactive" {% if status == 'inactive' %}selected{% endif %}>⛔ 禁用</option>
         </select>
+        <select name="sort">
+            <option value="created" {% if sort == 'created' %}selected{% endif %}>按注册时间</option>
+            <option value="active" {% if sort == 'active' %}selected{% endif %}>按最近活跃</option>
+        </select>
         <button type="submit" class="btn-sm btn-sm-primary">筛选</button>
-        {% if q or role != 'all' or status != 'all' %}
+        {% if q or role != 'all' or status != 'all' or sort != 'created' %}
         <a href="/admin/users" class="btn-sm btn-sm-warning">重置</a>
         {% endif %}
     </form>
@@ -92,6 +99,7 @@
                 <th>角色</th>
                 <th>状态</th>
                 <th>在线</th>
+                <th>阅读状态</th>
                 <th>最近活跃</th>
                 <th>注册时间</th>
                 <th>操作</th>
@@ -106,9 +114,11 @@
                 <td>{% if user.is_admin %}👑 管理员{% else %}📖 用户{% endif %}</td>
                 <td><span class="status-badge {% if user.is_active %}status-active{% else %}status-inactive{% endif %}">{% if user.is_active %}✅ 正常{% else %}⛔ 禁用{% endif %}</span></td>
                 <td>{% if user.id in online_ids %}<span class="online-badge">🟢 在线</span>{% else %}<span class="offline-badge">离线</span>{% endif %}</td>
+                <td style="font-size:12px;white-space:nowrap;">{% set _rc = reading_counts.get(user.id, {'unread':0,'reading':0,'finished':0}) %}<span style="color:#e6a23c;">📖 {{ _rc.reading }}</span> <span style="color:#27ae60;">✅ {{ _rc.finished }}</span> <span style="color:#9a8f8f;">·{{ _rc.unread }}</span></td>
                 <td style="font-size:12px;color:var(--text-light);">{% if user.last_active %}{{ user.last_active.strftime('%Y-%m-%d %H:%M') }}{% else %}从未登录{% endif %}</td>
                 <td>{{ user.created_at.strftime('%Y-%m-%d %H:%M') }}</td>
                 <td class="actions">
+                    <button class="btn-sm btn-sm-primary" data-id="{{ user.id }}" data-note="{{ user.admin_note or '' }}" onclick="openNote(this)">📝 备注</button>
                     {% if not user.is_admin %}
                         <button class="btn-sm btn-sm-warning" onclick="resetPassword({{ user.id }})">🔑 重置密码</button>
                         <button class="btn-sm {% if user.is_active %}btn-sm-danger{% else %}btn-sm-success{% endif %}" onclick="toggleUser({{ user.id }})">
@@ -121,7 +131,7 @@
                 </td>
             </tr>
             {% else %}
-            <tr><td colspan="8" style="text-align:center;padding:30px;color:#999;">没有符合条件的用户</td></tr>
+            <tr><td colspan="10" style="text-align:center;padding:30px;color:#999;">没有符合条件的用户</td></tr>
             {% endfor %}
         </tbody>
     </table>
@@ -159,6 +169,17 @@
                 <button type="submit" class="btn btn-primary">确认重置</button>
             </div>
         </form>
+    </div>
+</div>
+
+<div id="noteModal" class="modal-overlay">
+    <div class="modal-box">
+        <h3>📝 用户备注</h3>
+        <textarea id="noteInput" rows="4" placeholder="仅管理员可见，用于辨识用户"></textarea>
+        <div class="modal-actions">
+            <button type="button" class="btn btn-ghost" onclick="closeNote()">取消</button>
+            <button type="button" class="btn btn-primary" onclick="saveNote()">保存</button>
+        </div>
     </div>
 </div>
 
@@ -242,6 +263,30 @@ function resetPasswordSubmit(e) {
             document.getElementById('resetPasswordModal').classList.remove('show');
         } else {
             showToast('❌ ' + (res.message || '重置失败'), 'error');
+        }
+    });
+}
+
+let noteUserId = null;
+function openNote(btn) {
+    noteUserId = parseInt(btn.getAttribute('data-id'), 10);
+    document.getElementById('noteInput').value = btn.getAttribute('data-note') || '';
+    document.getElementById('noteModal').classList.add('show');
+}
+function closeNote() { document.getElementById('noteModal').classList.remove('show'); }
+function saveNote() {
+    const note = document.getElementById('noteInput').value;
+    fetch('/admin/user/' + noteUserId + '/note', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({note: note})
+    }).then(function(r) { return r.json(); }).then(function(res) {
+        if (res.success) {
+            showToast('✅ 备注已保存', 'success');
+            document.getElementById('noteModal').classList.remove('show');
+            setTimeout(function() { location.reload(); }, 800);
+        } else {
+            showToast('❌ ' + (res.message || '保存失败'), 'error');
         }
     });
 }

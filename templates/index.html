@@ -5,18 +5,22 @@
 /* ===== 布局：目录树 + 内容区 ===== */
 .main-layout {
     display: grid;
-    grid-template-columns: 260px 1fr;
+    /* 轨道下限必须是 0：`1fr` 等价于 `minmax(auto, 1fr)`，而 auto 下限取子项的
+       min-content。插件卡里一个 nowrap 的长书名就能把整列撑到 1142px，
+       窄屏于是整页横向溢出（body 的 overflow-x 兜底裁剪后看起来就是卡片被切边）。 */
+    grid-template-columns: 260px minmax(0, 1fr);
     gap: 20px;
 }
 @media (max-width: 900px) {
     .main-layout {
-        grid-template-columns: 1fr;
+        grid-template-columns: minmax(0, 1fr);
     }
 }
 
 /* ===== 左侧目录树 ===== */
 .sidebar {
     background: white;
+    min-width: 0;
     padding: 12px 14px;
     border-radius: 14px;
     box-shadow: var(--shadow);
@@ -82,7 +86,7 @@
 .load-more-btn:hover { background: var(--primary-light); }
 
 /* ===== 右侧内容区 ===== */
-.content-area { display: flex; flex-direction: column; }
+.content-area { display: flex; flex-direction: column; min-width: 0; }
 
 /* ===== 继续阅读 ===== */
 .ext-clear { display: block; width: 100%; margin-top: 8px; font-size: 12px; padding: 4px 10px; border: 1px solid var(--primary-light); background: transparent; color: var(--text-light); border-radius: 14px; cursor: pointer; transition: all .2s; }
@@ -391,6 +395,13 @@ body.dark-theme .filter-bar .book-count {
     color: #bbb;
     margin: 4px 0 8px;
 }
+.books-grid.compact { grid-template-columns: 1fr; gap: 6px; }
+.books-grid.compact .book-card { display: flex; align-items: center; gap: 10px; padding: 8px 12px; flex-wrap: nowrap; }
+.books-grid.compact .book-card .title { font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.books-grid.compact .book-card .author { display: none; }
+.books-grid.compact .book-card .meta { margin: 0; flex: 0 0 auto; }
+mark.sr-hl { background: #ffe08a; color: inherit; border-radius: 2px; padding: 0 1px; }
+body.dark-theme mark.sr-hl { background: #b58900; color: #16161f; }
 .empty-state {
     text-align: center;
     padding: 40px 20px;
@@ -558,8 +569,88 @@ body.dark-theme .extension-card { background: #2a2d34; border-color: #3a3d44; }
 body.dark-theme .extension-title { color: #e0e0e0; }
 .extension-action { display: inline-block; font-size: 13px; color: var(--primary); cursor: pointer; text-decoration: none; background: none; border: none; padding: 0; font-family: inherit; }
 .extension-action:hover { text-decoration: underline; }
-.extension-body { font-size: 12px; color: var(--text-light); }
+.extension-body { font-size: 12px; color: var(--text-light); min-width: 0; overflow-wrap: anywhere; }
+/* 长列表卡限高滚动：否则最高的一张卡（最近阅读 7 条 = 392px）会把整行 flex
+   拉到 470px，同排的「继续阅读 / 随便看看」下方就空出一大片。 */
+#extRecent, #extRelated {
+    max-height: 168px; overflow-y: auto;
+    overscroll-behavior: contain; scrollbar-width: thin;
+}
+#extRecent::-webkit-scrollbar, #extRelated::-webkit-scrollbar { width: 6px; }
+#extRecent::-webkit-scrollbar-thumb, #extRelated::-webkit-scrollbar-thumb { background: rgba(0,0,0,.16); border-radius: 3px; }
+body.dark-theme #extRecent::-webkit-scrollbar-thumb,
+body.dark-theme #extRelated::-webkit-scrollbar-thumb { background: rgba(255,255,255,.2); }
 .ext-empty { font-size: 12px; color: var(--text-light); }
+/* ===== 扩展面板：折叠开关与快捷入口 ===== */
+.extension-header { display: flex; align-items: center; gap: 8px; }
+.ext-head-actions { margin-left: auto; display: flex; align-items: center; gap: 6px; }
+.ext-mini {
+    height: 22px; padding: 0 9px; border: 1px solid #e6e6e6; border-radius: 11px;
+    background: #fff; color: var(--text-light); font-size: 11px; line-height: 1;
+    cursor: pointer; font-family: inherit;
+    transition: background .18s ease-out, color .18s ease-out, border-color .18s ease-out;
+}
+.ext-mini:hover { background: var(--primary-light); color: var(--text-dark); border-color: var(--primary); }
+.ext-mini:active { transform: scale(.97); }
+body.dark-theme .ext-mini { background: transparent; border-color: #3a3d44; color: #cfcfcf; }
+.ext-collapse .caret { display: inline-block; margin-left: 3px; transition: transform .18s ease-out; }
+.extension-panel.ext-collapsed .ext-collapse .caret { transform: rotate(-90deg); }
+/* 折叠用 max-height + opacity（由 JS 先量真实高度再落 0，避免长时长过渡） */
+.extension-grid { overflow: hidden; transition: max-height .18s ease-out, opacity .18s ease-out; }
+.extension-panel.ext-collapsed .extension-grid { max-height: 0 !important; opacity: 0; }
+
+/* ===== 扩展面板：窄屏两列自适应（flex 换行会让长短卡互相拉高，改 grid 对齐） ===== */
+@media (max-width: 768px) {
+    .extension-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: start; }
+    .extension-card { min-width: 0; }
+    #overviewCard { grid-column: 1 / -1; }
+    #extRecent, #extRelated { max-height: 132px; }
+}
+
+/* ===== 书库总览（工程内聚合，无全表拉取） ===== */
+.ext-overview { display: flex; flex-direction: column; gap: 6px; }
+.ov-line { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 12px; color: var(--text-light); }
+.ov-line b { color: var(--text-dark); font-size: 15px; margin-right: 2px; font-weight: 700; }
+body.dark-theme .ov-line b { color: #e0e0e0; }
+.ov-bar-row { display: flex; align-items: center; gap: 6px; font-size: 11px; color: var(--text-light); }
+.ov-bar-row .ov-k { width: 30px; flex: 0 0 auto; }
+.ov-track { flex: 1 1 auto; min-width: 0; height: 5px; background: #eee; border-radius: 3px; overflow: hidden; }
+body.dark-theme .ov-track { background: #3a3d44; }
+.ov-fill { height: 100%; width: 0; background: var(--primary); border-radius: 3px; transition: width .18s ease-out; }
+.ov-bar-row .ov-n { flex: 0 0 auto; }
+
+/* ===== 阅读状态筛选（未读/在读/已读） ===== */
+.status-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.status-row .row-label { font-size: 12px; color: var(--text-light); flex: 0 0 auto; }
+.filter-bar .status-btn {
+    padding: 2px 10px; height: 26px; border: 1px solid #e0e0e0; border-radius: 12px;
+    background: white; cursor: pointer; font-size: 12px; color: var(--text-dark);
+    font-family: inherit;
+    transition: background .18s ease-out, color .18s ease-out, border-color .18s ease-out;
+}
+.filter-bar .status-btn:hover { background: var(--primary-light); border-color: var(--primary); }
+.filter-bar .status-btn.active { background: var(--primary); color: white; border-color: var(--primary); }
+.filter-bar .status-btn .st-n { opacity: .72; margin-left: 3px; font-size: 11px; }
+.filter-bar .status-btn.active .st-n { opacity: .9; }
+body.dark-theme .filter-bar .status-btn { background: transparent !important; color: #e0e0e0 !important; border-color: #3a3d44 !important; }
+body.dark-theme .filter-bar .status-btn.active { background: var(--primary) !important; color: #fff !important; border-color: var(--primary) !important; }
+/* ===== 标签筛选行（常用标签，来源 /api/tags） ===== */
+.tag-filter-list { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; min-width: 0; }
+.filter-bar .tag-filter-btn {
+    height: 26px; max-width: 160px; padding: 0 10px; border-radius: 13px;
+    border: 1px solid rgba(138,109,59,.18); background: #fdf3e2; color: #8a6d3b;
+    font-size: 12px; font-family: inherit; cursor: pointer;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    transition: background .18s ease-out, color .18s ease-out, border-color .18s ease-out;
+}
+.filter-bar .tag-filter-btn:hover { background: #f7e3c3; }
+.filter-bar .tag-filter-btn.active { background: var(--primary); border-color: var(--primary); color: #fff; }
+.filter-bar .tag-filter-btn .tn { opacity: .68; margin-left: 4px; font-size: 11px; }
+.filter-bar .tag-filter-btn.active .tn { opacity: .9; }
+.tag-more { font-size: 12px; color: var(--text-light); cursor: pointer; padding: 0 6px; border-radius: 12px; user-select: none; transition: background .18s ease-out; }
+.tag-more:hover { background: #f5f0eb; color: var(--text-dark); }
+body.dark-theme .filter-bar .tag-filter-btn { background: transparent !important; color: #d8c9a8 !important; border-color: #3a3d44 !important; }
+body.dark-theme .filter-bar .tag-filter-btn.active { background: var(--primary) !important; color: #fff !important; border-color: var(--primary) !important; }
 /* ===== 书籍格式徽标 ===== */
 .fmt-badge {
     display: inline-block; padding: 1px 7px; border-radius: 9px; margin-right: 6px;
@@ -588,6 +679,7 @@ body.dark-theme .extension-title { color: #e0e0e0; }
 .st-badge { display: none !important; }
 @media (max-width: 768px) {
     .status-btn { height: 24px; font-size: 11px; padding: 0 8px; }
+    .filter-bar .tag-filter-btn { height: 24px; max-width: 108px; font-size: 11px; padding: 0 8px; }
 }
 /* ===== 标签 ===== */
 .tag-chip {
@@ -693,7 +785,14 @@ body.dark-theme .extension-title { color: #e0e0e0; }
     <div class="content-area">
         <!-- ===== 扩展功能（继续阅读 + 插件入口） ===== -->
         <div class="extension-panel" id="extensionPanel">
-            <div class="extension-header">扩展功能</div>
+            <div class="extension-header">
+                <span>扩展功能</span>
+                <span class="ext-head-actions">
+                    <button type="button" class="ext-mini" onclick="focusSearch()" title="跳到搜索框">搜索</button>
+                    {% if is_admin %}<button type="button" class="ext-mini" onclick="scanBooks()" title="重新扫描书库目录">扫描</button>{% endif %}
+                    <button type="button" class="ext-mini ext-collapse" id="extToggle" aria-expanded="true" onclick="toggleExtensionPanel()">收起<span class="caret">&#9662;</span></button>
+                </span>
+            </div>
             <div class="extension-grid">
                 <!-- 继续阅读（原独立横条，移入扩展功能面板） -->
                 <div class="extension-card" id="continueReadingCard">
@@ -734,6 +833,14 @@ body.dark-theme .extension-title { color: #e0e0e0; }
                 </div>
                 {% endif %}
                 {% endfor %}
+
+                <!-- 书库总览：数据来自 /api/library-overview 的聚合查询 -->
+                <div class="extension-card" id="overviewCard">
+                    <div class="extension-title">书库总览</div>
+                    <div class="extension-body ext-overview" id="extOverview">
+                        <div class="ext-empty">统计中…</div>
+                    </div>
+                </div>
             </div>
         </div>
 
@@ -748,7 +855,20 @@ body.dark-theme .extension-title { color: #e0e0e0; }
                     <button class="letter-btn" data-letter="{{ letter }}" onclick="filterLetter('{{ letter }}')">{{ letter }}</button>
                 {% endfor %}
             </div>
-            <!-- 第二行：格式筛选 + 搜索 -->
+            <!-- 第二行：阅读状态筛选（计数由 /api/library-overview 提供） -->
+            <div class="row-status status-row" id="statusRow">
+                <span class="row-label">阅读状态</span>
+                <button class="status-btn" data-status="unread" onclick="filterStatus('unread')">未读<span class="st-n" id="stN-unread"></span></button>
+                <button class="status-btn" data-status="reading" onclick="filterStatus('reading')">在读<span class="st-n" id="stN-reading"></span></button>
+                <button class="status-btn" data-status="finished" onclick="filterStatus('finished')">已读<span class="st-n" id="stN-finished"></span></button>
+            </div>
+            <!-- 第三行：标签筛选（常用标签；无标签时整行自动隐藏） -->
+            <div class="row-status status-row tag-row" id="tagRow" style="display:none;">
+                <span class="row-label">标签</span>
+                <span class="tag-filter-list" id="tagFilterList"></span>
+                <span class="tag-more" id="tagMore" style="display:none;" onclick="toggleAllTags()">更多 &rsaquo;</span>
+            </div>
+            <!-- 第四行：格式筛选 + 搜索 -->
             <div class="row-bottom">
                 <button class="format-btn" data-format="EPUB" onclick="filterFormat('EPUB')">EPUB</button>
                 <button class="format-btn" data-format="PDF" onclick="filterFormat('PDF')">PDF</button>
@@ -767,6 +887,7 @@ body.dark-theme .extension-title { color: #e0e0e0; }
                     <option value="progress">按阅读进度</option>
                     <option value="size">按文件大小</option>
                 </select>
+                <button class="format-btn" id="viewToggleBtn" onclick="toggleBookView()" title="切换网格/列表">▦ 网格</button>
                 <span class="active-tag" id="activeTag" style="display:none;" onclick="filterTag('')"></span>
                 <span class="book-count" id="bookCount">0</span>
             </div>
@@ -809,6 +930,7 @@ var currentPerPage = 50;
 var currentTotal = 0;
 var currentTag = '';
 var currentSort = 'default';
+var currentStatus = '';
 var currentOrder = 'asc';
 var loadedBooks = [];
 function changeSort(v) {
@@ -836,6 +958,24 @@ function sortLoadedBooks(list) {
         return 0;
     });
     return arr;
+}
+function toggleBookView() {
+    var g = document.getElementById('booksGrid');
+    if (!g) return;
+    var compact = g.classList.toggle('compact');
+    try { localStorage.setItem('sr_book_view', compact ? 'compact' : 'grid'); } catch (e) {}
+    var btn = document.getElementById('viewToggleBtn');
+    if (btn) { btn.textContent = compact ? '▤ 列表' : '▦ 网格'; btn.title = compact ? '当前：紧凑列表，点击切回网格' : '当前：网格，点击切到紧凑列表'; }
+}
+function restoreBookView() {
+    var saved = 'grid';
+    try { saved = localStorage.getItem('sr_book_view') || 'grid'; } catch (e) {}
+    var g = document.getElementById('booksGrid');
+    if (!g) return;
+    var compact = (saved === 'compact');
+    g.classList.toggle('compact', compact);
+    var btn = document.getElementById('viewToggleBtn');
+    if (btn) { btn.textContent = compact ? '▤ 列表' : '▦ 网格'; }
 }
 function renderGrid() {
     var grid = document.getElementById('booksGrid');
@@ -869,7 +1009,69 @@ function filterTag(t) {
             box.style.display = 'none';
         }
     }
+    syncTagChips();
     resetAndLoad();
+}
+
+// ===== 标签筛选行（常用标签，消费 /api/tags） =====
+// 后端 /api/books/page 早已支持 tag 参数，此前没有任何入口能选标签，
+// 只能在书籍卡片上的 chip 里点（还得先翻到那本书）。这里给出可浏览的标签入口。
+var tagListAll = [];
+var TAGS_SHOWN = 12;
+function syncTagChips() {
+    var btns = document.querySelectorAll('.filter-bar .tag-filter-btn');
+    for (var i = 0; i < btns.length; i++) {
+        btns[i].classList.toggle('active', btns[i].dataset.tag === currentTag);
+    }
+}
+function renderTagFilters() {
+    var box = document.getElementById('tagFilterList');
+    var row = document.getElementById('tagRow');
+    if (!box || !row) return;
+    if (!tagListAll.length) { row.style.display = 'none'; return; }
+    row.style.display = '';
+    var expandedAll = box.dataset.expanded === '1';
+    var shown = expandedAll ? tagListAll : tagListAll.slice(0, TAGS_SHOWN);
+    box.innerHTML = '';
+    for (var i = 0; i < shown.length; i++) {
+        var t = shown[i];
+        // 全部用 DOM 构造：标签是用户输入，可能含引号/尖括号
+        var b = document.createElement('button');
+        b.className = 'tag-filter-btn' + (currentTag === t.name ? ' active' : '');
+        b.dataset.tag = t.name;
+        b.title = t.name + '（' + t.count + ' 本）';
+        b.appendChild(document.createTextNode(t.name));
+        var n = document.createElement('span');
+        n.className = 'tn';
+        n.textContent = t.count;
+        b.appendChild(n);
+        (function(name) {
+            b.onclick = function() { filterTag(currentTag === name ? '' : name); };
+        })(t.name);
+        box.appendChild(b);
+    }
+    var more = document.getElementById('tagMore');
+    if (more) {
+        more.style.display = (tagListAll.length > TAGS_SHOWN) ? '' : 'none';
+        more.textContent = expandedAll ? '\u6536\u8d77 \u2039' : '\u66f4\u591a \u203a';
+    }
+}
+function toggleAllTags() {
+    var box = document.getElementById('tagFilterList');
+    if (!box) return;
+    box.dataset.expanded = (box.dataset.expanded === '1') ? '0' : '1';
+    renderTagFilters();
+}
+function loadTagFilters() {
+    var row = document.getElementById('tagRow');
+    if (!row) return;
+    fetch('/api/tags', { credentials: 'same-origin' })
+        .then(function(r) { return r.json(); })
+        .then(function(d) {
+            tagListAll = (d && d.success && d.tags) ? d.tags : [];
+            renderTagFilters();
+        })
+        .catch(function() {});
 }
 
 function filterCategory(cat) {
@@ -889,6 +1091,14 @@ function searchBooks(query) {
     searchTimer = setTimeout(function() { resetAndLoad(); }, 300);
 }
 
+function srHighlight(text, q) {
+    var s = (text == null ? '' : String(text));
+    s = escapeHtml(s);
+    if (!q) return s;
+    var qe = String(q).trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    if (!qe) return s;
+    try { return s.replace(new RegExp('(' + qe + ')', 'gi'), '<mark class="sr-hl">$1</mark>'); } catch (e) { return s; }
+}
 function escapeHtml(s) {
     return String(s).replace(/[&<>"]/g, function(c) {
         return {'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;'}[c];
@@ -943,6 +1153,128 @@ function filterFormat(format) {
         el.classList.toggle('active', el.dataset.format === format);
     });
     resetAndLoad();
+}
+
+// ===== 阅读状态筛选 =====
+function filterStatus(v) {
+    // 再次点击同一个状态 = 取消该筛选
+    currentStatus = (currentStatus === v) ? '' : v;
+    document.querySelectorAll('.filter-bar .status-btn').forEach(function(el) {
+        el.classList.toggle('active', el.dataset.status === currentStatus);
+    });
+    resetAndLoad();
+}
+
+// ===== 书库总览 + 状态计数 =====
+function loadLibraryOverview() {
+    var box = document.getElementById('extOverview');
+    if (!box) return;
+    fetch('/api/library-overview', { credentials: 'same-origin' })
+        .then(function(r) { return r.json(); })
+        .then(function(d) {
+            if (!d || !d.success) { box.innerHTML = '<div class="ext-empty">统计失败</div>'; return; }
+            var st = d.status || {};
+            var total = d.total || 0;
+            var html = '<div class="ov-line">' +
+                '<span><b>' + total + '</b>本藏书</span>' +
+                '<span><b>' + (d.categories || 0) + '</b>个分类</span>' +
+                '<span><b>' + ((d.formats || []).length) + '</b>种格式</span>' +
+                '</div>';
+            var rows = [['未读', st.unread], ['在读', st.reading], ['已读', st.finished]];
+            html += '<div class="ov-bars">';
+            rows.forEach(function(r) {
+                var n = r[1] || 0;
+                var pct = total ? Math.round(n * 100 / total) : 0;
+                html += '<div class="ov-bar-row"><span class="ov-k">' + r[0] + '</span>' +
+                    '<div class="ov-track"><div class="ov-fill" style="width:' + pct + '%"></div></div>' +
+                    '<span class="ov-n">' + n + '</span></div>';
+            });
+            html += '</div>';
+            if ((d.formats || []).length) {
+                html += '<div class="ov-line">';
+                d.formats.forEach(function(f) {
+                    html += '<span>' + escapeHtml(f.type) + ' <b style="font-size:12px;">' + f.count + '</b></span>';
+                });
+                html += '</div>';
+            }
+            box.innerHTML = html;
+            // 状态按钮上的计数
+            ['unread', 'reading', 'finished'].forEach(function(k) {
+                var el = document.getElementById('stN-' + k);
+                if (el) el.textContent = (st[k] || 0) ? String(st[k]) : '';
+            });
+        })
+        .catch(function() { box.innerHTML = '<div class="ext-empty">统计失败</div>'; });
+}
+
+// ===== 扩展面板可折叠（记忆在 localStorage） =====
+var EXT_COLLAPSE_KEY = 'sr_ext_collapsed';
+
+function setExtensionCollapsed(collapsed, animate) {
+    var panel = document.getElementById('extensionPanel');
+    var grid = panel ? panel.querySelector('.extension-grid') : null;
+    var btn = document.getElementById('extToggle');
+    if (!panel || !grid) return;
+
+    // 先量真实高度，让 max-height 从具体像素过渡到 0（而不是 2000px 空转）
+    function apply() {
+        if (collapsed) {
+            grid.style.maxHeight = '0px';
+            panel.classList.add('ext-collapsed');
+        } else {
+            panel.classList.remove('ext-collapsed');
+            grid.style.maxHeight = grid.scrollHeight + 'px';
+            // 展开完成后撤掉内联高度，避免内容变高时被旧值卡住
+            window.setTimeout(function() {
+                if (!panel.classList.contains('ext-collapsed')) grid.style.maxHeight = '';
+            }, 220);
+        }
+        if (btn) {
+            btn.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
+            btn.title = collapsed ? '展开扩展功能' : '收起扩展功能';
+            btn.childNodes[0].nodeValue = collapsed ? '展开' : '收起';
+        }
+    }
+
+    if (animate) {
+        if (collapsed) {
+            grid.style.maxHeight = grid.scrollHeight + 'px';
+            window.requestAnimationFrame(function() { window.requestAnimationFrame(apply); });
+        } else {
+            apply();
+        }
+    } else {
+        grid.style.maxHeight = collapsed ? '0px' : '';
+        panel.classList.toggle('ext-collapsed', collapsed);
+        if (btn) {
+            btn.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
+            btn.childNodes[0].nodeValue = collapsed ? '展开' : '收起';
+        }
+    }
+}
+
+function toggleExtensionPanel() {
+    var panel = document.getElementById('extensionPanel');
+    if (!panel) return;
+    var collapsed = !panel.classList.contains('ext-collapsed');
+    try { localStorage.setItem(EXT_COLLAPSE_KEY, collapsed ? '1' : '0'); } catch (e) {}
+    setExtensionCollapsed(collapsed, true);
+}
+
+function initExtensionPanelState() {
+    try {
+        if (localStorage.getItem(EXT_COLLAPSE_KEY) === '1') {
+            setExtensionCollapsed(true, false);
+        }
+    } catch (e) {}
+}
+
+// 快捷入口：聚焦搜索框并把筛选栏滚进视野
+function focusSearch() {
+    var input = document.getElementById('searchInput');
+    if (!input) return;
+    input.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    input.focus();
 }
 
 function switchTab(tab) {
@@ -1077,6 +1409,16 @@ function resetAllFilters() {
     document.querySelectorAll('.filter-bar .format-btn').forEach(function(el) {
         el.classList.remove('active');
     });
+    // 重置阅读状态筛选
+    currentStatus = '';
+    document.querySelectorAll('.filter-bar .status-btn').forEach(function(el) {
+        el.classList.remove('active');
+    });
+    // 重置标签筛选（含 activeTag 指示条）
+    currentTag = '';
+    var tagBox = document.getElementById('activeTag');
+    if (tagBox) { tagBox.style.display = 'none'; tagBox.textContent = ''; }
+    syncTagChips();
     // 重置分类高亮
     document.querySelectorAll('.sidebar .cat-item').forEach(function(el) {
         el.classList.toggle('active', el.dataset.cat === 'all');
@@ -1118,8 +1460,8 @@ function buildBookCard(book) {
     var st = book.status || 'unread';
     var stText = ({ unread: '未读', reading: '在读', finished: '已读' })[st] || '未读';
     card.innerHTML =
-        '<div class="title">' + (book.title || '未命名') + '</div>' +
-        '<div class="author">' + (book.author || '未知作者') + '</div>' +
+        '<div class="title">' + srHighlight(book.title, searchQuery) + '</div>' +
+        '<div class="author">' + srHighlight(book.author, searchQuery) + '</div>' +
         '<div class="meta"><span class="fmt-badge ' + fmtClass + '">' + fmt + '</span>' +
         '<span class="st-badge st-' + st + '">' + stText + '</span>' +
         (book.file_size_str || '0 B') + '</div>';
@@ -1143,6 +1485,7 @@ function loadBooks() {
         format: currentFormat,
         search: searchQuery,
         tag: currentTag,
+        status: currentStatus,
         tab: currentTab,
         page: currentPage,
         per_page: currentPerPage
@@ -1251,6 +1594,10 @@ function getPinyinFirstLetter(str) {
 loadLetterCount();
 loadContinueReading();
 loadExtensionPanel();
+loadLibraryOverview();
+loadTagFilters();
+initExtensionPanelState();
+restoreBookView();
 loadBooks();
 
 // ===== 扩展功能面板（插件入口） =====

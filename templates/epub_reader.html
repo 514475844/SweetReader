@@ -7,21 +7,69 @@
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         html, body { height: 100%; }
-        body { display: flex; flex-direction: column; background: #f5f0eb; font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", sans-serif; }
-        #viewer { flex: 1; overflow: hidden; background: white; position: relative; }
-        .controls { display: flex; gap: 10px; padding: 8px 14px; background: #fff; border-bottom: 1px solid #eee; align-items: center; flex-wrap: wrap; }
-        .controls button, .controls .back-link { padding: 5px 12px; border: none; border-radius: 6px; cursor: pointer; background: #e8848a; color: #fff; font-size: 13px; text-decoration: none; }
+        body { display: flex; flex-direction: column; background: #f5f0eb; color: #2a2a2a;
+               font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", sans-serif;
+               transition: background-color .2s ease-out, color .2s ease-out; }
+        #viewer { flex: 1; overflow: hidden; background: #fff; position: relative;
+                  transition: background-color .2s ease-out; }
+        .controls { display: flex; gap: 10px; padding: 8px 14px; background: #fff; border-bottom: 1px solid #eee;
+                    align-items: center; flex-wrap: wrap; position: relative; z-index: 20;
+                    transition: background-color .2s ease-out, border-color .2s ease-out; }
+        .controls button, .controls .back-link { padding: 5px 12px; border: none; border-radius: 6px; cursor: pointer;
+                                                 background: #e8848a; color: #fff; font-size: 13px;
+                                                 text-decoration: none; font-family: inherit; }
         .controls button:hover, .controls .back-link:hover { background: #d46a70; }
         .controls .back-link { background: #aaa; }
         .controls .back-link:hover { background: #888; }
         .controls .info { color: #888; font-size: 12px; white-space: nowrap; }
-        .controls .progress-bar { flex: 1; min-width: 70px; height: 4px; background: #eee; border-radius: 2px; position: relative; }
-        .controls .progress-bar .fill { height: 100%; background: #e8848a; border-radius: 2px; width: 0%; transition: width 0.3s; }
-        .controls select { padding: 4px 6px; border-radius: 6px; border: 1px solid #e0e0e0; font-size: 13px; background: #fff; cursor: pointer; }
+        .controls .progress-bar { flex: 1; min-width: 70px; height: 4px; background: #eee; border-radius: 2px;
+                                  position: relative; transition: background-color .2s ease-out; }
+        .controls .progress-bar .fill { height: 100%; background: #e8848a; border-radius: 2px; width: 0%;
+                                        transition: width 0.3s; }
         .error-msg { padding: 60px 20px; text-align: center; color: #c33; font-size: 15px; }
+
+        /* ===== 排版设置（字号 / 行距 / 亮度 / 字体） ===== */
+        .tune-wrap { position: relative; }
+        .tune-btn { padding: 5px 12px; border: none; border-radius: 6px; cursor: pointer; font-size: 13px;
+                    font-family: inherit; background: #efe7e2; color: #555; }
+        .tune-btn[aria-expanded="true"] { background: #e8848a; color: #fff; }
+        .tune-panel { position: absolute; right: 0; top: calc(100% + 8px); z-index: 40; min-width: 238px;
+                      padding: 10px 12px; border-radius: 10px; background: #fff; border: 1px solid #eee;
+                      box-shadow: 0 6px 22px rgba(0, 0, 0, .14);
+                      opacity: 0; visibility: hidden; transform: translateY(-6px);
+                      transition: opacity .18s ease-out, transform .18s ease-out, visibility .18s; }
+        .tune-panel.show { opacity: 1; visibility: visible; transform: translateY(0); }
+        .tune-row { display: flex; align-items: center; gap: 8px; padding: 5px 0; font-size: 13px; }
+        .tune-row > span:first-child { width: 34px; flex: 0 0 auto; color: #666; }
+        .tune-row input[type="range"] { flex: 1; min-width: 60px; }
+        .tune-row .tune-val { width: 30px; flex: 0 0 auto; text-align: right; color: #888;
+                              font-variant-numeric: tabular-nums; }
+        .tune-row select { flex: 1; min-width: 0; padding: 3px 6px; border-radius: 6px; border: 1px solid #e0e0e0;
+                           font-size: 12.5px; background: #fff; cursor: pointer; font-family: inherit; }
+
+        /* ===== 主题跟随（默认 / 护眼 / 暗色），由服务端用户设置驱动 ===== */
+        body.sr-dark { background: #1a1a2e; color: #e0e0e0; }
+        body.sr-dark #viewer { background: #1a1a2e; }
+        body.sr-dark .controls { background: #22223a; border-bottom-color: rgba(255, 255, 255, .14); }
+        body.sr-dark .controls .info { color: #9a9ab0; }
+        body.sr-dark .controls .progress-bar { background: rgba(255, 255, 255, .18); }
+        body.sr-dark .tune-btn { background: #33334f; color: #ddd; }
+        body.sr-dark .tune-panel { background: #262640; border-color: rgba(255, 255, 255, .14);
+                                   box-shadow: 0 6px 22px rgba(0, 0, 0, .5); }
+        body.sr-dark .tune-row > span:first-child, body.sr-dark .tune-row .tune-val { color: #aaa; }
+        body.sr-dark .tune-row select { background: #2f2f4a; color: #eee; border-color: rgba(255, 255, 255, .18); }
+        body.sr-green { background: #d4edda; }
+        body.sr-green #viewer { background: #d4edda; }
+        body.sr-green .controls { background: #e7f5ea; border-bottom-color: #cbe6d2; }
+
         @media (max-width: 520px) {
             .controls { gap: 6px; padding: 6px 8px; }
             .controls .info { display: none; }
+            .tune-panel { min-width: 208px; }
+            .tune-row > span:first-child { width: 30px; }
+        }
+        @media (prefers-reduced-motion: reduce) {
+            * { transition: none !important; }
         }
     </style>
 </head>
@@ -32,11 +80,39 @@
         <button onclick="window.epubNext()">下一页 ▶</button>
         <div class="progress-bar"><div class="fill" id="progressFill"></div></div>
         <span class="info" id="location">加载中...</span>
-        <select id="fontSizeSelect" onchange="window.epubFontSize(this.value)" title="字号">
-            <option value="14">小</option>
-            <option value="18" selected>中</option>
-            <option value="24">大</option>
-        </select>
+        <div class="tune-wrap">
+            <button class="tune-btn" id="tuneBtn" aria-expanded="false"
+                    onclick="window.epubToggleTune()" title="排版设置">排版</button>
+            <div class="tune-panel" id="tunePanel">
+                <div class="tune-row">
+                    <span>字号</span>
+                    <input type="range" id="tuneFont" min="12" max="28" step="1" value="18"
+                           oninput="window.epubSetPref('font_size', this.value)">
+                    <span class="tune-val" id="tuneFontVal">18</span>
+                </div>
+                <div class="tune-row">
+                    <span>行距</span>
+                    <input type="range" id="tuneLine" min="1.2" max="3" step="0.1" value="1.8"
+                           oninput="window.epubSetPref('line_spacing', this.value)">
+                    <span class="tune-val" id="tuneLineVal">1.8</span>
+                </div>
+                <div class="tune-row">
+                    <span>亮度</span>
+                    <input type="range" id="tuneBright" min="30" max="150" step="5" value="100"
+                           oninput="window.epubSetPref('brightness', this.value)">
+                    <span class="tune-val" id="tuneBrightVal">100</span>
+                </div>
+                <div class="tune-row">
+                    <span>字体</span>
+                    <select id="tuneFontFamily" onchange="window.epubSetPref('font_family', this.value)">
+                        <option value="">原书字体</option>
+                        <option value="serif">宋体/衬线</option>
+                        <option value="sans">黑体/无衬线</option>
+                        <option value="kai">楷体</option>
+                    </select>
+                </div>
+            </div>
+        </div>
     </div>
     <div id="viewer"></div>
     <script src="/static/js/jszip.min.js?v=20260902"></script>
@@ -52,13 +128,187 @@
         var statusEl = document.getElementById('location');
         var progressFill = document.getElementById('progressFill');
         var viewerEl = document.getElementById('viewer');
+        var tunePanel = document.getElementById('tunePanel');
         var book = null, rendition = null, totalLocs = 0, saveTimer = null;
+
+        // ===== 排版偏好：字号 / 行距 / 亮度 / 字体 =====
+        // 与 TXT 阅读器（reader.html 设置面板）共用服务端同一份用户设置 —— 不这样做
+        // 就会出现「EPUB 里调好字号，换本书又变回去」。
+        var prefs = { font_size: 18, line_spacing: 1.8, brightness: 100, font_family: '', theme: 'default' };
+        var prefsTimer = null;
+        var prefsDirty = false;
+        var FONT_STACKS = {
+            serif: '"Songti SC", "SimSun", serif',
+            sans: '"PingFang SC", "Microsoft YaHei", sans-serif',
+            kai: '"Kaiti SC", "KaiTi", "STKaiti", serif'
+        };
+
+        function resolvedTheme() {
+            var t = prefs.theme || 'default';
+            if (t === 'auto') {
+                try {
+                    t = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'default';
+                } catch (e) { t = 'default'; }
+            }
+            if (t === 'light') t = 'default';
+            return t;
+        }
 
         function showError(msg) {
             viewerEl.innerHTML = '<div class="error-msg">❌ ' + msg + '</div>';
             statusEl.textContent = '加载失败';
         }
         if (!bookId) { showError('缺少书籍 ID'); return; }
+
+        // 主题：同时管外层的 Chrome 与 iframe 内的文字色
+        function applyTheme() {
+            var t = resolvedTheme();
+            document.body.classList.remove('sr-dark', 'sr-green');
+            if (t === 'dark') document.body.classList.add('sr-dark');
+            else if (t === 'green') document.body.classList.add('sr-green');
+            // 默认（浅色）主题不覆盖正文颜色，保留书籍自身排版；暗色/护眼才强制
+            if (rendition && rendition.themes && rendition.themes.override) {
+                try {
+                    if (t === 'default') {
+                        rendition.themes.removeOverride('background');
+                        rendition.themes.removeOverride('color');
+                    } else {
+                        rendition.themes.override('background', 'transparent', true);
+                        rendition.themes.override('color', t === 'dark' ? '#e0e0e0' : '#2a2a2a', true);
+                    }
+                } catch (e) {}
+            }
+        }
+
+        function applyPrefs() {
+            if (viewerEl) viewerEl.style.filter = 'brightness(' + (prefs.brightness / 100) + ')';
+            if (!rendition || !rendition.themes) return;
+            var th = rendition.themes;
+            try {
+                if (th.fontSize) th.fontSize(prefs.font_size + 'px');
+                if (th.override) th.override('line-height', String(prefs.line_spacing), true);
+                var stack = FONT_STACKS[prefs.font_family] || '';
+                if (th.removeOverride && !stack) th.removeOverride('font-family');
+                else if (th.font) th.font(stack);
+            } catch (e) {}
+            applyTheme();
+        }
+
+        function syncControls() {
+            var f = document.getElementById('tuneFont'), fv = document.getElementById('tuneFontVal');
+            if (f) f.value = prefs.font_size;
+            if (fv) fv.textContent = prefs.font_size;
+            var l = document.getElementById('tuneLine'), lv = document.getElementById('tuneLineVal');
+            if (l) l.value = prefs.line_spacing;
+            if (lv) lv.textContent = prefs.line_spacing;
+            var b = document.getElementById('tuneBright'), bv = document.getElementById('tuneBrightVal');
+            if (b) b.value = prefs.brightness;
+            if (bv) bv.textContent = prefs.brightness;
+            var ff = document.getElementById('tuneFontFamily');
+            if (ff) ff.value = prefs.font_family || '';
+        }
+
+        function savePrefsSoon() {
+            prefsDirty = true;
+            clearTimeout(prefsTimer);
+            prefsTimer = setTimeout(function() {
+                prefsDirty = false;
+                try {
+                    fetch('/api/user/theme', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            font_size: prefs.font_size,
+                            line_spacing: prefs.line_spacing,
+                            brightness: prefs.brightness,
+                            font_family: prefs.font_family
+                        })
+                    });
+                } catch (e) {}
+            }, 500);
+        }
+
+        function loadPrefs() {
+            return fetch('/api/user/theme', { credentials: 'same-origin' })
+                .then(function(r) { return r.json(); })
+                .then(function(d) {
+                    if (!d) return;
+                    if (d.font_size) prefs.font_size = d.font_size;
+                    if (d.line_spacing) prefs.line_spacing = d.line_spacing;
+                    if (typeof d.brightness === 'number' && d.brightness) prefs.brightness = d.brightness;
+                    if (typeof d.font_family === 'string') prefs.font_family = d.font_family;
+                    if (d.theme) prefs.theme = d.theme;
+                })
+                .catch(function() {});
+        }
+
+        window.epubSetPref = function(key, value) {
+            if (key === 'font_size') {
+                prefs.font_size = Math.max(12, Math.min(28, parseInt(value, 10) || prefs.font_size));
+            } else if (key === 'line_spacing') {
+                prefs.line_spacing = Math.max(1.2, Math.min(3, parseFloat(value) || prefs.line_spacing));
+            } else if (key === 'brightness') {
+                prefs.brightness = Math.max(30, Math.min(150, parseInt(value, 10) || prefs.brightness));
+            } else if (key === 'font_family') {
+                prefs.font_family = value || '';
+            }
+            syncControls();
+            applyPrefs();
+            savePrefsSoon();
+        };
+
+        window.epubToggleTune = function() {
+            if (!tunePanel) return;
+            var open = tunePanel.classList.toggle('show');
+            var btn = document.getElementById('tuneBtn');
+            if (btn) btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+            if (open) syncControls();
+        };
+        document.addEventListener('click', function(e) {
+            if (!tunePanel || !tunePanel.classList.contains('show')) return;
+            if (tunePanel.contains(e.target)) return;
+            var btn = document.getElementById('tuneBtn');
+            if (btn && btn.contains(e.target)) return;
+            tunePanel.classList.remove('show');
+            if (btn) btn.setAttribute('aria-expanded', 'false');
+        });
+
+        // ===== 接收外层 reader.html 设置面板的转发（同源 postMessage） =====
+        // 用户在阅读页设置面板里拖字号/行距/亮度时，EPUB 正文要立刻跟着变；
+        // 这里只应用不落库 —— 外层已经负责保存了，回写会形成来回覆盖。
+        window.addEventListener('message', function(e) {
+            if (e.origin !== window.location.origin) return;
+            var d = e.data;
+            if (!d || d.type !== 'sr-embed-settings') return;
+            if (d.font_size) prefs.font_size = Math.max(12, Math.min(28, parseInt(d.font_size, 10) || prefs.font_size));
+            if (d.line_spacing) prefs.line_spacing = Math.max(1.2, Math.min(3, parseFloat(d.line_spacing) || prefs.line_spacing));
+            if (typeof d.brightness === 'number' && d.brightness) prefs.brightness = d.brightness;
+            if (typeof d.font_family === 'string') prefs.font_family = d.font_family;
+            if (d.theme) prefs.theme = d.theme;
+            syncControls();
+            applyPrefs();
+        });
+
+        var prefsReady = loadPrefs();
+
+        // 关页/刷新时把还没到防抖时间的改动补发出去，否则拖完滑块立刻离开就丢了
+        window.addEventListener('pagehide', function () {
+            clearTimeout(prefsTimer);
+            if (!prefsDirty) return;
+            try {
+                fetch('/api/user/theme', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        font_size: prefs.font_size,
+                        line_spacing: prefs.line_spacing,
+                        brightness: prefs.brightness,
+                        font_family: prefs.font_family
+                    }),
+                    keepalive: true
+                });
+            } catch (e) {}
+        });
 
         // 翻页后更新进度条并防抖保存进度
         function applyLocation(location) {
@@ -87,7 +337,19 @@
         }
 
         try {
-            book = ePub('/api/read/' + bookId);
+            // openAs: 'epub' 必须显式给：书籍接口是 /api/read/<id>，URL 没有 .epub 后缀，
+            // epub.js 的类型探测会把它当成「目录」而去请求 /api/read/<id>/META-INF/container.xml，
+            // 结果是既不 resolve 也不 reject —— 页面永远停在「加载中」。
+            book = ePub('/api/read/' + bookId, { openAs: 'epub' });
+            // 损坏/无法解析的 EPUB：epub.js 会触发 loaded.failed 或 openFailed，
+            // 必须显式监听，否则页面会永久停在「加载中…」而不是报错。
+            var _srEpubFail = function (err) {
+                showError('EPUB 文件损坏或无法解析: ' + (err && err.message ? err.message : err));
+            };
+            if (book.loaded && book.loaded.failed && book.loaded.failed.catch) {
+                book.loaded.failed.catch(_srEpubFail);
+            }
+            if (book.on) { book.on('openFailed', _srEpubFail); }
         } catch (e) { showError('创建阅读器失败: ' + e.message); return; }
 
         rendition = book.renderTo('viewer', {
@@ -96,6 +358,38 @@
             flow: 'paginated',
             spread: 'none'
         });
+        // #159 表格显示 / #160 代码块显示 / 图片不撑破版面：
+        // EPUB 正文渲染在 epub.js 的 iframe 里，外层 reader.html 的样式够不着，
+        // 必须通过 rendition.themes.default() 把规则注册进 iframe 文档。
+        try {
+            if (rendition.themes && rendition.themes.default) {
+                rendition.themes.default({
+                    'body': { 'word-wrap': 'break-word', 'overflow-wrap': 'break-word',
+                              'line-height': '1.75', 'padding': '0 10px' },
+                    'img, svg': { 'max-width': '100%', 'height': 'auto' },
+                    'table': { 'display': 'block', 'width': '100%', 'max-width': '100%',
+                               'overflow-x': 'auto', 'border-collapse': 'collapse',
+                               'margin': '0.8em 0' },
+                    'th, td': { 'border': '1px solid rgba(128,128,128,0.45)',
+                                'padding': '4px 8px', 'font-size': '0.95em',
+                                'text-align': 'left', 'vertical-align': 'top' },
+                    'th': { 'background': 'rgba(128,128,128,0.14)', 'font-weight': '600' },
+                    'pre': { 'display': 'block', 'max-width': '100%', 'overflow-x': 'auto',
+                             'background': 'rgba(128,128,128,0.12)', 'border-radius': '6px',
+                             'padding': '10px 12px', 'font-size': '0.86em',
+                             'line-height': '1.5', 'white-space': 'pre',
+                             'word-break': 'normal' },
+                    'code': { 'font-family': 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace',
+                              'font-size': '0.92em', 'background': 'rgba(128,128,128,0.12)',
+                              'border-radius': '4px', 'padding': '0.1em 0.32em',
+                              'word-break': 'break-word' },
+                    'pre code': { 'background': 'transparent', 'padding': '0', 'font-size': '1em' },
+                    'blockquote': { 'margin': '0.6em 0', 'padding-left': '0.8em',
+                                    'border-left': '3px solid rgba(128,128,128,0.4)',
+                                    'color': 'inherit' }
+                });
+            }
+        } catch (e) {}
         statusEl.textContent = '⏳ 加载中...';
         var timeoutId = setTimeout(function() {
             statusEl.textContent = '⏰ 加载超时，请检查书籍文件';
@@ -117,16 +411,23 @@
                 if (saved && saved.success && saved.location) cfi = saved.location;
                 clearTimeout(timeoutId);
                 statusEl.textContent = '✅ 加载完成';
-                return rendition.display(cfi || undefined);
+                // 先等用户排版偏好到位再首屏渲染，避免先按默认字号画一遍再跳变
+                return prefsReady.then(function() {
+                    syncControls();
+                    applyPrefs();
+                    return rendition.display(cfi || undefined);
+                });
             })
             .catch(function(err) {
                 clearTimeout(timeoutId);
                 showError('渲染失败: ' + (err && err.message ? err.message : err));
             });
 
+        rendition.on('relocated', applyLocation);
         window.epubNext = function() { if (rendition) rendition.next(); };
         window.epubPrev = function() { if (rendition) rendition.prev(); };
-        window.epubFontSize = function(v) { if (rendition && rendition.themes) rendition.themes.fontSize(v + 'px'); };
+        // 兼容旧调用点
+        window.epubFontSize = function(v) { window.epubSetPref('font_size', v); };
     })();
     </script>
 </body>
