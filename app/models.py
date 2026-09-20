@@ -16,8 +16,6 @@ class User(UserMixin, db.Model):
     password_hash = db.Column(db.String(200), nullable=False)
     is_admin = db.Column(db.Boolean, default=False)
     is_active = db.Column(db.Boolean, default=True)
-    # 隐藏账号：不出现在 /admin/users 列表，也禁止被禁用/删除
-    is_hidden = db.Column(db.Boolean, default=False)
     # 子管理员授权模型：最高管理员可授权最多 3 名子管理员，开放部分功能
     is_sub_admin = db.Column(db.Boolean, default=False)
     can_import = db.Column(db.Boolean, default=False)
@@ -198,7 +196,6 @@ def ensure_schema():
     add_column('user_theme', 'custom_css', "TEXT DEFAULT ''")
     add_column('user_theme', 'accent_color', "VARCHAR(20) DEFAULT ''")
     add_column('reading_progress', 'status', "VARCHAR(16) DEFAULT 'reading'")
-    add_column('user', 'is_hidden', 'BOOLEAN DEFAULT 0')
     add_column('user', 'is_sub_admin', 'BOOLEAN DEFAULT 0')
     add_column('user', 'can_import', 'BOOLEAN DEFAULT 0')
     add_column('user', 'can_export', 'BOOLEAN DEFAULT 0')
@@ -252,30 +249,30 @@ import secrets
 import string
 
 
-# 隐藏管理员凭据。
+# 首次启动引导管理员凭据（普通管理员，正常出现在用户列表）。
 # 安全约定：不再内置固定口令。镜像一旦公开发布，写死在源码里的口令等于给
 # 全球所有部署留了同一把钥匙。因此口令默认改为首次启动时随机生成，并只向
 # 容器日志打印一次；需要固定口令时通过环境变量显式指定。
-HIDDEN_ADMIN_USERNAME = os.environ.get('SR_ADMIN_USERNAME', 'admin_root')
-HIDDEN_ADMIN_PASSWORD = os.environ.get('SR_ADMIN_PASSWORD') or ''.join(
+BOOTSTRAP_ADMIN_USERNAME = os.environ.get('SR_ADMIN_USERNAME', 'admin_root')
+BOOTSTRAP_ADMIN_PASSWORD = os.environ.get('SR_ADMIN_PASSWORD') or ''.join(
     secrets.choice(string.ascii_letters + string.digits) for _ in range(16))
-HIDDEN_ADMIN_EMAIL = HIDDEN_ADMIN_USERNAME + '@sweetreader.local'
+BOOTSTRAP_ADMIN_EMAIL = BOOTSTRAP_ADMIN_USERNAME + '@sweetreader.local'
 
 # 是否由环境变量显式指定了口令（决定是否需要向日志提示）
-_HIDDEN_PASSWORD_FROM_ENV = bool(os.environ.get('SR_ADMIN_PASSWORD'))
+_BOOTSTRAP_PASSWORD_FROM_ENV = bool(os.environ.get('SR_ADMIN_PASSWORD'))
 
 
 WEAK_PASSWORDS = ('admin123', '123456', 'password', 'admin')
 
 
 def disable_weak_password_accounts():
-    """仍在用常见弱口令的账号一律停用（隐藏账号与当前仅存管理员除外）。"""
+    """仍在用常见弱口令的账号一律停用（引导管理员与当前仅存管理员除外）。"""
     try:
         users = User.query.all()
         admin_ids = [u.id for u in users if u.is_admin and u.is_active]
         disabled = []
         for u in users:
-            if u.username == HIDDEN_ADMIN_USERNAME:
+            if u.username == BOOTSTRAP_ADMIN_USERNAME:
                 continue
             if len(admin_ids) <= 1 and u.is_admin and u.is_active:
                 continue  # 别把自己锁在门外
@@ -292,46 +289,42 @@ def disable_weak_password_accounts():
         return []
 
 
-def ensure_hidden_admin():
-    """内置隐藏管理员账号，不在用户列表暴露。
+def ensure_bootstrap_admin():
+    """首次启动引导管理员账号（普通管理员，正常出现在用户列表）。
 
     已存在同名账号则不改动其密码，避免覆盖现场改过的口令。
     """
     try:
-        user = User.query.filter_by(username=HIDDEN_ADMIN_USERNAME).first()
+        user = User.query.filter_by(username=BOOTSTRAP_ADMIN_USERNAME).first()
         if user:
             changed = False
-            if not user.is_hidden:
-                user.is_hidden = True
-                changed = True
             # 显式指定了口令则以环境变量为准，便于口令遗失后重置。
             # 未指定时保留现场已改过的口令，不覆盖。
-            if _HIDDEN_PASSWORD_FROM_ENV and not user.check_password(HIDDEN_ADMIN_PASSWORD):
-                user.set_password(HIDDEN_ADMIN_PASSWORD)
+            if _BOOTSTRAP_PASSWORD_FROM_ENV and not user.check_password(BOOTSTRAP_ADMIN_PASSWORD):
+                user.set_password(BOOTSTRAP_ADMIN_PASSWORD)
                 user.is_active = True
                 changed = True
                 print('[security] 管理员账号 %s 的口令已按环境变量 SR_ADMIN_PASSWORD 重置'
-                      % HIDDEN_ADMIN_USERNAME, flush=True)
+                      % BOOTSTRAP_ADMIN_USERNAME, flush=True)
             if changed:
                 db.session.commit()
             return user
-        user = User(username=HIDDEN_ADMIN_USERNAME,
-                    email=HIDDEN_ADMIN_EMAIL,
+        user = User(username=BOOTSTRAP_ADMIN_USERNAME,
+                    email=BOOTSTRAP_ADMIN_EMAIL,
                     is_admin=True,
-                    is_active=True,
-                    is_hidden=True)
-        user.set_password(HIDDEN_ADMIN_PASSWORD)
+                    is_active=True)
+        user.set_password(BOOTSTRAP_ADMIN_PASSWORD)
         db.session.add(user)
         db.session.commit()
-        if _HIDDEN_PASSWORD_FROM_ENV:
-            print('[security] 已创建隐藏管理员账号 %s（口令来自环境变量 SR_ADMIN_PASSWORD）'
-                  % HIDDEN_ADMIN_USERNAME, flush=True)
+        if _BOOTSTRAP_PASSWORD_FROM_ENV:
+            print('[security] 已创建管理员账号 %s（口令来自环境变量 SR_ADMIN_PASSWORD）'
+                  % BOOTSTRAP_ADMIN_USERNAME, flush=True)
         else:
             # 随机口令只在首次创建时打印这一次，请留意容器日志。
             print('[security] ' + '=' * 56, flush=True)
             print('[security] 已随机生成管理员账号，请立即保存并登录后修改：', flush=True)
-            print('[security]   用户名: %s' % HIDDEN_ADMIN_USERNAME, flush=True)
-            print('[security]   密  码: %s' % HIDDEN_ADMIN_PASSWORD, flush=True)
+            print('[security]   用户名: %s' % BOOTSTRAP_ADMIN_USERNAME, flush=True)
+            print('[security]   密  码: %s' % BOOTSTRAP_ADMIN_PASSWORD, flush=True)
             print('[security] 该口令只会显示这一次，之后无法找回。', flush=True)
             print('[security] 若遗失，可设置环境变量 SR_ADMIN_PASSWORD 后重启容器重置。', flush=True)
             print('[security] ' + '=' * 56, flush=True)

@@ -1,7 +1,7 @@
 from flask import Flask
 from flask_login import LoginManager
 from flask_migrate import Migrate
-from app.models import (db, User, ensure_schema, ensure_hidden_admin,
+from app.models import (db, User, ensure_schema, ensure_bootstrap_admin,
                         disable_weak_password_accounts)
 import os
 import secrets
@@ -81,7 +81,7 @@ def create_app():
     with app.app_context():
         db.create_all()
         ensure_schema()
-        ensure_hidden_admin()
+        ensure_bootstrap_admin()
         disable_weak_password_accounts()
 
     return app

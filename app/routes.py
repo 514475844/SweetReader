@@ -841,11 +841,7 @@ def admin_users():
     sort = request.args.get('sort', 'created')
     online_since = datetime.utcnow() - _dt.timedelta(minutes=ONLINE_WINDOW_MINUTES)
 
-    include_hidden = request.args.get('include_hidden') == '1'
     query = User.query
-    if not include_hidden:
-        query = query.filter(db.or_(User.is_hidden.is_(None),
-                                     User.is_hidden.is_(False)))
     if q:
         like = '%' + q + '%'
         query = query.filter(db.or_(User.username.like(like), User.email.like(like)))
@@ -881,7 +877,7 @@ def admin_users():
     return render_template('admin_users.html', users=users, q=q, role=role,
                            status=status, sort=sort, online_ids=online_ids,
                            online_minutes=ONLINE_WINDOW_MINUTES,
-                           reading_counts=reading_counts, include_hidden=include_hidden)
+                           reading_counts=reading_counts)
 
 @bp.route('/admin/user/<int:user_id>/toggle', methods=['POST'])
 @login_required
@@ -889,8 +885,6 @@ def toggle_user(user_id):
     if not current_user.is_admin:
         return jsonify({'success': False, 'error': '需要管理员权限'}), 403
     user = User.query.get_or_404(user_id)
-    if user.is_hidden:
-        return jsonify({'success': False, 'message': '该账号不可操作'}), 400
     if user.id == current_user.id:
         return jsonify({'success': False, 'message': '不能禁用当前登录的账号'}), 400
     if user.is_admin and user.is_active:
@@ -909,8 +903,6 @@ def delete_user(user_id):
     if not current_user.is_admin:
         return jsonify({'success': False, 'error': '需要管理员权限'}), 403
     user = User.query.get_or_404(user_id)
-    if user.is_hidden:
-        return jsonify({'success': False, 'message': '该账号不可操作'}), 400
     if user.id == current_user.id:
         return jsonify({'success': False, 'message': '不能删除当前登录的账号'}), 400
     if user.is_admin:
@@ -974,12 +966,7 @@ def export_users():
     import csv, io as _io
     from sqlalchemy import func
     online_since = datetime.utcnow() - _dt.timedelta(minutes=ONLINE_WINDOW_MINUTES)
-    include_hidden = request.args.get('include_hidden') == '1'
-    _q = User.query
-    if not include_hidden:
-        _q = _q.filter(db.or_(User.is_hidden.is_(None),
-                              User.is_hidden.is_(False)))
-    users = _q.order_by(User.created_at.desc()).all()
+    users = User.query.order_by(User.created_at.desc()).all()
     rp_rows = db.session.query(ReadingProgress.user_id, ReadingProgress.status,
                                func.count()).group_by(ReadingProgress.user_id,
                                                       ReadingProgress.status).all()
@@ -1012,8 +999,6 @@ def set_user_note(user_id):
     if not current_user.is_admin:
         return jsonify({'success': False, 'error': '需要管理员权限'}), 403
     user = User.query.get_or_404(user_id)
-    if user.is_hidden:
-        return jsonify({'success': False, 'message': '该账号不可操作'}), 400
     data = request.json or {}
     user.admin_note = (data.get('note') or '')[:500]
     db.session.commit()
@@ -3678,7 +3663,7 @@ def admin_sub_admins():
         return redirect(url_for('main.library'))
     subs = User.query.filter_by(is_sub_admin=True).order_by(User.granted_at.desc()).all()
     eligible = User.query.filter(
-        User.is_admin.is_(False), User.is_hidden.is_(False),
+        User.is_admin.is_(False),
         User.is_active.is_(True), User.is_sub_admin.is_(False),
     ).order_by(User.created_at.desc()).all()
     return render_template('sub_admins.html', subs=subs, eligible=eligible,
@@ -3692,7 +3677,7 @@ def api_sub_admins():
         return jsonify({'success': False, 'message': '仅最高管理员可访问'}), 403
     subs = User.query.filter_by(is_sub_admin=True).order_by(User.granted_at.desc()).all()
     eligible = User.query.filter(
-        User.is_admin.is_(False), User.is_hidden.is_(False),
+        User.is_admin.is_(False),
         User.is_active.is_(True), User.is_sub_admin.is_(False),
     ).order_by(User.created_at.desc()).all()
     def _u(u):
@@ -3716,7 +3701,7 @@ def grant_sub_admin():
     user = User.query.get(data.get('user_id')) if data.get('user_id') else None
     if not user:
         return jsonify({'success': False, 'message': '用户不存在'}), 404
-    if user.is_admin or user.is_hidden:
+    if user.is_admin:
         return jsonify({'success': False, 'message': '该账号不可授权为子管理员'}), 400
     if not user.is_active:
         return jsonify({'success': False, 'message': '该账号已停用'}), 400
