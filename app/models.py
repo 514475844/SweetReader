@@ -32,6 +32,14 @@ class User(UserMixin, db.Model):
     # 管理员备注：仅管理员在用户管理页可见，用于辨识用户，不对外展示
     admin_note = db.Column(db.Text, default='')
 
+    # ===== 用户扩展（B14）：个人资料 / 签到积分 =====
+    nickname = db.Column(db.String(80), default='')       # 显示名，空则回退用户名
+    avatar = db.Column(db.String(16), default='📚')  # emoji 头像
+    signature = db.Column(db.Text, default='')            # 个性签名
+    points = db.Column(db.Integer, default=0)             # 积分（签到等获得）
+    last_checkin = db.Column(db.Date, nullable=True)      # 最近签到日期
+    checkin_streak = db.Column(db.Integer, default=0)     # 连续签到天数
+
     def set_password(self, password):
         self.password_hash = generate_password_hash(password)
 
@@ -66,6 +74,19 @@ class InviteCode(db.Model):
         db.session.add(invite)
         db.session.commit()
         return invite
+
+class LoginEvent(db.Model):
+    """登录历史（成功/失败），用于账户安全自查。"""
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    ts = db.Column(db.DateTime, default=datetime.utcnow)
+    ip = db.Column(db.String(64), default='')
+    ua = db.Column(db.Text, default='')
+    success = db.Column(db.Boolean, default=True)
+
+    def __repr__(self):
+        return f'<LoginEvent {self.user_id} {self.success}>'
+
 
 class Category(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -112,6 +133,7 @@ class ReadingProgress(db.Model):
     # 阅读状态：unread / reading / finished
     #  读到 98% 以上自动置 finished； 可在书籍详情页手动切换
     status = db.Column(db.String(16), default='reading')
+    favorite = db.Column(db.Boolean, default=False)  # 是否收藏（书架与收藏 B15）
     last_location = db.Column(db.String(100))
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
@@ -152,6 +174,7 @@ class UserTheme(db.Model):
     accent_color = db.Column(db.String(20), default='')    # 阅读页强调色（按钮/开关/进度点）
     # 用户级隐藏的首页扩展卡片：插件 id 用逗号包起来存储（',a,b,'），空串=全部显示。
     # 用逗号包裹是为了避免 'stats' 与 'stats_x' 这种前缀误判。
+    bookshelf_public = db.Column(db.Boolean, default=False)  # 隐私设置：是否公开书架/阅读记录
     hidden_plugins = db.Column(db.String(500), default='')
 
 

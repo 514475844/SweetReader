@@ -261,8 +261,14 @@ class CategoryScanner:
             # [P0 修复] path 为空表示 books_dir 根目录本身
             rel = (category.path or '').replace('/', os.sep)
             full_path = books_dir if not rel else (books_dir / rel)
-            if not full_path.exists():
-                doomed.append(category)
+            if full_path.exists():
+                continue
+            # [P0 修复续] 目录不在，但分类下还有文件真实存在的书（导入的书、
+            # 用户自建的逻辑分类）——这是逻辑分类而非目录分类。删分类会连坐
+            # 删书，而磁盘文件其实好好的，属于纯数据损失。保留它们。
+            if cls._has_live_books(category, books_dir):
+                continue
+            doomed.append(category)
 
         # [P0 熔断] 误杀保护：待删分类超过总数 50% 时判定为路径异常，
         # 放弃清理并记错，宁可留下脏数据也绝不批量删书。
@@ -287,9 +293,35 @@ class CategoryScanner:
             db.session.commit()
 
         orphan_books = Book.query.filter_by(category_id=None).all()
-        for book in orphan_books:
+        # [P0 修复续] 同理：文件还在的书一律不删，只回收文件确实没了的行
+        dead = [b for b in orphan_books
+                if not cls._book_file_exists(b, books_dir)]
+        for book in dead:
             ReadingProgress.query.filter_by(book_id=book.id).delete(
                 synchronize_session=False)
             db.session.delete(book)
-        if orphan_books:
+        if dead:
             db.session.commit()
+
+    @staticmethod
+    def _book_file_exists(book, books_dir):
+        """书籍文件在磁盘上是否真实存在。"""
+        rel = (book.relative_path or book.filename or '')
+        if not rel:
+            return False
+        try:
+            return (books_dir / rel).exists()
+        except Exception:
+            return False
+
+    @classmethod
+    def _has_live_books(cls, category, books_dir):
+        """分类下是否存在文件仍然在磁盘上的书。"""
+        try:
+            for b in category.books:
+                if cls._book_file_exists(b, books_dir):
+                    return True
+        except Exception:
+            # 取不到就当“有书”，宁可留着脏数据也不删
+            return True
+        return False

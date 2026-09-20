@@ -395,6 +395,18 @@ body.dark-theme .filter-bar .book-count {
     color: #bbb;
     margin: 4px 0 8px;
 }
+.book-card { position: relative; }
+.card-fav {
+    position: absolute; top: 8px; right: 8px; width: 32px; height: 32px;
+    border-radius: 50%; border: none; background: rgba(255,255,255,.72); color: #bbb;
+    cursor: pointer; font-size: 16px; display: flex; align-items: center; justify-content: center;
+    transition: transform .18s ease-out, background-color .18s ease-out, color .18s ease-out;
+}
+.card-fav:hover { background: rgba(232,132,138,.14); color: #e8848a; }
+.card-fav.on { color: #e8848a; background: rgba(232,132,138,.14); }
+.card-fav:active { transform: scale(.9); }
+body.dark-theme .card-fav { background: rgba(255,255,255,.1); color: #aaa; }
+body.dark-theme .card-fav.on { color: #e8848a; }
 .books-grid.compact { grid-template-columns: 1fr; gap: 6px; }
 .books-grid.compact .book-card { display: flex; align-items: center; gap: 10px; padding: 8px 12px; flex-wrap: nowrap; }
 .books-grid.compact .book-card .title { font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -748,6 +760,33 @@ body.dark-theme .filter-bar .tag-filter-btn.active { background: var(--primary) 
     .filter-bar .letter-btn { min-width: 24px !important; height: 26px; font-size: 11.5px; }
     .filter-bar .format-btn { height: 26px; padding: 0 9px; font-size: 11px; }
 }
+
+/* ===== 首页精选轮播 ===== */
+.hero-carousel { position: relative; margin: 4px 0 18px; }
+.hero-viewport { overflow: hidden; border-radius: 14px; }
+.hero-track { display: flex; gap: 14px; overflow-x: auto; scroll-snap-type: x mandatory; scroll-behavior: smooth; padding: 2px 0 6px; -ms-overflow-style: none; scrollbar-width: none; }
+.hero-track::-webkit-scrollbar { display: none; }
+.hero-slide { flex: 0 0 calc((100% - 42px) / 4); scroll-snap-align: start; background: #fff; border-radius: 12px; box-shadow: var(--shadow); padding: 14px 14px 16px; text-decoration: none; color: inherit; display: flex; flex-direction: column; gap: 6px; min-height: 92px; transition: transform .18s ease-out, box-shadow .18s ease-out; }
+.hero-slide:hover { transform: translateY(-3px); box-shadow: 0 6px 18px rgba(0,0,0,.12); }
+.hero-slide-fmt { font-size: 11px; font-weight: 600; color: var(--primary); background: var(--primary-light); align-self: flex-start; padding: 1px 8px; border-radius: 8px; }
+.hero-slide-title { font-size: 14px; font-weight: 600; line-height: 1.35; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.hero-slide-author { font-size: 12px; color: var(--text-light); margin-top: auto; }
+.hero-nav { position: absolute; top: 50%; transform: translateY(-50%); width: 34px; height: 34px; border-radius: 50%; border: none; background: rgba(255,255,255,.86); box-shadow: 0 2px 8px rgba(0,0,0,.16); color: var(--text-dark); font-size: 20px; cursor: pointer; display: flex; align-items: center; justify-content: center; z-index: 2; transition: background .18s ease-out; }
+.hero-nav:hover { background: #fff; }
+.hero-prev { left: -10px; }
+.hero-next { right: -10px; }
+.hero-dots { display: flex; justify-content: center; gap: 6px; margin-top: 8px; }
+.hero-dot { width: 7px; height: 7px; border-radius: 50%; border: none; background: #d8d8d8; cursor: pointer; padding: 0; transition: background .18s ease-out, transform .18s ease-out; }
+.hero-dot.active { background: var(--primary); transform: scale(1.25); }
+body.dark-theme .hero-slide { background: #222244 !important; color: #e0e0e0 !important; }
+body.dark-theme .hero-slide-title { color: #e0e0e0 !important; }
+body.dark-theme .hero-slide-author { color: #999 !important; }
+body.dark-theme .hero-nav { background: rgba(40,40,70,.86) !important; color: #e0e0e0 !important; }
+body.dark-theme .hero-dot { background: #3a3d52 !important; }
+body.dark-theme .hero-dot.active { background: var(--primary) !important; }
+@media (max-width: 1100px) { .hero-slide { flex: 0 0 calc((100% - 28px) / 3); } }
+@media (max-width: 760px) { .hero-slide { flex: 0 0 100%; } .hero-nav { display: none; } }
+@media (prefers-reduced-motion: reduce) { .hero-track { scroll-behavior: auto; } .hero-slide { transition: none; } }
 </style>
 {% endblock %}
 
@@ -914,7 +953,18 @@ body.dark-theme .filter-bar .tag-filter-btn.active { background: var(--primary) 
             </div>
         </div>
 
-        <div class="books-grid" id="booksGrid" style="display:none;"></div>
+        
+<!-- ===== 首页精选轮播 ===== -->
+<div class="hero-carousel" id="heroCarousel" aria-label="精选书籍">
+  <div class="hero-viewport">
+    <div class="hero-track" id="heroTrack"></div>
+  </div>
+  <button class="hero-nav hero-prev" aria-label="上一组" onclick="heroMove(-1)">‹</button>
+  <button class="hero-nav hero-next" aria-label="下一组" onclick="heroMove(1)">›</button>
+  <div class="hero-dots" id="heroDots"></div>
+</div>
+
+<div class="books-grid" id="booksGrid" style="display:none;"></div>
         <button id="loadMoreBtn" class="load-more-btn" style="display:none;" onclick="loadMore()">加载更多 ↓</button>
     </div>
 </div>
@@ -1464,7 +1514,11 @@ function buildBookCard(book) {
         '<div class="author">' + srHighlight(book.author, searchQuery) + '</div>' +
         '<div class="meta"><span class="fmt-badge ' + fmtClass + '">' + fmt + '</span>' +
         '<span class="st-badge st-' + st + '">' + stText + '</span>' +
-        (book.file_size_str || '0 B') + '</div>';
+        (book.file_size_str || '0 B') + '</div>' +
+        (typeof book.favorite !== 'undefined'
+            ? '<button class="card-fav' + (book.favorite ? ' on' : '') + '" data-id="' + book.id + '" title="收藏">'
+              + (book.favorite ? '\u2665' : '\u2661') + '</button>'
+            : '');
     // 标签 chip：用 DOM 构造，避免标签里带引号时拼 innerHTML 出问题
     var meta = card.querySelector('.meta');
     (book.tags || []).slice(0, 2).forEach(function(t) {
@@ -1475,7 +1529,33 @@ function buildBookCard(book) {
         chip.onclick = function(e) { e.stopPropagation(); filterTag(t); };
         meta.appendChild(chip);
     });
+    var favBtn = card.querySelector('.card-fav');
+    if (favBtn) {
+        favBtn.onclick = function(e) { e.stopPropagation(); toggleCardFav(book.id, favBtn); };
+    }
     return card;
+}
+
+function toggleCardFav(bookId, btn) {
+    btn.disabled = true;
+    fetch('/api/bookshelf/favorite', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'same-origin',
+        body: JSON.stringify({ book_id: bookId })
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(d) {
+        if (d && d.success) {
+            btn.classList.toggle('on', d.favorite);
+            btn.textContent = d.favorite ? '\u2665' : '\u2661';
+            if (window.showToast) showToast(d.favorite ? '已加入收藏' : '已取消收藏', 'success');
+        } else if (window.showToast) {
+            showToast('\u274c ' + ((d && d.message) || '操作失败'), 'error');
+        }
+    })
+    .catch(function() { if (window.showToast) showToast('\u274c 网络错误', 'error'); })
+    .finally(function() { btn.disabled = false; });
 }
 
 function loadBooks() {
@@ -1764,5 +1844,45 @@ document.addEventListener('DOMContentLoaded', restoreExpandedCats);
         if (typeof searchBooks === 'function') searchBooks(q);
     } catch (e) {}
 })();
+
+function esc(s){ return (s||'').replace(/[&<>"]/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]; }); }
+var _heroTimer = null;
+function loadHero(){
+  var box = document.getElementById('heroCarousel');
+  if(!box) return;
+  fetch('/api/books?page=1&per_page=12', {credentials:'same-origin'})
+    .then(function(r){ return r.json(); })
+    .then(function(d){
+      var books = (d.books || []).slice(0, 12);
+      var track = document.getElementById('heroTrack');
+      if(!books.length){ box.style.display='none'; return; }
+      track.innerHTML = books.map(function(b){
+        var fmt = (b.file_type || '').toUpperCase();
+        return '<a class="hero-slide" href="/read/' + b.id + '">' +
+               '<span class="hero-slide-fmt">' + esc(fmt) + '</span>' +
+               '<span class="hero-slide-title">' + esc(b.title || '未知书名') + '</span>' +
+               '<span class="hero-slide-author">' + esc(b.author || '佚名') + '</span></a>';
+      }).join('');
+      startHeroAuto();
+    })
+    .catch(function(){ if(box) box.style.display='none'; });
+}
+function heroMove(dir){
+  var track = document.getElementById('heroTrack');
+  if(!track) return;
+  var step = track.clientWidth * 0.8;
+  if(dir > 0 && track.scrollLeft + track.clientWidth >= track.scrollWidth - 2){
+    track.scrollTo({left:0, behavior:'smooth'});
+  } else {
+    track.scrollBy({left: dir * step, behavior:'smooth'});
+  }
+}
+function startHeroAuto(){
+  if(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  stopHeroAuto();
+  _heroTimer = setInterval(function(){ heroMove(1); }, 4000);
+}
+function stopHeroAuto(){ if(_heroTimer){ clearInterval(_heroTimer); _heroTimer = null; } }
+loadHero();
 </script>
 {% endblock %}

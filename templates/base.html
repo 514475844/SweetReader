@@ -492,11 +492,13 @@ a, button, .btn, input, select, textarea, label { touch-action: manipulation; }
                 {% if current_user.is_authenticated %}
                     <div class="dropdown">
                         <div class="user-menu" onclick="toggleDropdown()">
-                            <span class="username">{{ current_user.username }}</span>
+                            <span class="avatar" style="margin-right:5px;font-size:16px;">{{ current_user.avatar or '\U0001F4DA' }}</span>
+              <span class="username">{{ current_user.nickname or current_user.username }}</span>
                             <span class="dropdown-btn">▼</span>
                         </div>
                         <div class="dropdown-content" id="dropdownMenu">
                             <a href="/library">书库</a>
+                            <a href="/bookshelf">我的书架</a>
                             <a href="/profile">个人资料</a>
                             <a href="/settings">设置</a>
                             {% if current_user.is_admin %}

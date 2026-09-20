@@ -11,14 +11,21 @@
       <option value="">选择目标分类…</option>
       {% for t in categories %}<option value="{{ t.id }}">{{ t.path }}</option>{% endfor %}
     </select>
+    <span class="merge-label">移动目标：</span>
+    <select id="moveTarget">
+      <option value="">选择父分类（留空=移到根）…</option>
+      {% for t in categories %}<option value="{{ t.id }}">{{ t.path }}</option>{% endfor %}
+    </select>
+    <button class="btn btn-sm btn-outline" onclick="batchMove()">批量移动到此</button>
   </div>
   <div id="msg" style="margin:10px 0;min-height:20px;"></div>
   <div class="table-scroll">
   <table class="cat-table">
-    <thead><tr><th>分类路径</th><th>层级</th><th>书本数</th><th>重命名</th><th>操作</th></tr></thead>
+    <thead><tr><th style="width:34px;"><input type="checkbox" id="selAll" onchange="toggleAll(this)"></th><th>分类路径</th><th>层级</th><th>书本数</th><th>重命名</th><th>操作</th></tr></thead>
     <tbody id="rows">
     {% for c in categories %}
       <tr>
+        <td><input type="checkbox" class="sel" value="{{ c.id }}"></td>
         <td class="cpath">{{ c.path }}</td>
         <td>{{ c.level }}</td>
         <td>{{ c.book_count }}</td>
@@ -28,6 +35,7 @@
         </td>
         <td>
           <button class="btn btn-sm btn-outline" onclick="mergeCat({{ c.id }})">合并到此分类</button>
+          <button class="btn btn-sm btn-outline" onclick="moveCat({{ c.id }})">移动到…</button>
           <button class="btn btn-sm btn-outline del-cat" data-id="{{ c.id }}" data-path="{{ c.path }}" data-count="{{ c.book_count }}" onclick="deleteCat(this)">删除空分类</button>
         </td>
       </tr>
@@ -101,6 +109,30 @@ function markUndeletable(){
   }
 }
 document.addEventListener('DOMContentLoaded', markUndeletable);
+function moveCat(id){
+  var sel = document.getElementById('moveTarget');
+  var tid = sel.value;
+  var np = (tid === '') ? null : parseInt(tid, 10);
+  if (np === id) { showMsg('不能移动到自身', false); return; }
+  var tip = (np === null) ? '根（顶级分类）' : ('「' + sel.options[sel.selectedIndex].text + '」下');
+  if(!confirm('确定将该分类移动到 ' + tip + '？\n仅修改数据库映射，磁盘文件与书籍不受影响。')) return;
+  fetch('/api/admin/category/'+id+'/move', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({parent_id: np})})
+    .then(function(r){return r.json();}).then(function(d){ if(d.success){ showMsg('已移动：' + (d.path||''), true); location.reload(); } else showMsg(d.message||'失败', false); })
+    .catch(function(){ showMsg('网络错误', false); });
+}
+function toggleAll(cb){ var s=document.querySelectorAll('.sel'); for(var i=0;i<s.length;i++) s[i].checked=cb.checked; }
+function batchMove(){
+  var sel=document.getElementById('moveTarget');
+  var tid=sel.value;
+  var np=(tid==='')?null:parseInt(tid,10);
+  var ids=[]; var cs=document.querySelectorAll('.sel:checked');
+  for(var i=0;i<cs.length;i++) ids.push(parseInt(cs[i].value,10));
+  if(ids.length===0){ showMsg('请先勾选要移动的分类', false); return; }
+  if(!confirm('确定将选中的 '+ids.length+' 个分类移动到所选目标？\n仅修改数据库映射，磁盘文件与书籍不受影响。')) return;
+  fetch('/api/admin/category/batch-move',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({ids:ids,parent_id:np})})
+    .then(function(r){return r.json();}).then(function(d){ if(d.success){ showMsg('已批量移动 '+d.moved+'/'+d.total+' 个', true); location.reload(); } else showMsg(d.message||'失败', false); })
+    .catch(function(){ showMsg('网络错误', false); });
+}
 function mergeCat(id){
   var sel = document.getElementById('mergeTarget');
   var tid = sel.value;

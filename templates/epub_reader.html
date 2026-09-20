@@ -111,6 +111,10 @@
                         <option value="kai">楷体</option>
                     </select>
                 </div>
+                <div class="tune-row">
+                    <span>双页</span>
+                    <input type="checkbox" id="tuneDual" onchange="window.epubSetDual(this.checked)">
+                </div>
             </div>
         </div>
     </div>
@@ -206,7 +210,19 @@
             if (bv) bv.textContent = prefs.brightness;
             var ff = document.getElementById('tuneFontFamily');
             if (ff) ff.value = prefs.font_family || '';
+            var dl = document.getElementById('tuneDual'); if (dl) dl.checked = srEpubDual();
         }
+
+        function srEpubDual() {
+            var on = false; try { on = localStorage.getItem('sr_dual_page') === '1'; } catch (e) {}
+            var wide = true; try { wide = window.matchMedia('(min-width: 769px)').matches; } catch (e) {}
+            return on && wide;
+        }
+        window.epubSetDual = function(on) {
+            try { localStorage.setItem('sr_dual_page', on ? '1' : '0'); } catch (e) {}
+            if (!rendition) return;
+            try { rendition.spread(on ? 'always' : 'none'); } catch (e) {}
+        };
 
         function savePrefsSoon() {
             prefsDirty = true;
@@ -356,7 +372,7 @@
             width: '100%',
             height: '100%',
             flow: 'paginated',
-            spread: 'none'
+            spread: (srEpubDual() ? 'always' : 'none')
         });
         // #159 表格显示 / #160 代码块显示 / 图片不撑破版面：
         // EPUB 正文渲染在 epub.js 的 iframe 里，外层 reader.html 的样式够不着，
@@ -395,11 +411,55 @@
             statusEl.textContent = '⏰ 加载超时，请检查书籍文件';
         }, 45000);
 
+        // #71 EPUB 首屏定位优化：locations 生成很慢（大书尤甚），用 IndexedDB 缓存，二次打开秒开
+        function srLocsDB() {
+            return new Promise(function(res) {
+                var r;
+                try { r = indexedDB.open('sr_epub_locs', 1); } catch (e) { res(null); return; }
+                r.onupgradeneeded = function(e) {
+                    var db = e.target.result;
+                    if (!db.objectStoreNames.contains('locs')) db.createObjectStore('locs', { keyPath: 'id' });
+                };
+                r.onsuccess = function(e) { res(e.target.result); };
+                r.onerror = function() { res(null); };
+            });
+        }
+        function srLocsGet(id) {
+            return srLocsDB().then(function(db) {
+                return new Promise(function(res) {
+                    if (!db) { res(null); return; }
+                    try {
+                        var tx = db.transaction('locs', 'readonly');
+                        var rq = tx.objectStore('locs').get(id);
+                        rq.onsuccess = function() { res(rq.result ? rq.result.json : null); };
+                        rq.onerror = function() { res(null); };
+                    } catch (e) { res(null); }
+                });
+            });
+        }
+        function srLocsPut(id, json) {
+            return srLocsDB().then(function(db) {
+                if (!db) return;
+                try {
+                    var tx = db.transaction('locs', 'readwrite');
+                    tx.objectStore('locs').put({ id: id, json: json });
+                } catch (e) {}
+            });
+        }
         Promise.resolve()
             .then(function() { return book.ready; })
             .then(function() {
-                // 生成全书位置（用于百分比/进度计算）
-                try { return book.locations.generate(1200); } catch (e) { return null; }
+                // 优先用缓存的 locations；没有再现场生成并回写
+                return srLocsGet(bookId).then(function(cached) {
+                    if (cached) {
+                        try { book.locations.load(cached); return; } catch (e) {}
+                    }
+                    try {
+                        return book.locations.generate(1200).then(function() {
+                            try { srLocsPut(bookId, book.locations.save()); } catch (e) {}
+                        });
+                    } catch (e) { return null; }
+                });
             })
             .then(function() {
                 try { totalLocs = book.locations.length() || 0; } catch (e) { totalLocs = 0; }

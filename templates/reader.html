@@ -662,16 +662,16 @@ body.immersive .reader-guide, body.immersive .auto-pill { display: none !importa
                 <select id="chapterJump" style="display:none;" onchange="if(this.value!==''){jumpToChapter(parseInt(this.value));this.value='';}"><option value="">章节跳转…</option></select>
             </div>
             <div class="right">
-                <button class="btn-icon chapter-nav" onclick="prevChapter()" title="上一章">上一章</button>
-                <button class="btn-icon chapter-nav" onclick="nextChapter()" title="下一章">下一章</button>
-                <button class="btn-icon" onclick="toggleToc()" title="目录">目录</button>
-                <button class="btn-icon" onclick="toggleBookmarks()" title="书签">书签</button>
-                <button class="btn-icon" onclick="toggleSearch()" title="页内搜索">搜索</button>
-                <button class="btn-icon" id="zenBtn" onclick="toggleZen()" title="禅模式：沉浸 + 全屏（快捷键 Z）">禅模式</button>
+                <button class="btn-icon chapter-nav" data-menu="prevChapter" onclick="prevChapter()" title="上一章">上一章</button>
+                <button class="btn-icon chapter-nav" data-menu="nextChapter" onclick="nextChapter()" title="下一章">下一章</button>
+                <button class="btn-icon" data-menu="toc" onclick="toggleToc()" title="目录">目录</button>
+                <button class="btn-icon" data-menu="bookmark" onclick="toggleBookmarks()" title="书签">书签</button>
+                <button class="btn-icon" data-menu="search" onclick="toggleSearch()" title="页内搜索">搜索</button>
+                <button class="btn-icon" id="zenBtn" data-menu="zen" onclick="toggleZen()" title="禅模式：沉浸 + 全屏（快捷键 Z）">禅模式</button>
                 <button class="btn-icon" id="settingsToggle" onclick="toggleSettings()" title="设置">设置</button>
-                <button class="btn-icon" onclick="toggleTheme()" title="切换主题">主题</button>
-                <button class="btn-icon" onclick="toggleKbdHelp()" title="快捷键与手势（?）">快捷键</button>
-                <button class="btn-icon" id="returnLastBtn" onclick="returnToLast()" title="回到上次位置">回到上次</button>
+                <button class="btn-icon" data-menu="theme" onclick="toggleTheme()" title="切换主题">主题</button>
+                <button class="btn-icon" data-menu="kbd" onclick="toggleKbdHelp()" title="快捷键与手势（?）">快捷键</button>
+                <button class="btn-icon" id="returnLastBtn" data-menu="returnLast" onclick="returnToLast()" title="回到上次位置">回到上次</button>
                 {% for t in plugin_reader_tools %}
                 <a class="btn-icon" href="{{ t.url }}" title="{{ t.label }}">{{ t.label }}</a>
                 {% endfor %}
@@ -886,6 +886,24 @@ body.immersive .reader-guide, body.immersive .auto-pill { display: none !importa
                 <option value="hide">隐藏</option>
             </select>
         </div>
+        <div class="setting-row">
+            <span>双页模式</span>
+            <label class="switch"><input type="checkbox" id="dualPageToggle" onchange="setDualPage(this.checked)"><span class="slider"></span></label>
+        </div>
+        <div class="setting-row">
+            <span>段落重排</span>
+            <label class="switch"><input type="checkbox" id="reflowToggle" onchange="setReflow(this.checked)"><span class="slider"></span></label>
+        </div>
+        <div style="margin:10px 0 2px;font-size:12px;color:#888;font-weight:600;">自定义工具栏</div>
+        <div class="setting-row"><span>上一章</span><label class="switch"><input type="checkbox" data-menu-toggle="prevChapter" onchange="applyMenuCustom()" checked><span class="slider"></span></label></div>
+        <div class="setting-row"><span>下一章</span><label class="switch"><input type="checkbox" data-menu-toggle="nextChapter" onchange="applyMenuCustom()" checked><span class="slider"></span></label></div>
+        <div class="setting-row"><span>目录</span><label class="switch"><input type="checkbox" data-menu-toggle="toc" onchange="applyMenuCustom()" checked><span class="slider"></span></label></div>
+        <div class="setting-row"><span>书签</span><label class="switch"><input type="checkbox" data-menu-toggle="bookmark" onchange="applyMenuCustom()" checked><span class="slider"></span></label></div>
+        <div class="setting-row"><span>搜索</span><label class="switch"><input type="checkbox" data-menu-toggle="search" onchange="applyMenuCustom()" checked><span class="slider"></span></label></div>
+        <div class="setting-row"><span>禅模式</span><label class="switch"><input type="checkbox" data-menu-toggle="zen" onchange="applyMenuCustom()" checked><span class="slider"></span></label></div>
+        <div class="setting-row"><span>主题</span><label class="switch"><input type="checkbox" data-menu-toggle="theme" onchange="applyMenuCustom()" checked><span class="slider"></span></label></div>
+        <div class="setting-row"><span>快捷键</span><label class="switch"><input type="checkbox" data-menu-toggle="kbd" onchange="applyMenuCustom()" checked><span class="slider"></span></label></div>
+        <div class="setting-row"><span>回到上次</span><label class="switch"><input type="checkbox" data-menu-toggle="returnLast" onchange="applyMenuCustom()" checked><span class="slider"></span></label></div>
         <div class="css-row">
             <span>自定义样式（CSS）</span>
             <textarea id="customCssInput" spellcheck="false" placeholder=".txt-content { letter-spacing: .02em; }"></textarea>
@@ -1142,6 +1160,7 @@ function loadContent() {
                 return;
             }
             content.textContent = fullText;
+            applyReflow();
             buildToc();
             loadUserSettings();
             loadRecommendations(currentBookId);
@@ -1265,6 +1284,12 @@ function loadUserSettings() {
             try { mode = localStorage.getItem('sr_read_mode') || 'scroll'; } catch (e) {}
             if (rm) rm.value = mode;
             applyReadMode(mode);
+            try { window.__srDual = localStorage.getItem('sr_dual_page') === '1'; } catch (e) { window.__srDual = false; }
+            var dpt = document.getElementById('dualPageToggle'); if (dpt) dpt.checked = !!window.__srDual;
+            loadMenuCustom();
+            try { window.__srReflow = localStorage.getItem('sr_reflow') === '1'; } catch (e) { window.__srReflow = false; }
+            var rft = document.getElementById('reflowToggle'); if (rft) rft.checked = !!window.__srReflow;
+            applyReflow();
             var tc = document.getElementById('txtContent');
             if (tc) tc.addEventListener('mouseup', onTxtSelection);
             // #122 亮度：从用户主题恢复
@@ -1668,14 +1693,16 @@ function srPaginate() {
 function srMetrics() {
     var c = document.getElementById('readerContent');
     var t = document.getElementById('txtContent');
-    if (!c || !t) return { w: 0, gap: PAGINATE_GAP, step: 0, pad: 0 };
+    if (!c || !t) return { w: 0, gap: PAGINATE_GAP, step: 0, pad: 0, cols: 1, colW: 0 };
     var pcs = window.getComputedStyle(c);
     var pl = parseFloat(pcs.paddingLeft) || 0;
     var pr = parseFloat(pcs.paddingRight) || 0;
     var gap = parseFloat(window.getComputedStyle(t).columnGap) || PAGINATE_GAP;
     var w = c.clientWidth - pl - pr;
     if (w < 80) w = 80;
-    return { w: w, gap: gap, step: w + gap, pad: pl };
+    var cols = (srDualPage() && w >= 360) ? 2 : 1;
+    var colW = cols === 2 ? Math.max(140, (w - gap) / 2) : w;
+    return { w: w, gap: gap, step: cols * (colW + gap), pad: pl, cols: cols, colW: colW };
 }
 
 function srPageCount() {
@@ -1694,6 +1721,23 @@ function srCurrentPage() {
     return Math.max(0, Math.round((c.scrollLeft - m.pad) / m.step));
 }
 
+// #112 翻页动画：rAF 缓动（ease-out cubic），时长可控，尊重 prefers-reduced-motion
+function srAnimateScrollTo(el, target, duration) {
+    if (!el) return;
+    if (!duration || duration <= 0) { el.scrollLeft = target; return; }
+    var start = el.scrollLeft, delta = target - start;
+    if (Math.abs(delta) < 1) { el.scrollLeft = target; return; }
+    var t0 = null, dur = duration;
+    function step(ts) {
+        if (t0 === null) t0 = ts;
+        var p = Math.min(1, (ts - t0) / dur);
+        var e = 1 - Math.pow(1 - p, 3);
+        el.scrollLeft = start + delta * e;
+        if (p < 1) requestAnimationFrame(step);
+    }
+    requestAnimationFrame(step);
+}
+
 function srGoPage(n, instant) {
     var c = document.getElementById('readerContent');
     if (!c) return;
@@ -1702,9 +1746,8 @@ function srGoPage(n, instant) {
     var last = srPageCount() - 1;
     n = Math.max(0, Math.min(last, n));
     var left = m.pad + n * m.step;
-    if (instant) c.scrollLeft = left;
-    else if (c.scrollTo) c.scrollTo({ left: left, behavior: 'smooth' });
-    else c.scrollLeft = left;
+    if (instant) { c.scrollLeft = left; }
+    else { srAnimateScrollTo(c, left, srMotionReduced() ? 0 : 200); }
     updateProgressUI();
     updatePositionDisplay();
     clearTimeout(window.__srPageSave);
@@ -1723,8 +1766,8 @@ function srApplyPaginateLayout(keepPage) {
     var t = document.getElementById('txtContent');
     var m = srMetrics();
     var ratio = progressRatio();
-    t.style.columnWidth = m.w + 'px';
-    t.style.webkitColumnWidth = m.w + 'px';
+    t.style.columnWidth = m.colW + 'px';
+    t.style.webkitColumnWidth = m.colW + 'px';
     t.style.columnGap = m.gap + 'px';
     t.style.webkitColumnGap = m.gap + 'px';
     chapterPages = null;
@@ -1741,7 +1784,69 @@ function srLayoutSoon() {
     srLayoutTimer = setTimeout(function () { srApplyPaginateLayout(); }, 120);
 }
 
+// #118 双页模式：仅翻页模式 + 宽屏生效；窄屏自动回退单页
+function srDualPage() { return !!window.__srDual && isDesktop(); }
+function setDualPage(on) {
+    window.__srDual = !!on;
+    try { localStorage.setItem('sr_dual_page', on ? '1' : '0'); } catch (e) {}
+    var tg = document.getElementById('dualPageToggle'); if (tg) tg.checked = !!on;
+    if (srPaginate()) { srApplyPaginateLayout(); updatePositionDisplay(); }
+}
+
+// #135 菜单自定义：显隐工具栏按钮，localStorage 记忆
+var SR_MENU_KEY = 'sr_menu_items';
+function applyMenuCustom() {
+    var vis = {};
+    document.querySelectorAll('[data-menu-toggle]').forEach(function(cb) {
+        var k = cb.getAttribute('data-menu-toggle');
+        vis[k] = cb.checked;
+        var btn = document.querySelector('[data-menu="' + k + '"]');
+        if (btn) btn.style.display = cb.checked ? '' : 'none';
+    });
+    try { localStorage.setItem(SR_MENU_KEY, JSON.stringify(vis)); } catch (e) {}
+}
+function loadMenuCustom() {
+    var vis = {};
+    try { vis = JSON.parse(localStorage.getItem(SR_MENU_KEY) || '{}'); } catch (e) {}
+    document.querySelectorAll('[data-menu-toggle]').forEach(function(cb) {
+        var k = cb.getAttribute('data-menu-toggle');
+        if (typeof vis[k] === 'boolean') cb.checked = vis[k];
+        var btn = document.querySelector('[data-menu="' + k + '"]');
+        if (btn) btn.style.display = cb.checked ? '' : 'none';
+    });
+}
+
 // 字符偏移 -> 多列布局中的横坐标 -> 页码
+// #231 段落重排：去除硬换行、合并被截断段落；只改显示，不改原文件
+function srBookText() {
+    var c = document.getElementById('txtContent');
+    return (c && c.textContent) ? c.textContent : (fullText || '');
+}
+function reflowText(raw) {
+    if (!raw) return raw;
+    var lines = raw.split(/\r\n|\r|\n/);
+    var paras = [], cur = [];
+    for (var i = 0; i < lines.length; i++) {
+        var ln = lines[i];
+        if (ln.trim() === '') { if (cur.length) { paras.push(cur.join('')); cur = []; } continue; }
+        cur.push(ln.trim());
+    }
+    if (cur.length) paras.push(cur.join(''));
+    return paras.join('\n\n');
+}
+function applyReflow() {
+    var c = document.getElementById('txtContent'); if (!c || !fullText) return;
+    c.textContent = window.__srReflow ? reflowText(fullText) : fullText;
+    if (srPaginate()) srApplyPaginateLayout();
+}
+function setReflow(on) {
+    window.__srReflow = !!on;
+    try { localStorage.setItem('sr_reflow', on ? '1' : '0'); } catch (e) {}
+    var tg = document.getElementById('reflowToggle'); if (tg) tg.checked = !!on;
+    applyReflow();
+    buildToc();
+}
+
 function srNodeAtOffset(offset) {
     var t = document.getElementById('txtContent');
     if (!t) return null;
@@ -2095,10 +2200,11 @@ function headingLevel(t) {
 
 function buildToc() {
     chapters = [];
-    if (!fullText) return;
+    var src = srBookText();
+    if (!src) return;
     var re = new RegExp(CHAPTER_RE.source, 'gm');
     var m, lastTitle = '';
-    while ((m = re.exec(fullText)) !== null) {
+    while ((m = re.exec(src)) !== null) {
         var title = m[0].trim();
         if (!title) continue;
         // 连续重复的同名标题只留第一个，避免目录被刷屏
@@ -2175,7 +2281,7 @@ function offsetToTop(offset) {
     m.style.lineHeight = cs.lineHeight;
     m.style.letterSpacing = cs.letterSpacing;
     m.style.width = c.clientWidth + 'px';
-    m.textContent = fullText.substring(0, offset);
+    m.textContent = srBookText().substring(0, offset);
     document.body.appendChild(m);
     var h = m.scrollHeight;
     document.body.removeChild(m);
@@ -2445,7 +2551,7 @@ function clearSearch() {
     if (inp) inp.value = '';
     var info = document.getElementById('searchInfo');
     if (info) info.textContent = '输入关键词开始搜索';
-    if (fullText) document.getElementById('txtContent').textContent = fullText;
+    applyReflow();
 }
 
 // ===== 全屏助手（已并入禅模式，不再单独提供按钮） =====

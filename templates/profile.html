@@ -5,19 +5,48 @@
 .profile-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
 @media (max-width: 768px) { .profile-grid { grid-template-columns: 1fr; } }
 .profile-card { background: white; padding: 24px 32px; border-radius: 14px; box-shadow: var(--shadow); }
+body.dark-theme .profile-card { background: #23252b; }
 .profile-card h3 { color: var(--text-dark); font-size: 18px; margin-bottom: 16px; }
+body.dark-theme .profile-card h3 { color: #e6e6e6; }
 .profile-card label { display: block; font-weight: 600; margin-bottom: 4px; color: var(--text-dark); font-size: 14px; }
+body.dark-theme .profile-card label { color: #cfcfcf; }
 .profile-card input[type="text"],
 .profile-card input[type="email"],
-.profile-card input[type="password"] {
-    width: 100%; padding: 10px 14px; border: 2px solid #f0e0e0; border-radius: 10px; font-size: 14px; margin-bottom: 14px; box-sizing: border-box; background: #faf8f8; transition: border 0.3s;
+.profile-card input[type="password"],
+.profile-card select,
+.profile-card textarea {
+    width: 100%; padding: 10px 14px; border: 2px solid #f0e0e0; border-radius: 10px; font-size: 14px; margin-bottom: 14px; box-sizing: border-box; background: #faf8f8; transition: border 0.3s; font-family: inherit;
 }
-.profile-card input:focus { outline: none; border-color: var(--primary); background: white; }
+body.dark-theme .profile-card input,
+body.dark-theme .profile-card select,
+body.dark-theme .profile-card textarea { background: #2c2f36; border-color: #3a3d44; color: #e0e0e0; }
+.profile-card input:focus, .profile-card select:focus, .profile-card textarea:focus { outline: none; border-color: var(--primary); background: white; }
+body.dark-theme .profile-card input:focus, body.dark-theme .profile-card select:focus, body.dark-theme .profile-card textarea:focus { background: #2c2f36; }
+.profile-card textarea { resize: vertical; min-height: 64px; }
 .profile-card .btn { width: 100%; padding: 12px; border-radius: 30px; font-size: 16px; font-weight: 600; }
 .flash { padding: 10px 14px; border-radius: 10px; margin-bottom: 14px; font-size: 14px; }
 .flash.error { background: #fef0f0; color: #c0392b; border: 1px solid #fcd5d5; }
 .flash.success { background: #f0faf5; color: #27ae60; border: 1px solid #c8f0d5; }
 .hint { font-size: 13px; color: #8a7a7a; margin-top: -8px; margin-bottom: 12px; }
+.sr-select { max-width: 220px; }
+.stat-row { display: flex; gap: 14px; flex-wrap: wrap; margin-bottom: 16px; }
+.stat { flex: 1; min-width: 84px; background: #faf8f8; border-radius: 12px; padding: 12px 10px; text-align: center; transition: transform .18s ease-out; }
+body.dark-theme .stat { background: #2c2f36; }
+.stat .num { font-size: 22px; font-weight: 700; color: var(--primary); }
+.stat .lbl { font-size: 12px; color: #8a7a7a; margin-top: 2px; }
+.login-log { list-style: none; padding: 0; margin: 0; max-height: 220px; overflow-y: auto; }
+.login-log li { display: flex; justify-content: space-between; gap: 10px; padding: 8px 4px; border-bottom: 1px solid #f0e6e6; font-size: 13px; }
+body.dark-theme .login-log li { border-color: #34373e; }
+.login-log .ok { color: #27ae60; }
+.login-log .no { color: #c0392b; }
+.login-log .meta { color: #9a8a8a; }
+.ach-list { list-style: none; padding: 0; margin: 0; }
+.ach-list li { padding: 8px 4px; font-size: 14px; display: flex; align-items: center; gap: 8px; }
+.ach-list .tick { font-weight: 700; }
+.ach-list .done { color: #27ae60; }
+.ach-list .todo { color: #bbb; }
+.switch-row { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
+.switch-row input { width: 18px; height: 18px; }
 </style>
 {% endblock %}
 {% block content %}
@@ -26,16 +55,27 @@
     <a href="/library" class="btn btn-outline">← 返回书库</a>
 </div>
 
+{% with messages = get_flashed_messages(with_categories=true) %}
+    {% for category, message in messages %}
+        <div class="flash {{ category }}">{{ message }}</div>
+    {% endfor %}
+{% endwith %}
+
 <div class="profile-grid">
+    <!-- 基本信息 -->
     <div class="profile-card">
         <h3>📝 基本信息</h3>
-        {% with messages = get_flashed_messages(with_categories=true) %}
-            {% for category, message in messages %}
-                <div class="flash {{ category }}">{{ message }}</div>
-            {% endfor %}
-        {% endwith %}
         <form method="POST">
             <input type="hidden" name="action" value="update_profile">
+            <label>昵称（显示名）</label>
+            <input type="text" name="nickname" value="{{ current_user.nickname or '' }}" placeholder="不填则显示用户名" maxlength="80">
+            <label>头像</label>
+            <select name="avatar" class="sr-select">
+                {% set avs = ['📚','😀','🐱','🌟','🌈','🔥','🍀','📖','🎧','🌸','🚀','🐼'] %}
+                {% for a in avs %}<option value="{{ a }}" {% if current_user.avatar == a %}selected{% endif %}>{{ a }} 选择</option>{% endfor %}
+            </select>
+            <label>个性签名</label>
+            <textarea name="signature" maxlength="300" placeholder="一句话介绍自己（可选）">{{ current_user.signature or '' }}</textarea>
             <label>用户名</label>
             <input type="text" name="username" value="{{ current_user.username }}" required>
             <label>邮箱</label>
@@ -43,6 +83,8 @@
             <button type="submit" class="btn btn-primary">💾 保存修改</button>
         </form>
     </div>
+
+    <!-- 修改密码 -->
     <div class="profile-card">
         <h3>🔑 修改密码</h3>
         <form method="POST">
@@ -56,6 +98,54 @@
             <p class="hint">密码需至少7位，包含大小写字母、数字和特殊符号</p>
             <button type="submit" class="btn btn-primary">🔐 修改密码</button>
         </form>
+    </div>
+
+    <!-- 账户与安全 -->
+    <div class="profile-card">
+        <h3>🪙 积分与签到</h3>
+        <div class="stat-row">
+            <div class="stat"><div class="num">{{ current_user.points or 0 }}</div><div class="lbl">积分</div></div>
+            <div class="stat"><div class="num">{{ current_user.checkin_streak or 0 }}</div><div class="lbl">连续签到</div></div>
+            <div class="stat"><div class="num">{{ (current_user.points or 0)//100 + 1 }}</div><div class="lbl">等级</div></div>
+        </div>
+        <form method="POST" style="margin-bottom:18px;">
+            <input type="hidden" name="action" value="checkin">
+            <button type="submit" class="btn btn-primary">📅 每日签到（+5 积分）</button>
+        </form>
+        <h3 style="margin-top:6px;">🛡️ 登录历史</h3>
+        {% if login_events %}
+        <ul class="login-log">
+            {% for ev in login_events %}
+            <li>
+                <span class="{{ 'ok' if ev.success else 'no' }}">{{ '✓ 成功' if ev.success else '✗ 失败' }}</span>
+                <span class="meta">{{ ev.ts.strftime('%m-%d %H:%M') }} · {{ ev.ip or '—' }}</span>
+            </li>
+            {% endfor %}
+        </ul>
+        {% else %}
+        <p class="hint">暂无登录记录。</p>
+        {% endif %}
+    </div>
+
+    <!-- 隐私 + 成就 -->
+    <div class="profile-card">
+        <h3>🔒 隐私设置</h3>
+        <form method="POST">
+            <input type="hidden" name="action" value="update_privacy">
+            <div class="switch-row">
+                <input type="checkbox" name="bookshelf_public" id="bs_public" {{ 'checked' if current_user.user_theme and current_user.user_theme.bookshelf_public else '' }}>
+                <label for="bs_public" style="margin:0;">公开我的书架与阅读记录</label>
+            </div>
+            <p class="hint">开启后，他人可在首页看到你的阅读动态（仅影响展示，不泄露文件）。</p>
+            <button type="submit" class="btn btn-primary">💾 保存隐私设置</button>
+        </form>
+        <h3 style="margin-top:18px;">🏅 成就</h3>
+        <ul class="ach-list">
+            <li><span class="tick {{ 'done' if (current_user.checkin_streak or 0) >= 1 else 'todo' }}">{{ '✓' if (current_user.checkin_streak or 0) >= 1 else '○' }}</span> 初次签到</li>
+            <li><span class="tick {{ 'done' if (current_user.checkin_streak or 0) >= 7 else 'todo' }}">{{ '✓' if (current_user.checkin_streak or 0) >= 7 else '○' }}</span> 连续签到 7 天</li>
+            <li><span class="tick {{ 'done' if (current_user.points or 0) >= 100 else 'todo' }}">{{ '✓' if (current_user.points or 0) >= 100 else '○' }}</span> 积分新秀（100）</li>
+            <li><span class="tick {{ 'done' if (current_user.points or 0) >= 500 else 'todo' }}">{{ '✓' if (current_user.points or 0) >= 500 else '○' }}</span> 积分达人（500）</li>
+        </ul>
     </div>
 </div>
 {% endblock %}

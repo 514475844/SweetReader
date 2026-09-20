@@ -1,7 +1,7 @@
 from flask import Blueprint, render_template, request, jsonify, send_file, redirect, url_for, flash, current_app, make_response
 from flask_login import login_user, logout_user, login_required, current_user
 from pathlib import Path
-from datetime import datetime
+from datetime import datetime, timedelta, date
 import ast
 import io
 import json
@@ -14,7 +14,7 @@ import threading
 import zipfile
 
 from app.models import (db, User, InviteCode, Book, Category, ReadingProgress,
-                        UserTheme, Bookmark, log_action)
+                        UserTheme, Bookmark, log_action, LoginEvent)
 from app.utils import BookUtils
 from app.category_scanner import CategoryScanner
 from app.plugins import registry
@@ -233,7 +233,26 @@ def login():
                 db.session.commit()
             except Exception:
                 db.session.rollback()
+            try:
+                db.session.add(LoginEvent(
+                    user_id=user.id, ts=datetime.utcnow(),
+                    ip=request.remote_addr or '',
+                    ua=(request.user_agent.string if request.user_agent else '')[:500],
+                    success=True))
+                db.session.commit()
+            except Exception:
+                db.session.rollback()
             return redirect(url_for('main.library'))
+        if user and user.is_active is not False:
+            try:
+                db.session.add(LoginEvent(
+                    user_id=user.id, ts=datetime.utcnow(),
+                    ip=request.remote_addr or '',
+                    ua=(request.user_agent.string if request.user_agent else '')[:500],
+                    success=False))
+                db.session.commit()
+            except Exception:
+                db.session.rollback()
         flash('用户名/邮箱或密码错误', 'error')
     return render_template('login.html')
 
@@ -686,7 +705,10 @@ def admin_users():
     sort = request.args.get('sort', 'created')
     online_since = datetime.utcnow() - _dt.timedelta(minutes=ONLINE_WINDOW_MINUTES)
 
-    query = User.query.filter(db.or_(User.is_hidden.is_(None),
+    include_hidden = request.args.get('include_hidden') == '1'
+    query = User.query
+    if not include_hidden:
+        query = query.filter(db.or_(User.is_hidden.is_(None),
                                      User.is_hidden.is_(False)))
     if q:
         like = '%' + q + '%'
@@ -723,7 +745,7 @@ def admin_users():
     return render_template('admin_users.html', users=users, q=q, role=role,
                            status=status, sort=sort, online_ids=online_ids,
                            online_minutes=ONLINE_WINDOW_MINUTES,
-                           reading_counts=reading_counts)
+                           reading_counts=reading_counts, include_hidden=include_hidden)
 
 @bp.route('/admin/user/<int:user_id>/toggle', methods=['POST'])
 @login_required
@@ -816,8 +838,12 @@ def export_users():
     import csv, io as _io
     from sqlalchemy import func
     online_since = datetime.utcnow() - _dt.timedelta(minutes=ONLINE_WINDOW_MINUTES)
-    users = User.query.filter(db.or_(User.is_hidden.is_(None),
-                                      User.is_hidden.is_(False))).order_by(User.created_at.desc()).all()
+    include_hidden = request.args.get('include_hidden') == '1'
+    _q = User.query
+    if not include_hidden:
+        _q = _q.filter(db.or_(User.is_hidden.is_(None),
+                              User.is_hidden.is_(False)))
+    users = _q.order_by(User.created_at.desc()).all()
     rp_rows = db.session.query(ReadingProgress.user_id, ReadingProgress.status,
                                func.count()).group_by(ReadingProgress.user_id,
                                                       ReadingProgress.status).all()
@@ -925,10 +951,37 @@ def profile():
                 return render_template('profile.html')
             current_user.username = username
             current_user.email = email
+            current_user.nickname = request.form.get('nickname', '').strip()
+            current_user.avatar = (request.form.get('avatar', '') or '📚')[:16]
+            current_user.signature = request.form.get('signature', '').strip()[:300]
             db.session.commit()
             log_action(current_user, '更新个人资料', f'{username} / {email}')
             flash('✅ 个人信息已更新', 'success')
-    return render_template('profile.html')
+        elif action == 'checkin':
+            today = date.today()
+            last = current_user.last_checkin
+            if last == today:
+                flash('今天已经签到啦', 'error')
+            else:
+                if last == (today - timedelta(days=1)):
+                    current_user.checkin_streak = (current_user.checkin_streak or 0) + 1
+                else:
+                    current_user.checkin_streak = 1
+                current_user.last_checkin = today
+                current_user.points = (current_user.points or 0) + 5
+                db.session.commit()
+                flash('✅ 签到成功，+5 积分', 'success')
+        elif action == 'update_privacy':
+            public = request.form.get('bookshelf_public') == 'on'
+            theme = UserTheme.query.filter_by(user_id=current_user.id).first()
+            if not theme:
+                theme = UserTheme(user_id=current_user.id)
+                db.session.add(theme)
+            theme.bookshelf_public = public
+            db.session.commit()
+            flash('✅ 隐私设置已保存', 'success')
+    login_events = LoginEvent.query.filter_by(user_id=current_user.id).order_by(LoginEvent.ts.desc()).limit(15).all()
+    return render_template('profile.html', login_events=login_events)
 
 
 def _sanitize_user_css(raw):
@@ -1186,6 +1239,114 @@ def get_continue_reading():
             })
     return jsonify({'success': False})
 
+# ============ 书架与收藏（B15） ============
+@bp.route('/bookshelf')
+@login_required
+def bookshelf():
+    """我的书架（私有）。"""
+    return render_template('bookshelf.html', public=False)
+
+@bp.route('/bookshelf/<username>')
+def bookshelf_public(username):
+    """公开书架（仅当该用户开启 bookshelf_public）。"""
+    return render_template('bookshelf.html', public=True, owner=username)
+
+@bp.route('/api/bookshelf')
+@login_required
+def api_bookshelf():
+    """当前用户书架：按阅读状态分组 + 收藏标记，支持排序。"""
+    scope = (request.args.get('scope') or 'all').strip()
+    sort = (request.args.get('sort') or 'updated').strip()
+    q = ReadingProgress.query.filter_by(user_id=current_user.id)
+    if scope in ('unread', 'reading', 'finished'):
+        q = q.filter_by(status=scope)
+    elif scope == 'favorite':
+        q = q.filter_by(favorite=True)
+    recs = q.all()
+    book_ids = [r.book_id for r in recs]
+    books = Book.query.filter(Book.id.in_(book_ids)).all() if book_ids else []
+    bmap = {b.id: b for b in books}
+    items = []
+    for r in recs:
+        b = bmap.get(r.book_id)
+        if not b:
+            continue
+        items.append({
+            'book_id': b.id,
+            'title': b.title or b.filename,
+            'author': b.author or '未知作者',
+            'file_type': b.file_type or '未知',
+            'progress': round(r.progress or 0, 4),
+            'status': r.status or 'unread',
+            'favorite': bool(r.favorite),
+            'updated_at': r.updated_at.strftime('%Y-%m-%d %H:%M') if r.updated_at else '',
+        })
+    if sort == 'title':
+        items.sort(key=lambda x: (x['title'] or '').lower())
+    elif sort == 'author':
+        items.sort(key=lambda x: (x['author'] or '').lower())
+    elif sort == 'progress':
+        items.sort(key=lambda x: x['progress'])
+    else:
+        items.sort(key=lambda x: x['updated_at'], reverse=True)
+    all_recs = ReadingProgress.query.filter_by(user_id=current_user.id).all()
+    counts = {
+        'unread': sum(1 for r in all_recs if (r.status or 'unread') == 'unread'),
+        'reading': sum(1 for r in all_recs if r.status == 'reading'),
+        'finished': sum(1 for r in all_recs if r.status == 'finished'),
+        'favorite': sum(1 for r in all_recs if r.favorite),
+        'total': len(all_recs),
+    }
+    return jsonify({'success': True, 'books': items, 'counts': counts})
+
+@bp.route('/api/bookshelf/public/<username>')
+def api_bookshelf_public(username):
+    """公开书架（仅当该用户开启 bookshelf_public，只读）。"""
+    u = User.query.filter_by(username=username).first()
+    if not u:
+        return jsonify({'success': False, 'private': False, 'message': '用户不存在'}), 404
+    theme = UserTheme.query.filter_by(user_id=u.id).first()
+    if not (theme and theme.bookshelf_public):
+        return jsonify({'success': False, 'private': True})
+    recs = ReadingProgress.query.filter_by(user_id=u.id).all()
+    book_ids = [r.book_id for r in recs]
+    books = Book.query.filter(Book.id.in_(book_ids)).all() if book_ids else []
+    bmap = {b.id: b for b in books}
+    items = []
+    for r in recs:
+        b = bmap.get(r.book_id)
+        if not b:
+            continue
+        items.append({
+            'book_id': b.id,
+            'title': b.title or b.filename,
+            'author': b.author or '未知作者',
+            'file_type': b.file_type or '未知',
+            'progress': round(r.progress or 0, 4),
+            'status': r.status or 'unread',
+            'updated_at': r.updated_at.strftime('%Y-%m-%d %H:%M') if r.updated_at else '',
+        })
+    return jsonify({'success': True, 'owner': u.nickname or u.username, 'books': items})
+
+@bp.route('/api/bookshelf/favorite', methods=['POST'])
+@login_required
+def toggle_favorite():
+    """切换某本书的收藏状态（无记录则先建 ReadingProgress）。"""
+    data = request.get_json(silent=True) or {}
+    book_id = data.get('book_id')
+    if not book_id:
+        return jsonify({'success': False, 'message': '缺少 book_id'}), 400
+    if not Book.query.get(book_id):
+        return jsonify({'success': False, 'message': '书籍不存在'}), 404
+    rec = ReadingProgress.query.filter_by(user_id=current_user.id, book_id=book_id).first()
+    if not rec:
+        rec = ReadingProgress(user_id=current_user.id, book_id=book_id, progress=0, status='unread')
+        db.session.add(rec)
+    rec.favorite = not rec.favorite
+    rec.updated_at = datetime.utcnow()
+    db.session.commit()
+    return jsonify({'success': True, 'favorite': rec.favorite})
+
 # ============ 书签  ============
 @bp.route('/api/bookmarks/<int:book_id>', methods=['GET'])
 @login_required
@@ -1273,6 +1434,7 @@ def book_detail(book_id):
         cur_status_text=cur_status_text,
         crumbs=crumbs,
         crumb_path=crumb_path,
+        is_fav=bool(progress.favorite) if progress else False,
         size_str=BookUtils.format_file_size(book.file_size) if book.file_size else '未知',
     )
 
@@ -2457,9 +2619,11 @@ def admin_book_duplicates():
     def _norm(t):
         return re.sub(r'\s+', ' ', (t or '').lower()).strip()
 
+    _BK_BASE = current_app.config['BOOKS_DIR']
+
     def _book_text(book):
         try:
-            base = current_app.config['BOOKS_DIR']
+            base = _BK_BASE
             p = os.path.join(base, book.relative_path or book.filename)
             if not os.path.exists(p):
                 p = os.path.join(base, book.filename)
@@ -2531,13 +2695,19 @@ def admin_book_duplicates():
         union = len(ga | gb)
         return inter / union if union else 0.0
 
-    rows = Book.query.with_entities(
-        Book.id, Book.title, Book.author, Book.filename,
-        Book.relative_path, Book.file_type, Book.file_size, Book.category_id
-    ).all()
-    books = [{'id': r.id, 'title': r.title, 'author': r.author, 'filename': r.filename,
-              'relative_path': r.relative_path, 'file_type': r.file_type,
-              'file_size': r.file_size or 0, 'category_id': r.category_id} for r in rows]
+    # 性能优化：原生 SQL 直接取，避免 ORM 行包装 + 全量字典复制（原 ~5.6s）
+    from sqlalchemy import text as _sa_text
+    _raw = db.session.execute(_sa_text(
+        "SELECT id, title, author, filename, relative_path, file_type, "
+        "COALESCE(file_size,0), category_id FROM book"
+    )).fetchall()
+    book_by_id = {}
+    for _r in _raw:
+        _rec = {'id': _r[0], 'title': _r[1], 'author': _r[2], 'filename': _r[3],
+                'relative_path': _r[4], 'file_type': _r[5], 'file_size': _r[6],
+                'category_id': _r[7]}
+        book_by_id[_rec['id']] = _rec
+    books = list(book_by_id.values())
 
     groups = []
     exact_ids = set()
@@ -2574,15 +2744,38 @@ def admin_book_duplicates():
             ra, rb = find(a), find(b)
             if ra != rb:
                 parent[ra] = rb
-        # 原实现用 next((x for x in books if x['id'] == bid), None) 线性扫全库，
-        # 每对候选要查两次 × 最多 3000 对 —— 直接导致查重 9.2s。改成一次建字典。
-        book_by_id = {b['id']: b for b in books}
-        text_cache = {}
+        # 并行预取候选文件文本（文件 IO 密集，线程池显著提速；子线程无 app context，用闭包 _BK_BASE）
+        from concurrent.futures import ThreadPoolExecutor as _TPE
+        def _read_one(bid):
+            bk = book_by_id.get(bid)
+            if not bk:
+                return bid, ''
+            return bid, _norm(_book_text(bk))
+        # 仅收集前 MAX_PAIRS 对涉及的候选书（与原截断语义一致，避免全量读 5 万本）
+        _MAX_PAIRS = 3000
+        _need = set()
+        _pairs = 0
+        for _key, _mem in buckets.items():
+            if len(_mem) < 2:
+                continue
+            for _i in range(len(_mem)):
+                for _j in range(_i + 1, len(_mem)):
+                    _pairs += 1
+                    if _pairs > _MAX_PAIRS:
+                        break
+                    _need.add(_mem[_i]['id'])
+                    _need.add(_mem[_j]['id'])
+                if _pairs > _MAX_PAIRS:
+                    break
+            if _pairs > _MAX_PAIRS:
+                break
+        _text_cache = {}
+        if _need:
+            with _TPE(max_workers=4) as _ex:
+                for _bid, _t in _ex.map(_read_one, _need):
+                    _text_cache[_bid] = _t
         def get_text(bid):
-            if bid not in text_cache:
-                bk = book_by_id.get(bid)
-                text_cache[bid] = _norm(_book_text(bk)) if bk else ''
-            return text_cache[bid]
+            return _text_cache.get(bid, '')
         MAX_PAIRS = 3000
         pairs = 0
         for key, members in buckets.items():
@@ -3475,6 +3668,108 @@ def admin_category_rename(cat_id):
     return jsonify({'success': True, 'path': new_path})
 
 
+@bp.route('/api/admin/category/<int:cat_id>/move', methods=['POST'])
+@login_required
+def admin_category_move(cat_id):
+    """ 移动分类：修改父级归属（不动磁盘），递归重建子树 path 与 level。"""
+    if not _require_cap('manage_books'):
+        return jsonify({'success': False, 'message': '无权限'}), 403
+    cat = Category.query.get_or_404(cat_id)
+    data = request.get_json(silent=True) or {}
+    raw = data.get('parent_id')
+    if raw in (None, '', 'null'):
+        new_parent = None
+        new_parent_id = None
+    else:
+        new_parent_id = int(raw)
+        if new_parent_id == cat.id:
+            return jsonify({'success': False, 'message': '不能移动到自身'}), 400
+        new_parent = Category.query.get(new_parent_id)
+        if not new_parent:
+            return jsonify({'success': False, 'message': '目标分类不存在'}), 404
+        if new_parent.path == cat.path or new_parent.path.startswith(cat.path + '/'):
+            return jsonify({'success': False, 'message': '不能移动到自身的子分类'}), 400
+    old_path = cat.path
+    old_level = cat.level
+    new_path = (new_parent.path + '/' + cat.name) if new_parent else cat.name
+    if new_path != old_path and Category.query.filter_by(path=new_path).first():
+        return jsonify({'success': False, 'message': '目标位置已存在同名分类'}), 409
+    cat.parent_id = new_parent_id
+    cat.level = (new_parent.level + 1) if new_parent else 1
+    cat.path = new_path
+    old_prefix = old_path + '/'
+    new_prefix = new_path + '/'
+    delta = cat.level - old_level
+    for child in Category.query.filter(Category.path.like(old_prefix + '%')).all():
+        child.path = new_prefix + child.path[len(old_prefix):]
+        child.level = child.level + delta
+    try:
+        db.session.commit()
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'success': False, 'message': '移动失败：' + str(e)}), 500
+    log_action(current_user, '移动分类', old_path + ' -> ' + new_path)
+    return jsonify({'success': True, 'path': new_path})
+
+
+@bp.route('/api/admin/category/batch-move', methods=['POST'])
+@login_required
+def admin_category_batch_move():
+    """ 批量移动多个分类到同一目标（不动磁盘），逐棵重建子树 path/level。"""
+    if not _require_cap('manage_books'):
+        return jsonify({'success': False, 'message': '无权限'}), 403
+    data = request.get_json(silent=True) or {}
+    ids = [int(x) for x in (data.get('ids') or []) if str(x).isdigit()]
+    raw = data.get('parent_id')
+    if raw in (None, '', 'null'):
+        new_parent = None
+        new_parent_id = None
+    else:
+        new_parent_id = int(raw)
+        new_parent = Category.query.get(new_parent_id)
+        if not new_parent:
+            return jsonify({'success': False, 'message': '目标分类不存在'}), 404
+    # 整体成环检测：目标不能是任一待移动分类或其子树（用 path 前缀，纯 DB 查询，可靠）
+    moving_ids = set()
+    for cid in ids:
+        c = Category.query.get(cid)
+        if not c:
+            continue
+        moving_ids.add(c.id)
+        for ch in Category.query.filter(Category.path.like(c.path + '/%')).all():
+            moving_ids.add(ch.id)
+    if new_parent_id in moving_ids:
+        return jsonify({'success': False, 'message': '目标分类不能是待移动分类或其子分类'}), 400
+    results = []
+    for cid in ids:
+        c = Category.query.get(cid)
+        if not c:
+            results.append({'id': cid, 'ok': False, 'msg': '分类不存在'}); continue
+        old_path = c.path
+        old_level = c.level
+        new_path = (new_parent.path + '/' + c.name) if new_parent else c.name
+        if new_path != old_path and Category.query.filter_by(path=new_path).first():
+            results.append({'id': cid, 'ok': False, 'msg': '目标位置已存在同名分类'}); continue
+        c.parent_id = new_parent_id
+        c.level = (new_parent.level + 1) if new_parent else 1
+        c.path = new_path
+        old_prefix = old_path + '/'
+        new_prefix = new_path + '/'
+        delta = c.level - old_level
+        for child in Category.query.filter(Category.path.like(old_prefix + '%')).all():
+            child.path = new_prefix + child.path[len(old_prefix):]
+            child.level = child.level + delta
+        results.append({'id': cid, 'ok': True, 'path': new_path})
+    try:
+        db.session.commit()
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'success': False, 'message': '批量移动失败：' + str(e)}), 500
+    moved = sum(1 for r in results if r['ok'])
+    log_action(current_user, '批量移动分类', '%d 个 -> %s' % (moved, new_parent.path if new_parent else '根'))
+    return jsonify({'success': True, 'moved': moved, 'total': len(ids), 'results': results})
+
+
 @bp.route('/api/admin/category/<int:cat_id>/merge', methods=['POST'])
 @login_required
 def admin_category_merge(cat_id):
@@ -3766,6 +4061,7 @@ def api_books_page():
             'read_count': b.read_count or 0,
             'progress': round(prog_map[b.id].progress or 0, 4) if b.id in prog_map else 0,
             'status': _status_of(b),
+            'favorite': bool(prog_map[b.id].favorite) if b.id in prog_map else False,
             'tags': _parse_tags(b.tags)[:3],
             'created_at': b.upload_date.strftime('%Y-%m-%d %H:%M') if b.upload_date else ''
         } for b in books],

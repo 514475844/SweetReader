@@ -120,6 +120,7 @@
                 <button class="st-btn" onclick="setStatus('unread')">标未读</button>
                 <button class="st-btn" onclick="setStatus('reading')">标在读</button>
                 <button class="st-btn" onclick="setStatus('finished')">标已读</button>
+                <button class="st-btn" id="favBtn" onclick="toggleFav()">♡ 收藏</button>
             </span>
         </div>
         <div class="meta-row">
@@ -239,6 +240,40 @@ function setStatus(s) {
         if (window.showToast) showToast('\u274c 网络错误', 'error');
     });
 }
+
+/* ===== 收藏（书架与收藏 B15） ===== */
+var FAV_ID = {{ book.id }};
+var FAV_ON = {{ 'true' if is_fav else 'false' }};
+function syncFav() {
+    var btn = document.getElementById('favBtn');
+    if (!btn) return;
+    btn.textContent = FAV_ON ? '\u2665 已收藏' : '\u2661 收藏';
+    btn.style.color = FAV_ON ? '#e8848a' : '';
+    btn.style.borderColor = FAV_ON ? '#e8848a' : '';
+}
+function toggleFav() {
+    var btn = document.getElementById('favBtn');
+    if (btn) btn.disabled = true;
+    fetch('/api/bookshelf/favorite', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'same-origin',
+        body: JSON.stringify({ book_id: FAV_ID })
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(d) {
+        if (d && d.success) {
+            FAV_ON = d.favorite;
+            syncFav();
+            if (window.showToast) showToast(FAV_ON ? '已加入收藏' : '已取消收藏', 'success');
+        } else if (window.showToast) {
+            showToast('\u274c ' + ((d && d.message) || '操作失败'), 'error');
+        }
+    })
+    .catch(function() { if (window.showToast) showToast('\u274c 网络错误', 'error'); })
+    .finally(function() { if (btn) btn.disabled = false; });
+}
+syncFav();
 
 /* ===== 书籍标签 ===== */
 (function() {

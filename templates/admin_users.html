@@ -81,6 +81,9 @@
             <option value="created" {% if sort == 'created' %}selected{% endif %}>按注册时间</option>
             <option value="active" {% if sort == 'active' %}selected{% endif %}>按最近活跃</option>
         </select>
+        <label style="font-size:13px;color:var(--text-light);display:inline-flex;align-items:center;gap:6px;">
+            <input type="checkbox" name="include_hidden" value="1" {% if include_hidden %}checked{% endif %}> 包含隐藏账号
+        </label>
         <button type="submit" class="btn-sm btn-sm-primary">筛选</button>
         {% if q or role != 'all' or status != 'all' or sort != 'created' %}
         <a href="/admin/users" class="btn-sm btn-sm-warning">重置</a>
@@ -225,7 +228,7 @@ function toggleUser(id) {
 
 function deleteUser(id) {
     showConfirm('确认删除该用户？此操作不可恢复！', function() {
-        fetch('/admin/user/' + id, {method: 'DELETE'})
+        fetch('/admin/user/' + id + '/delete', {method: 'DELETE'})
             .then(function(r) { return r.json(); })
             .then(function(res) {
                 if (res.success) {

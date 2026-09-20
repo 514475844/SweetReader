@@ -1,0 +1,244 @@
+{% extends "base.html" %}
+{% block title %}我的书架 - SweetReader{% endblock %}
+{% block extra_css %}
+<style>
+.shelf-wrap { max-width: 1200px; margin: 0 auto; padding: 8px 4px 40px; }
+.shelf-head { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; margin-bottom: 4px; }
+.shelf-head h2 { font-size: 22px; color: var(--text-dark); font-weight: 600; margin: 0; }
+.shelf-head .owner { color: var(--text-light); font-size: 14px; }
+.shelf-sub { color: var(--text-light); font-size: 13px; margin-bottom: 14px; }
+.shelf-tabs { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 14px; }
+.shelf-tab {
+    border: 1px solid rgba(0,0,0,.12); background: #fff; color: var(--text-dark);
+    padding: 7px 16px; border-radius: 20px; cursor: pointer; font-size: 14px;
+    transition: background-color .18s ease-out, border-color .18s ease-out, color .18s ease-out, transform .18s ease-out;
+}
+.shelf-tab:hover { border-color: var(--primary); color: var(--primary); }
+.shelf-tab.active { background: var(--primary); color: #fff; border-color: var(--primary); }
+.shelf-tab .n { opacity: .7; margin-left: 5px; font-size: 12px; }
+.shelf-toolbar { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 16px; flex-wrap: wrap; }
+.shelf-toolbar select { height: 34px; border-radius: 18px; border: 1px solid rgba(0,0,0,.14); padding: 0 14px; font-size: 13px; background: #fff; color: var(--text-dark); outline: none; }
+.shelf-toolbar select:focus { border-color: var(--primary); }
+.shelf-toolbar .count { color: var(--text-light); font-size: 13px; }
+.shelf-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 16px; }
+.shelf-card {
+    background: #fff; border-radius: 14px; padding: 16px; box-shadow: var(--shadow);
+    cursor: pointer; position: relative;
+    transition: transform .18s ease-out, box-shadow .18s ease-out;
+}
+.shelf-card:hover { transform: translateY(-3px); box-shadow: 0 8px 30px rgba(232,132,138,.18); }
+.shelf-card .cover {
+    width: 46px; height: 60px; border-radius: 8px; background: linear-gradient(160deg,#f7d9e3,#e9c8d8);
+    display: flex; align-items: center; justify-content: center; font-size: 24px; color: #a86f88;
+    flex: 0 0 46px; margin-bottom: 10px;
+}
+.shelf-card .t { font-weight: 600; font-size: 14px; color: var(--text-dark); line-height: 1.4;
+    display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; min-height: 40px; }
+.shelf-card .a { font-size: 13px; color: var(--text-light); margin-top: 4px; }
+.shelf-card .fmt { font-size: 12px; color: #bbb; margin-top: 4px; }
+.shelf-card .pbar { margin-top: 10px; background: rgba(0,0,0,.08); border-radius: 6px; height: 6px; overflow: hidden; }
+.shelf-card .pbar .bar { height: 100%; background: #d48aa8; }
+.shelf-card .meta { font-size: 12px; color: var(--text-light); margin-top: 8px; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.shelf-card .fav {
+    position: absolute; top: 10px; right: 10px; width: 34px; height: 34px; border-radius: 50%;
+    border: none; background: rgba(0,0,0,.04); color: #bbb; cursor: pointer; font-size: 16px;
+    display: flex; align-items: center; justify-content: center;
+    transition: transform .18s ease-out, background-color .18s ease-out, color .18s ease-out;
+}
+.shelf-card .fav:hover { background: rgba(232,132,138,.12); }
+.shelf-card .fav.on { color: #e8848a; background: rgba(232,132,138,.12); }
+.shelf-card .fav:active { transform: scale(.9); }
+.shelf-empty { grid-column: 1 / -1; text-align: center; padding: 60px 20px; color: var(--text-light); }
+.shelf-empty .bi { font-size: 54px; display: block; margin-bottom: 14px; }
+body.dark-theme .shelf-card, body.dark-theme .shelf-tab, body.dark-theme .shelf-toolbar select { background: #222244; color: #e0e0e0; }
+body.dark-theme .shelf-tab { border-color: rgba(255,255,255,.16); }
+body.dark-theme .shelf-card .cover { background: linear-gradient(160deg,#3a3358,#2a2748); color: #c9a; }
+body.dark-theme .shelf-card .pbar { background: rgba(255,255,255,.1); }
+.locked { text-align: center; padding: 80px 20px; color: var(--text-light); }
+.locked .bi { font-size: 60px; display: block; margin-bottom: 14px; }
+@media (max-width: 520px) {
+    .shelf-grid { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 12px; }
+}
+.shelf-grid.fade { animation: shelfFade .18s ease-out; }
+@keyframes shelfFade { from { opacity: 0; } to { opacity: 1; } }
+</style>
+{% endblock %}
+{% block content %}
+<div class="shelf-wrap">
+    <div class="shelf-head">
+        <h2 id="shelfTitle">我的书架</h2>
+        <span class="owner" id="shelfOwner"></span>
+    </div>
+    <div class="shelf-sub" id="shelfSub"></div>
+
+    <div class="shelf-tabs" id="shelfTabs">
+        <button class="shelf-tab" data-scope="unread">想读<span class="n" id="n-unread">0</span></button>
+        <button class="shelf-tab" data-scope="reading">在读<span class="n" id="n-reading">0</span></button>
+        <button class="shelf-tab" data-scope="finished">已读<span class="n" id="n-finished">0</span></button>
+        <button class="shelf-tab" data-scope="favorite">收藏<span class="n" id="n-favorite">0</span></button>
+    </div>
+
+    <div class="shelf-toolbar" id="shelfToolbar">
+        <span class="count" id="shelfCount"></span>
+        <select id="shelfSort" onchange="reload()">
+            <option value="updated">最近阅读</option>
+            <option value="title">书名</option>
+            <option value="author">作者</option>
+            <option value="progress">进度</option>
+        </select>
+    </div>
+
+    <div class="shelf-grid" id="shelfGrid"></div>
+</div>
+<script>
+var SHELF_PUBLIC = {{ 'true' if public else 'false' }};
+var SHELF_OWNER = {{ (owner|tojson) if public else 'null' }};
+var SHELF_SCOPE = 'unread';
+var SHELF_DATA = [];
+
+function setScope(s) {
+    SHELF_SCOPE = s;
+    document.querySelectorAll('.shelf-tab').forEach(function(t) {
+        t.classList.toggle('active', t.getAttribute('data-scope') === s);
+    });
+    renderGrid();
+}
+
+function reload() {
+    var url = SHELF_PUBLIC ? ('/api/bookshelf/public/' + encodeURIComponent(SHELF_OWNER)) : '/api/bookshelf';
+    fetch(url, { credentials: 'same-origin' })
+        .then(function(r) { return r.json(); })
+        .then(function(d) {
+            if (SHELF_PUBLIC) {
+                if (!d.success) {
+                    document.getElementById('shelfGrid').innerHTML =
+                        '<div class="locked"><span class="bi">🔒</span><p>' +
+                        (d.private ? '该用户未公开书架' : '书架不存在') + '</p></div>';
+                    document.getElementById('shelfToolbar').style.display = 'none';
+                    document.getElementById('shelfSub').textContent = '';
+                    return;
+                }
+                document.getElementById('shelfTitle').textContent = (d.owner || SHELF_OWNER) + ' 的书架';
+                document.getElementById('shelfSub').textContent = '公开书架 · 共 ' + d.books.length + ' 本';
+                document.querySelector('.shelf-tab[data-scope="favorite"]').style.display = 'none';
+                SHELF_DATA = d.books.map(function(b) { return Object.assign({}, b, { favorite: false }); });
+            } else {
+                document.getElementById('shelfSub').textContent = '共 ' + (d.counts.total || 0) + ' 本在阅读记录中';
+                ['unread', 'reading', 'finished', 'favorite'].forEach(function(k) {
+                    var el = document.getElementById('n-' + k);
+                    if (el) el.textContent = d.counts[k] || 0;
+                });
+                SHELF_DATA = d.books;
+            }
+            renderGrid();
+        })
+        .catch(function() {
+            document.getElementById('shelfGrid').innerHTML = '<div class="shelf-empty"><span class="bi">⚠️</span><p>加载失败</p></div>';
+        });
+}
+
+function renderGrid() {
+    var grid = document.getElementById('shelfGrid');
+    var items = SHELF_DATA.filter(function(b) {
+        if (SHELF_SCOPE === 'favorite') return b.favorite;
+        return (b.status || 'unread') === SHELF_SCOPE;
+    });
+    var sort = document.getElementById('shelfSort').value;
+    items = items.slice().sort(function(a, b) {
+        if (sort === 'title') return (a.title || '').localeCompare(b.title || '');
+        if (sort === 'author') return (a.author || '').localeCompare(b.author || '');
+        if (sort === 'progress') return (a.progress || 0) - (b.progress || 0);
+        return (b.updated_at || '').localeCompare(a.updated_at || '');
+    });
+    document.getElementById('shelfCount').textContent = '本组 ' + items.length + ' 本';
+    if (!items.length) {
+        grid.innerHTML = '<div class="shelf-empty"><span class="bi">📭</span><p>' +
+            (SHELF_SCOPE === 'favorite' ? '还没有收藏的书' : '这一组还是空的') + '</p></div>';
+        return;
+    }
+    grid.innerHTML = '';
+    var stMap = { unread: '未读', reading: '在读', finished: '已读' };
+    items.forEach(function(b) {
+        var card = document.createElement('div');
+        card.className = 'shelf-card';
+        var pct = Math.round((b.progress || 0) * 100);
+        var html = '<div class="cover">' + escapeHtml((b.title || '?')[0] || '?') + '</div>'
+            + '<div class="t">' + escapeHtml(b.title) + '</div>'
+            + '<div class="a">' + escapeHtml(b.author) + '</div>'
+            + '<div class="fmt">' + escapeHtml(b.file_type || '') + '</div>'
+            + '<div class="pbar"><div class="bar" style="width:' + pct + '%"></div></div>'
+            + '<div class="meta"><span class="st-badge st-' + (b.status || 'unread') + '">'
+            + (stMap[b.status] || '未读') + '</span><span>' + escapeHtml(b.updated_at) + '</span></div>';
+        if (!SHELF_PUBLIC) {
+            html += '<button class="fav' + (b.favorite ? ' on' : '') + '" data-id="' + b.book_id
+                + '" title="收藏">' + (b.favorite ? '♥' : '♡') + '</button>';
+        }
+        card.innerHTML = html;
+        card.onclick = function(e) {
+            if (e.target.closest('.fav')) return;
+            window.location.href = '/book/' + b.book_id;
+        };
+        if (!SHELF_PUBLIC) {
+            var favBtn = card.querySelector('.fav');
+            favBtn.onclick = function(e) {
+                e.stopPropagation();
+                toggleFav(b.book_id, favBtn);
+            };
+        }
+        grid.appendChild(card);
+    });
+    grid.classList.remove('fade');
+    void grid.offsetWidth;
+    grid.classList.add('fade');
+}
+
+function toggleFav(bookId, btn) {
+    btn.disabled = true;
+    fetch('/api/bookshelf/favorite', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'same-origin',
+        body: JSON.stringify({ book_id: bookId })
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(d) {
+        if (d && d.success) {
+            btn.classList.toggle('on', d.favorite);
+            btn.textContent = d.favorite ? '♥' : '♡';
+            SHELF_DATA.forEach(function(x) { if (x.book_id === bookId) x.favorite = d.favorite; });
+            if (SHELF_SCOPE === 'favorite' && !d.favorite) renderGrid();
+            reloadCounts();
+        } else if (window.showToast) {
+            window.showToast('❌ ' + ((d && d.message) || '操作失败'), 'error');
+        }
+    })
+    .catch(function() { if (window.showToast) showToast('❌ 网络错误', 'error'); })
+    .finally(function() { btn.disabled = false; });
+}
+
+function reloadCounts() {
+    if (SHELF_PUBLIC) return;
+    fetch('/api/bookshelf', { credentials: 'same-origin' })
+        .then(function(r) { return r.json(); })
+        .then(function(d) {
+            if (d.success) ['unread', 'reading', 'finished', 'favorite'].forEach(function(k) {
+                var el = document.getElementById('n-' + k);
+                if (el) el.textContent = d.counts[k] || 0;
+            });
+        })
+        .catch(function() {});
+}
+
+function escapeHtml(s) {
+    return String(s == null ? '' : s).replace(/[&<>"']/g, function(c) {
+        return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+    });
+}
+
+document.querySelectorAll('.shelf-tab').forEach(function(t) {
+    t.onclick = function() { setScope(t.getAttribute('data-scope')); };
+});
+setScope('unread');
+reload();
+</script>
+{% endblock %}
