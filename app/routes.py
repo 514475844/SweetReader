@@ -491,6 +491,134 @@ def epub_reader():
     resp.headers['Pragma'] = 'no-cache'
     return resp
 
+
+def _doc_esc(t):
+    if not t:
+        return ''
+    return t.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
+
+
+def _docx_to_html(path):
+    """用已安装的 python-docx 把 .docx 转成带标题/加粗/列表/表格的 HTML。
+    不引入新依赖；格式还原够阅读用（mammoth 可后续升级保真度）。"""
+    from docx import Document
+    from docx.oxml.ns import qn
+    from docx.oxml.table import CT_Tbl
+    from docx.oxml.text.paragraph import CT_P
+    from docx.table import Table
+    from docx.text.paragraph import Paragraph
+    d = Document(path)
+
+    def heading_level(style_name):
+        if not style_name:
+            return 0
+        sn = style_name.lower()
+        if sn.startswith('title'):
+            return 1
+        if sn.startswith('heading'):
+            digits = ''.join(ch for ch in sn if ch.isdigit())
+            try:
+                return int(digits) if digits else 1
+            except Exception:
+                return 1
+        return 0
+
+    def run_span(run):
+        t = _doc_esc(run.text or '')
+        if not t:
+            return ''
+        if run.bold:
+            t = '<strong>' + t + '</strong>'
+        if run.italic:
+            t = '<em>' + t + '</em>'
+        if run.underline:
+            t = '<u>' + t + '</u>'
+        return t
+
+    def cell_text(cell):
+        return _doc_esc('\n'.join(p.text or '' for p in cell.paragraphs))
+
+    body = d.element.body
+    parts = []
+    for child in body.iterchildren():
+        if isinstance(child, CT_P):
+            p = Paragraph(child, d)
+            txt = ''.join(run_span(r) for r in p.runs)
+            style = (p.style.name if p.style else '') or ''
+            lvl = heading_level(style)
+            sn = style.lower()
+            if lvl:
+                parts.append('<h{0}>{1}</h{0}>'.format(min(lvl, 3), txt or '&nbsp;'))
+            elif sn.startswith('list bullet') or sn.startswith('list number'):
+                parts.append('<ul><li>' + (txt or '&nbsp;') + '</li></ul>')
+            elif txt.strip() == '':
+                parts.append('<p>&nbsp;</p>')
+            else:
+                parts.append('<p>' + txt + '</p>')
+        elif isinstance(child, CT_Tbl):
+            tbl = Table(child, d)
+            rows = []
+            for row in tbl.rows:
+                cells = ''.join('<td>' + cell_text(c) + '</td>' for c in row.cells)
+                rows.append('<tr>' + cells + '</tr>')
+            parts.append('<table>' + ''.join(rows) + '</table>')
+    return ''.join(parts)
+
+
+def _doc_reader_html(inner_html, book_id):
+    """把转换出的正文包成带阅读器主题/设置穿透/进度回写的独立 HTML 页，
+    供 reader.html 的 iframe（data-embed=doc）加载。"""
+    page = (
+        '<!DOCTYPE html><html lang="zh"><head><meta charset="utf-8">'
+        '<meta name="viewport" content="width=device-width,initial-scale=1">'
+        '<style>'
+        ':root{--bg:#f5f0eb;--fg:#2a2a2a;--link:#8a6db8;--fs:17px;--ls:2.0;--bright:1}'
+        'html,body{margin:0;background:var(--bg);color:var(--fg)}'
+        '.sr-doc{max-width:820px;margin:0 auto;padding:22px 26px 140px;font-size:var(--fs);'
+        'line-height:var(--ls);font-family:-apple-system,BlinkMacSystemFont,"PingFang SC",'
+        '"Microsoft YaHei",serif;filter:brightness(var(--bright))}'
+        '.sr-doc h1,.sr-doc h2,.sr-doc h3{line-height:1.35;margin:1.1em 0 .5em;font-weight:600}'
+        '.sr-doc p{margin:0 0 .9em;text-align:justify}'
+        '.sr-doc img{max-width:100%;height:auto}'
+        '.sr-doc table{border-collapse:collapse;width:100%;margin:1em 0}'
+        '.sr-doc td,.sr-doc th{border:1px solid #cbb;padding:6px 9px;font-size:.92em}'
+        '.sr-doc a{color:var(--link)}'
+        '.sr-doc ul,.sr-doc ol{padding-left:1.7em;margin:.4em 0 1em}'
+        '.sr-doc li{margin:.2em 0}'
+        '</style></head><body><div class="sr-doc" id="srDoc">__INNER__</div>'
+        '<script>'
+        '(function(){var root=document.documentElement;'
+        'function applyTheme(t){var bg="#f5f0eb",fg="#2a2a2a",lk="#8a6db8";'
+        'if(t==="dark"){bg="#1e1e1e";fg="#d8d8d8";lk="#b89ad8"}'
+        'else if(t==="sepia"||t==="eye"){bg="#f5ecd9";fg="#5b4a32";lk="#9c6b3f"}'
+        'root.style.setProperty("--bg",bg);root.style.setProperty("--fg",fg);'
+        'root.style.setProperty("--link",lk);}'
+        'function apply(s){if(!s)return;'
+        'if(s.font_size)root.style.setProperty("--fs",s.font_size+"px");'
+        'if(s.line_spacing)root.style.setProperty("--ls",s.line_spacing);'
+        'if(s.brightness!=null)root.style.setProperty("--bright",s.brightness);'
+        'if(s.theme)applyTheme(s.theme);}'
+        'window.addEventListener("message",function(e){'
+        'if(e.data&&e.data.type==="sr-embed-settings")apply(e.data);});'
+        'try{parent.postMessage({type:"sr-embed-ready"},"*");}catch(_){}'
+        'var bid=__BID__,last=0,tm=null;'
+        'window.addEventListener("scroll",function(){clearTimeout(tm);tm=setTimeout(function(){'
+        'var h=document.documentElement.scrollHeight-window.innerHeight;'
+        'var p=h>0?Math.min(100,Math.round(window.scrollY/h*100)):0;'
+        'if(p-last>=2){last=p;try{fetch("/api/progress/"+bid,{method:"POST",credentials:"same-origin",'
+        'headers:{"Content-Type":"application/json"},body:JSON.stringify({progress:p/100,location:p})})'
+        '.catch(function(){});}catch(_){}}};400);});'
+        '})();'
+        '</script></body></html>'
+    )
+    return page.replace('__INNER__', inner_html).replace('__BID__', str(book_id))
+
+
+def _doc_fallback_html(book_id):
+    return _doc_reader_html(
+        '<p style="color:#a33">暂不支持旧版 .doc 格式。请用 Word / WPS 将文件另存为 '
+        '.docx 后重新导入，即可正常阅读。</p>', book_id)
+
 @bp.route('/api/read/<int:book_id>')
 @login_required
 def get_book_content(book_id):
@@ -506,6 +634,14 @@ def get_book_content(book_id):
                    '.ppt', '.pptx', '.xls', '.xlsx', '.zip', '.rar', '.7z',
                    '.cbz', '.cbr', '.djvu', '.mp3', '.jpg', '.jpeg', '.png',
                    '.gif', '.webp', '.bmp', '.tiff'}
+    if ext == '.docx':
+        try:
+            return Response(_doc_reader_html(_docx_to_html(file_path), book_id),
+                            mimetype='text/html; charset=utf-8')
+        except Exception:
+            pass
+    if ext == '.doc':
+        return Response(_doc_fallback_html(book_id), mimetype='text/html; charset=utf-8')
     if ext in BINARY_EXTS:
         return send_file(file_path)
     # 其余（含 .txt 及其它纯文本扩展名，如 .text/.cn/.log/.md 等）
