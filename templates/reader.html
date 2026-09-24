@@ -639,6 +639,11 @@ body.immersive .reader-guide, body.immersive .auto-pill { display: none !importa
     .reader-guide { bottom: calc(172px + env(safe-area-inset-bottom, 0px)); }
     .auto-pill { bottom: calc(172px + env(safe-area-inset-bottom, 0px)); }
 }
+
+/* B23: 移动端触摸目标 >=34px */
+@media (max-width: 920px) {
+    .reader-guide button { min-height: 34px; }
+}
 </style>
 <style>
 /* 兜底：这三个浮层默认必须隐藏。若上方样式块再次出现语法错误，
@@ -1173,6 +1178,53 @@ function cleanText(text) {
     return result.join('\n');
 }
 
+// ===== 大文件渐进渲染 =====
+// 实测最大的 txt 接近 30MB：一次性 textContent 写入会把主线程锁死好几秒
+// （而且原来写完一次后 applyReflow 又整本写了一遍）。
+// 改成先渲染首屏、滚到底再追加下一块——追加到块级容器末尾不会让已有内容重排，总成本 O(n)。
+var SR_CHUNK_CHARS = 400000;   // 每块约 40 万字符
+var SR_PAGINATE_MAX = 1500000; // 超过这个体量不启用翻页（多列排版扛不住）
+var srRenderedChars = 0;
+var srRenderDone = false;
+
+function srChunkEnd(text, start) {
+    var end = Math.min(text.length, start + SR_CHUNK_CHARS);
+    if (end < text.length) {
+        var nl = text.lastIndexOf('\n', end);
+        if (nl > start + SR_CHUNK_CHARS * 0.5) end = nl + 1;
+    }
+    return end;
+}
+
+function srAppendChunk() {
+    var content = document.getElementById('txtContent');
+    if (!content || srRenderDone || !fullText) return false;
+    var start = srRenderedChars;
+    var end = srChunkEnd(fullText, start);
+    var piece = fullText.slice(start, end);
+    if (window.__srReflow) piece = reflowText(piece);
+    content.appendChild(document.createTextNode(piece));
+    srRenderedChars = end;
+    if (srRenderedChars >= fullText.length) {
+        srRenderDone = true;
+        // 目录要基于全本文本，等渲染完再建，避免只拿到半本书
+        setTimeout(buildToc, 30);
+    }
+    return true;
+}
+
+function srRenderUpToChars(n) {
+    var guard = 0;
+    while (srRenderedChars < n && !srRenderDone && guard++ < 600) srAppendChunk();
+}
+
+function srMaybeLoadMore() {
+    if (srRenderDone) return;
+    var c = document.getElementById('readerContent');
+    if (!c) return;
+    if (c.scrollTop + c.clientHeight >= c.scrollHeight - 1500) srAppendChunk();
+}
+
 function loadContent() {
     var content = document.getElementById('txtContent');
     if (!content) return;
@@ -1194,9 +1246,11 @@ function loadContent() {
                     + '<a href="/api/read/' + currentBookId + '" download style="color:#4a90d9;">下载原文件查看</a></div>';
                 return;
             }
-            content.textContent = fullText;
+            srRenderedChars = 0;
+            srRenderDone = false;
+            content.textContent = '';
+            srAppendChunk();
             applyReflow();
-            buildToc();
             loadUserSettings();
             loadRecommendations(currentBookId);
             restoreReadingProgress();
@@ -1217,6 +1271,10 @@ function jumpToProgress(progress, instant) {
             var last = srPageCount() - 1;
             srGoPage(Math.round(Math.max(0, Math.min(1, progress)) * last), instant);
             return;
+        }
+        if (fullText) {
+            srRenderUpToChars(Math.ceil(Math.max(0, Math.min(1, progress)) * fullText.length)
+                              + SR_CHUNK_CHARS);
         }
         var max = container.scrollHeight - container.clientHeight;
         if (max > 0) container.scrollTop = max * progress;
@@ -1854,8 +1912,10 @@ function loadMenuCustom() {
 // 字符偏移 -> 多列布局中的横坐标 -> 页码
 // #231 段落重排：去除硬换行、合并被截断段落；只改显示，不改原文件
 function srBookText() {
+    // 渐进渲染下 DOM 里只有已渲染的块，目录/定位必须用内存里的全本，否则会只算到半本书
+    if (fullText) return fullText;
     var c = document.getElementById('txtContent');
-    return (c && c.textContent) ? c.textContent : (fullText || '');
+    return (c && c.textContent) ? c.textContent : '';
 }
 function reflowText(raw) {
     if (!raw) return raw;
@@ -1871,7 +1931,14 @@ function reflowText(raw) {
 }
 function applyReflow() {
     var c = document.getElementById('txtContent'); if (!c || !fullText) return;
-    c.textContent = window.__srReflow ? reflowText(fullText) : fullText;
+    var rc = document.getElementById('readerContent');
+    var keepTop = rc ? rc.scrollTop : 0;
+    c.textContent = '';
+    srRenderedChars = 0;
+    srRenderDone = false;
+    // 先铺够一屏半，剩下的滚动时再补
+    srRenderUpToChars(Math.min(fullText.length, SR_CHUNK_CHARS * 2));
+    if (rc && keepTop) rc.scrollTop = keepTop;
     if (srPaginate()) srApplyPaginateLayout();
 }
 function setReflow(on) {
@@ -1929,7 +1996,8 @@ function applyReadMode(mode) {
     var prev = document.getElementById('pagePrev');
     var next = document.getElementById('pageNext');
     if (!c) return;
-    var enable = (mode === 'paginate') && !!document.getElementById('txtContent');
+    var enable = (mode === 'paginate') && !!document.getElementById('txtContent')
+                 && (!fullText || fullText.length <= SR_PAGINATE_MAX);
     if (enable) {
         var keep = progressRatio();
         c.classList.add('paginate');
@@ -3091,6 +3159,11 @@ function srToastFontSize() {
     var el = document.getElementById('fontSizeRange');
     if (el) showToast('字号 ' + el.value);
 }
+
+(function () {
+    var rc = document.getElementById('readerContent');
+    if (rc) rc.addEventListener('scroll', srMaybeLoadMore, { passive: true });
+})();
 
 initPageNavPos();
 initAutoScrollPrefs();

@@ -2,58 +2,146 @@
 {% block title %}管理后台 - SweetReader{% endblock %}
 {% block extra_css %}
 <style>
-.admin-hub { max-width: 1100px; margin: 0 auto; }
-.admin-hub h2 { font-size: 22px; color: var(--text-dark); margin: 8px 0 4px; }
-.hub-sub { color: var(--text-light); font-size: 13px; margin-bottom: 16px; }
-.hub-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 14px; }
-.hub-card { display: flex; align-items: center; gap: 14px; padding: 16px; border: 1px solid #eee; border-radius: 14px; background: #fff; text-decoration: none; color: var(--text-dark); box-shadow: var(--shadow); transition: transform .18s ease-out, box-shadow .18s ease-out; }
-.hub-card:hover { transform: translateY(-3px); box-shadow: 0 8px 22px rgba(232,132,138,.18); }
-.hub-ico { font-size: 26px; flex: 0 0 auto; }
-.hub-t { font-size: 15px; font-weight: 600; }
-.hub-d { font-size: 12px; color: var(--text-light); }
-.hub-tools { margin-top: 20px; display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
-.hub-plugin-nav { display: flex; gap: 10px; flex-wrap: wrap; }
-.hub-plugin-link { font-size: 13px; color: var(--primary); text-decoration: none; }
-body.dark-theme .hub-card { background: #23252b; border-color: #3a3d44; }
-body.dark-theme .hub-t { color: #e0e0e0; }
+.ah { width: 100%; max-width: 1080px; margin: 0 auto; }
+.ah-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 14px; flex-wrap: wrap; margin-bottom: 14px; }
+.ah-head h2 { font-size: 22px; color: var(--text-dark); margin: 8px 0 4px; }
+.ah-sub { color: var(--text-light); font-size: 13px; }
+
+/* 书库概览磁贴 */
+.ah-stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin-bottom: 18px; }
+.ah-stat { background: #fff; border: 1px solid #f0e9e9; border-radius: 14px; padding: 14px 16px; box-shadow: var(--shadow); }
+body.dark-theme .ah-stat { background: #23252b; border-color: #3a3d44; }
+.ah-stat b { display: block; font-size: 22px; line-height: 1.2; color: var(--text-dark); }
+.ah-stat span { display: block; font-size: 12px; color: var(--text-light); margin-top: 2px; }
+
+/* 分组 */
+.ah-sec-title { display: flex; align-items: center; gap: 8px; margin: 20px 0 10px; font-size: 13px; font-weight: 700; color: var(--text-light); letter-spacing: .5px; }
+.ah-sec-title::after { content: ''; flex: 1; height: 1px; background: rgba(0,0,0,.07); }
+body.dark-theme .ah-sec-title::after { background: #34373e; }
+
+.ah-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 14px; }
+.ah-card {
+    display: flex; align-items: center; gap: 14px; padding: 16px 18px;
+    border: 1px solid #ececed; border-radius: 14px; background: #fff;
+    text-decoration: none; color: var(--text-dark); box-shadow: 0 1px 4px rgba(0,0,0,.04);
+    transition: transform .18s ease-out, box-shadow .18s ease-out, border-color .18s ease-out;
+    min-width: 0;
+}
+.ah-card:hover { transform: translateY(-2px); box-shadow: 0 6px 18px rgba(0,0,0,.08); border-color: #e6ddd8; }
+body.dark-theme .ah-card { background: #23252b; border-color: #3a3d44; }
+.ah-ico {
+    width: 42px; height: 42px; flex: 0 0 42px; border-radius: 12px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 19px; color: #fff;
+}
+.ai-0 { background: linear-gradient(135deg,#7c5cd6,#a78bfa); }
+.ai-1 { background: linear-gradient(135deg,#e8848a,#f2a9ad); }
+.ai-2 { background: linear-gradient(135deg,#2f9e8f,#5fd0bf); }
+.ai-3 { background: linear-gradient(135deg,#5b8def,#8fb0ff); }
+.ai-4 { background: linear-gradient(135deg,#e08a3c,#f0b26b); }
+.ai-5 { background: linear-gradient(135deg,#8a6d3b,#c3a373); }
+.ah-body { min-width: 0; flex: 1; }
+.ah-t { font-size: 15px; font-weight: 600; }
+body.dark-theme .ah-t { color: #e6e6e6; }
+.ah-d { font-size: 12px; color: var(--text-light); margin-top: 2px; }
+.ah-arrow { color: #c9c9cf; font-size: 18px; flex: 0 0 auto; transition: transform .18s ease-out, color .18s ease-out; }
+.ah-card:hover .ah-arrow { transform: translateX(3px); color: var(--primary); }
+
+/* 工具条 */
+.ah-tools { margin-top: 22px; display: flex; align-items: center; gap: 14px; flex-wrap: wrap; padding: 14px 16px; background: #fff; border: 1px solid #ececed; border-radius: 14px; }
+body.dark-theme .ah-tools { background: #23252b; border-color: #3a3d44; }
+.ah-tools .btn-primary { background: #e8848a; border-color: #e8848a; color: #fff; }
+.ah-tools .btn-primary:hover { background: #d46a70; border-color: #d46a70; }
+.ah-plugin-nav { display: flex; gap: 12px; flex-wrap: wrap; }
+.ah-plugin-link { font-size: 13px; color: var(--primary); text-decoration: none; }
+.ah-plugin-link:hover { text-decoration: underline; }
+.ah-scan-msg { font-size: 12px; color: var(--text-light); }
+
+@media (max-width: 768px) {
+    .ah-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .ah-grid { grid-template-columns: minmax(0, 1fr); }
+}
 </style>
 {% endblock %}
 {% block content %}
-<div class="admin-hub">
-    <h2>管理后台</h2>
-    <p class="hub-sub">以下功能仅管理员可见，点击进入对应管理页面。</p>
-    <div class="hub-grid">
-        <a class="hub-card" href="/admin/users"><div class="hub-ico">&#128100;</div><div><div class="hub-t">用户管理</div><div class="hub-d">账号、权限、停用</div></div></a>
-        <a class="hub-card" href="/admin/invite"><div class="hub-ico">&#9993;</div><div><div class="hub-t">邀请码</div><div class="hub-d">生成与查看</div></div></a>
-        <a class="hub-card" href="/admin/logs"><div class="hub-ico">&#128220;</div><div><div class="hub-t">操作日志</div><div class="hub-d">审计记录</div></div></a>
-        <a class="hub-card" href="/admin/plugins"><div class="hub-ico">&#129513;</div><div><div class="hub-t">插件管理</div><div class="hub-d">启用与配置插件</div></div></a>
-        <a class="hub-card" href="/admin/sub-admins"><div class="hub-ico">&#128737;</div><div><div class="hub-t">子管理员</div><div class="hub-d">授权管理</div></div></a>
-        <a class="hub-card" href="/admin/categories"><div class="hub-ico">&#128449;</div><div><div class="hub-t">分类管理</div><div class="hub-d">分类树与移动</div></div></a>
-        <a class="hub-card" href="/admin/books"><div class="hub-ico">&#128218;</div><div><div class="hub-t">书籍管理</div><div class="hub-d">编辑/整理/查重</div></div></a>
-        <a class="hub-card" href="/admin/broken"><div class="hub-ico">&#129689;</div><div><div class="hub-t">乱码与损坏</div><div class="hub-d">扫描与修复</div></div></a>
+<div class="ah">
+    <div class="ah-head">
+        <div>
+            <h2>管理后台</h2>
+            <div class="ah-sub">以下功能仅管理员可见，点击卡片进入对应管理页面。</div>
+        </div>
     </div>
-    <div class="hub-tools">
+
+    <div class="ah-stats" id="ahStats">
+        <div class="ah-stat"><b>—</b><span>藏书</span></div>
+        <div class="ah-stat"><b>—</b><span>分类</span></div>
+        <div class="ah-stat"><b>—</b><span>格式</span></div>
+        <div class="ah-stat"><b>—</b><span>在读</span></div>
+    </div>
+
+    <div class="ah-sec-title">书库与内容</div>
+    <div class="ah-grid">
+        <a class="ah-card" href="/admin/books"><div class="ah-ico ai-1">&#128218;</div><div class="ah-body"><div class="ah-t">书籍管理</div><div class="ah-d">编辑、整理、查重、批量操作</div></div><div class="ah-arrow">&#8250;</div></a>
+        <a class="ah-card" href="/admin/categories"><div class="ah-ico ai-2">&#128449;</div><div class="ah-body"><div class="ah-t">分类管理</div><div class="ah-d">分类树、重命名、移动与合并</div></div><div class="ah-arrow">&#8250;</div></a>
+        <a class="ah-card" href="/admin/broken"><div class="ah-ico ai-4">&#129689;</div><div class="ah-body"><div class="ah-t">乱码与损坏</div><div class="ah-d">扫描识别、一键修复与清理</div></div><div class="ah-arrow">&#8250;</div></a>
+    </div>
+
+    <div class="ah-sec-title">用户与权限</div>
+    <div class="ah-grid">
+        <a class="ah-card" href="/admin/users"><div class="ah-ico ai-0">&#128100;</div><div class="ah-body"><div class="ah-t">用户管理</div><div class="ah-d">账号、密码重置、启用停用</div></div><div class="ah-arrow">&#8250;</div></a>
+        <a class="ah-card" href="/admin/sub-admins"><div class="ah-ico ai-3">&#128737;</div><div class="ah-body"><div class="ah-t">子管理员</div><div class="ah-d">授权范围管理</div></div><div class="ah-arrow">&#8250;</div></a>
+        <a class="ah-card" href="/admin/invite"><div class="ah-ico ai-5">&#9993;</div><div class="ah-body"><div class="ah-t">邀请码</div><div class="ah-d">生成、查看与作废</div></div><div class="ah-arrow">&#8250;</div></a>
+    </div>
+
+    <div class="ah-sec-title">系统与插件</div>
+    <div class="ah-grid">
+        <a class="ah-card" href="/admin/plugins"><div class="ah-ico ai-2">&#129513;</div><div class="ah-body"><div class="ah-t">插件管理</div><div class="ah-d">启用停用、上传与图形化设置</div></div><div class="ah-arrow">&#8250;</div></a>
+        <a class="ah-card" href="/admin/logs"><div class="ah-ico ai-3">&#128220;</div><div class="ah-body"><div class="ah-t">操作日志</div><div class="ah-d">谁在什么时候做了什么</div></div><div class="ah-arrow">&#8250;</div></a>
+    </div>
+
+    <div class="ah-tools">
         <button type="button" class="btn btn-primary" onclick="scanBooks()">重新扫描书库</button>
-        <div id="pluginAdminNav" class="hub-plugin-nav"></div>
+        <span class="ah-scan-msg" id="ahScanMsg">扫描在后台进行，可稍后回来查看。</span>
+        <div id="pluginAdminNav" class="ah-plugin-nav"></div>
     </div>
 </div>
 <script>
-(function(){
+(function () {
+    // 概览磁贴：复用书库总览接口
+    fetch('/api/library-overview', { credentials: 'same-origin' })
+        .then(function (r) { return r.json(); })
+        .then(function (d) {
+            if (!d || !d.success) return;
+            var box = document.getElementById('ahStats');
+            if (!box) return;
+            var st = d.status || {};
+            var tiles = [
+                [d.total || 0, '藏书'],
+                [d.categories || 0, '分类'],
+                [(d.formats || []).length, '格式'],
+                [st.reading || 0, '在读']
+            ];
+            box.innerHTML = tiles.map(function (t) {
+                return '<div class="ah-stat"><b>' + t[0] + '</b><span>' + t[1] + '</span></div>';
+            }).join('');
+        })
+        .catch(function () {});
+
     var box = document.getElementById('pluginAdminNav');
     if (!box) return;
     fetch('/api/plugins/nav', { credentials: 'same-origin' })
-        .then(function(r){ return r.json(); })
-        .then(function(d){
+        .then(function (r) { return r.json(); })
+        .then(function (d) {
             if (d.success && d.admin_nav && d.admin_nav.length) {
-                d.admin_nav.forEach(function(n){
+                d.admin_nav.forEach(function (n) {
                     var a = document.createElement('a');
                     a.href = n.url; a.textContent = n.label;
-                    a.className = 'hub-plugin-link';
+                    a.className = 'ah-plugin-link';
                     box.appendChild(a);
                 });
             }
         })
-        .catch(function(){});
+        .catch(function () {});
 })();
 </script>
 {% endblock %}

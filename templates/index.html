@@ -882,6 +882,12 @@ body.dark-theme .hero-dot.active { background: var(--primary) !important; }
 @media (max-width: 1100px) { .hero-slide { flex: 0 0 calc((100% - 28px) / 3); } }
 @media (max-width: 760px) { .hero-slide { flex: 0 0 100%; } .hero-nav { display: none; } }
 @media (prefers-reduced-motion: reduce) { .hero-track { scroll-behavior: auto; } .hero-slide { transition: none; } }
+
+/* B23: 移动端触摸目标 >=34px（桌面零改动） */
+@media (max-width: 920px) {
+    .show-all-btn, .ext-mini, .tag-filter-btn { min-height: 34px; }
+    .extension-action { min-height: 34px; display: inline-flex; align-items: center; }
+}
 </style>
 {% endblock %}
 

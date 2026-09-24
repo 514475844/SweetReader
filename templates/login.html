@@ -4,92 +4,112 @@
 <style>
 .navbar { display: none; }
 .container { padding-top: 0; }
-.login-box { max-width: 420px; margin: 40px auto; background: white; padding: 48px 52px; border-radius: 24px; box-shadow: 0 20px 60px rgba(232,132,138,0.25); }
-.login-box .logo-text { text-align: center; font-size: 32px; font-weight: 700; color: #4a3a3a; margin-bottom: 4px; }
-.login-box .logo-text .sweet { color: #e8848a; }
-.login-box .logo-text .reader { color: #4a3a3a; }
-.login-box .sub { text-align: center; color: #8a7a7a; font-size: 15px; margin-bottom: 28px; }
-.login-box label { display: block; font-weight: 600; margin-bottom: 6px; color: #4a3a3a; font-size: 15px; }
-.login-box input { width: 100%; padding: 14px 18px; border: 2px solid #f0e0e0; border-radius: 12px; font-size: 16px; margin-bottom: 18px; background: #faf8f8; box-sizing: border-box; }
-.login-box input:focus { outline: none; border-color: #e8848a; background: white; box-shadow: 0 0 0 4px rgba(232,132,138,0.12); }
-.login-box input::placeholder { color: #bbb; font-size: 15px; }
-.login-box .btn { width: 100%; padding: 15px; background: #e8848a; color: white; border: none; border-radius: 30px; font-size: 17px; font-weight: 600; cursor: pointer; transition: background 0.3s; }
-.login-box .btn:hover { background: #d46a70; }
-.login-box .flash { padding: 12px 16px; border-radius: 12px; margin-bottom: 18px; font-size: 14px; }
-.login-box .flash.error { background: #fef0f0; color: #c0392b; border: 1px solid #fcd5d5; }
-.login-box .flash.success { background: #f0faf5; color: #27ae60; border: 1px solid #c8f0d5; }
-.login-box .links { text-align: center; margin-top: 20px; font-size: 15px; color: #8a7a7a; }
-.login-box .links a { color: #e8848a; text-decoration: none; font-weight: 600; }
-.login-box .links a:hover { text-decoration: underline; }
-.login-box .hint { text-align: center; margin-top: 24px; padding-top: 18px; border-top: 1px solid #f0f0f0; font-size: 13px; color: #bbb; }
-    .login-box .hint strong { color: #8a7a7a; }
-    .login-logo { height: 88px; width: auto; margin-bottom: 6px; }
-    .remember { display: flex; align-items: center; gap: 8px; font-weight: 500; margin-bottom: 18px; color: #4a3a3a; font-size: 14px; cursor: pointer; }
-    .remember input { width: 16px; height: 16px; accent-color: #e8848a; cursor: pointer; }
-    /* base.html 顶部那份 flash 与卡片内重复，登录页只保留卡片里的 */
-    .flash-messages { display: none !important; }
-    .forget-link { display: none; text-align: center; margin: -8px 0 16px; font-size: 13px; }
-    .forget-link a { color: #b9a9a9; text-decoration: none; }
-    .forget-link a:hover { color: #e8848a; text-decoration: underline; }
 
-    /* 登录按钮增强 */
-    .login-btn {
-        border-radius: 25px !important;
-        padding: 12px 32px !important;
-        font-size: 18px !important;
-        font-weight: 600 !important;
-        box-shadow: 0 4px 20px rgba(232,132,138,0.35) !important;
-        transition: all 0.3s ease !important;
-        width: 100% !important;
-    }
-    .login-btn:active {
-        transform: scale(0.96) !important;
-        box-shadow: 0 2px 10px rgba(232,132,138,0.2) !important;
-    }
-    .login-btn:hover {
-        box-shadow: 0 6px 30px rgba(232,132,138,0.45) !important;
-        transform: translateY(-1px);
-    }
-    /* 移动端触摸反馈 + 放大可点区域 */
-    @media (max-width: 768px) {
-        .login-box .btn {
-            font-size: 18px !important;
-            padding: 16px 20px !important;
-            min-height: 52px !important;
-            border-radius: 30px !important;
-        }
-        .login-btn:active {
-            transform: scale(0.97) !important;
-        }
-    }
-    @media (max-width: 480px) {
-        .login-box .btn {
-            font-size: 17px !important;
-            padding: 15px 18px !important;
-            min-height: 50px !important;
-        }
-    }
-    </style>
+/* ===== PC：左右双栏（左品牌 / 右表单），不再是一张细条卡片 ===== */
+.login-shell {
+    width: 100%; max-width: 920px; margin: 48px auto; background: #fff;
+    border-radius: 24px; box-shadow: 0 20px 60px rgba(232,132,138,0.25);
+    display: grid; grid-template-columns: 1fr 1fr; overflow: hidden;
+}
+.login-brand {
+    background: linear-gradient(160deg, #fff3f3 0%, #fdeef0 55%, #f9e2e4 100%);
+    padding: 44px 40px; display: flex; flex-direction: column; justify-content: center; gap: 14px;
+    border-right: 1px solid #f7e6e8;
+}
+.login-brand img { height: 96px; width: auto; align-self: flex-start; }
+.login-brand .b-t { font-size: 22px; font-weight: 700; color: #4a3a3a; }
+.login-brand .b-d { font-size: 14px; color: #9a8a8a; line-height: 1.9; }
+.brand-item { display: flex; align-items: flex-start; gap: 10px; margin-top: 6px; }
+.brand-item .dot {
+    width: 26px; height: 26px; flex: 0 0 26px; border-radius: 9px; background: #fff;
+    display: flex; align-items: center; justify-content: center; font-size: 13px;
+    box-shadow: 0 2px 8px rgba(232,132,138,.18); color: #e8848a; font-weight: 700;
+}
+.brand-item .tx { font-size: 13px; color: #7a6a6a; line-height: 1.6; padding-top: 3px; }
+
+.login-form { padding: 44px 52px 40px; }
+.login-form .logo-text { display: none; text-align: center; font-size: 30px; font-weight: 700; color: #4a3a3a; margin-bottom: 4px; }
+.login-form .logo-text .sweet { color: #e8848a; }
+.login-form .logo-text .reader { color: #4a3a3a; }
+.login-form .sub { text-align: center; color: #8a7a7a; font-size: 15px; margin-bottom: 26px; }
+.login-form label { display: block; font-weight: 600; margin-bottom: 6px; color: #4a3a3a; font-size: 15px; }
+.login-form input { width: 100%; padding: 14px 18px; border: 2px solid #f0e0e0; border-radius: 12px; font-size: 16px; margin-bottom: 18px; background: #faf8f8; box-sizing: border-box; }
+.login-form input:focus { outline: none; border-color: #e8848a; background: white; box-shadow: 0 0 0 4px rgba(232,132,138,0.12); }
+.login-form input::placeholder { color: #bbb; font-size: 15px; }
+.login-form .flash { padding: 12px 16px; border-radius: 12px; margin-bottom: 18px; font-size: 14px; }
+.login-form .flash.error { background: #fef0f0; color: #c0392b; border: 1px solid #fcd5d5; }
+.login-form .flash.success { background: #f0faf5; color: #27ae60; border: 1px solid #c8f0d5; }
+.login-form .links { text-align: center; margin-top: 20px; font-size: 15px; color: #8a7a7a; }
+.login-form .links a { color: #e8848a; text-decoration: none; font-weight: 600; }
+.login-form .links a:hover { text-decoration: underline; }
+.login-form .hint { text-align: center; margin-top: 24px; padding-top: 18px; border-top: 1px solid #f0f0f0; font-size: 13px; color: #bbb; }
+.login-form .hint strong { color: #8a7a7a; }
+
+.remember { display: flex; align-items: center; gap: 8px; font-weight: 500; margin-bottom: 8px; color: #4a3a3a; font-size: 14px; cursor: pointer; }
+.remember input { width: 16px; height: 16px; accent-color: #e8848a; cursor: pointer; margin: 0; }
+.forget-link { display: none; text-align: left; margin: 0 0 16px; font-size: 13px; }
+.forget-link a { color: #b9a9a9; text-decoration: none; }
+.forget-link a:hover { color: #e8848a; text-decoration: underline; }
+
+/* 登录按钮增强 */
+.login-btn {
+    width: 100% !important; padding: 14px 32px !important; margin-bottom: 4px;
+    background: #e8848a !important; color: #fff !important; border: none !important;
+    border-radius: 28px !important; font-size: 17px !important; font-weight: 600 !important;
+    box-shadow: 0 4px 20px rgba(232,132,138,0.35) !important;
+    transition: all 0.25s ease !important; cursor: pointer;
+}
+.login-btn:active { transform: scale(0.97) !important; box-shadow: 0 2px 10px rgba(232,132,138,0.2) !important; }
+.login-btn:hover { background: #d46a70 !important; box-shadow: 0 6px 30px rgba(232,132,138,0.45) !important; transform: translateY(-1px); }
+
+/* base.html 顶部那份 flash 与卡片内重复，登录页只保留卡片里的 */
+.flash-messages { display: none !important; }
+
+/* ===== 窄屏：收成单栏 ===== */
+@media (max-width: 860px) {
+    .login-shell { grid-template-columns: 1fr; max-width: 460px; margin: 24px auto; }
+    .login-brand { display: none; }
+    .login-form { padding: 36px 30px 32px; }
+    .login-form .logo-text { display: block; }
+}
+@media (max-width: 480px) {
+    .login-shell { margin: 12px; border-radius: 18px; }
+    .login-form { padding: 28px 20px 26px; }
+    .login-form input { padding: 12px 14px; font-size: 15px; }
+}
+</style>
 {% endblock %}
 {% block content %}
-<div class="login-box">
-    <div class="logo-text"><img src="{{ url_for('static', filename='logo.png') }}" alt="SweetReader" class="login-logo"></div>
-    <div class="sub">登录以管理你的书籍</div>
-    {% with messages = get_flashed_messages(with_categories=true) %}
-        {% for category, message in messages %}
-            <div class="flash {{ category }}">{{ message }}</div>
-        {% endfor %}
-    {% endwith %}
-    <form method="POST">
-        <label>用户名 / 邮箱</label>
-        <input type="text" name="username" placeholder="请输入用户名或邮箱" required>
-        <label>密码</label>
-        <input type="password" name="password" placeholder="请输入密码" required>
-        <label class="remember"><input type="checkbox" name="remember" id="rememberMe"> 记住账号和密码（仅本机）</label>
-        <div class="forget-link" id="forgetLink"><a href="javascript:void(0)" onclick="forgetSaved()">清除已记住的账号密码</a></div>
-        <button type="submit" class="btn login-btn">登录</button>
-    </form>
-    <div class="links">还没有账号？<a href="{{ url_for('main.register') }}">使用邀请码注册</a></div>
+<div class="login-shell">
+    <div class="login-brand">
+        <img src="{{ url_for('static', filename='logo.png') }}" alt="SweetReader">
+        <div class="b-t">你的私人书库</div>
+        <div class="b-d">把本地的书整理得干干净净，随时接着上次读的地方继续。</div>
+        <div class="brand-item"><span class="dot">1</span><span class="tx">EPUB / PDF / TXT / MOBI / DOCX 全格式在线阅读</span></div>
+        <div class="brand-item"><span class="dot">2</span><span class="tx">阅读进度、书签与阅读偏好自动同步到账号</span></div>
+        <div class="brand-item"><span class="dot">3</span><span class="tx">支持手机、平板、电脑，同一账号随处续读</span></div>
+    </div>
+
+    <div class="login-form">
+        <div class="logo-text"><span class="sweet">Sweet</span><span class="reader">Reader</span></div>
+        <div class="sub">登录以管理你的书籍</div>
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% for category, message in messages %}
+                <div class="flash {{ category }}">{{ message }}</div>
+            {% endfor %}
+        {% endwith %}
+        <form method="POST">
+            <label>用户名 / 邮箱</label>
+            <input type="text" name="username" placeholder="请输入用户名或邮箱" required autocomplete="username">
+            <label>密码</label>
+            <input type="password" name="password" placeholder="请输入密码" required autocomplete="current-password">
+            <label class="remember"><input type="checkbox" name="remember" id="rememberMe"> 记住账号和密码（仅本机）</label>
+            <div class="forget-link" id="forgetLink"><a href="javascript:void(0)" onclick="forgetSaved()">清除已记住的账号密码</a></div>
+            <button type="submit" class="btn login-btn">登录</button>
+        </form>
+        <div class="links">还没有账号？<a href="{{ url_for('main.register') }}">使用邀请码注册</a></div>
+        <div class="hint">忘记密码请联系管理员重置</div>
+    </div>
 </div>
 <script>
 // 备注：内网自用场景，按用户要求在浏览器本地记住账号与密码（仅存本机 localStorage，
@@ -126,14 +146,13 @@ function forgetSaved() {
       if (fl) fl.style.display = 'block';
     }
     if (pw && pEl) pEl.value = decPwd(pw);
-    // 账号密码都记着：直接把焦点放到登录按钮，按一下回车就进
     if (un && pw && uEl && pEl) {
       var btn = document.querySelector('.login-btn');
       if (btn) setTimeout(function () { try { btn.focus(); } catch (e) {} }, 60);
     }
   } catch (e) {}
 
-  var form = document.querySelector('.login-box form');
+  var form = document.querySelector('.login-form form');
   if (form) form.addEventListener('submit', function () {
     try {
       var u = uEl ? uEl.value.trim() : '';

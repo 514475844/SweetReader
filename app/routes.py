@@ -48,6 +48,28 @@ def _touch_user_activity():
 
 
 # ============ 内置编码检测 ============
+# 编码探测只看文件开头的一段：判断编码用不了整本书，
+# 而「整文件 × 8 种编码各解一遍」是大 txt 打开巨慢的根因（实测 20MB 文件要十几秒）。
+DETECT_SAMPLE_BYTES = 262144        # 256KB 取样
+DECODE_CACHE_MAX_ITEMS = 12         # 缓存条目上限
+DECODE_CACHE_MAX_CHARS = 6_000_000  # 单条缓存最大字符数（约 12MB 内存）
+_decode_cache = {}                  # key -> (text)
+_decode_cache_order = []
+
+
+def _decode_strict_or_none(raw, enc):
+    """严格解码；取样截断可能切断多字节序列，允许裁掉末尾 1~3 字节后重试。"""
+    for trim in range(0, 4):
+        chunk = raw[:len(raw) - trim] if trim else raw
+        try:
+            return chunk.decode(enc)
+        except UnicodeDecodeError:
+            continue
+        except Exception:
+            return None
+    return None
+
+
 def detect_encoding(raw_bytes):
     # BOM 优先判定
     if raw_bytes.startswith(b'\xef\xbb\xbf'):
@@ -63,12 +85,13 @@ def detect_encoding(raw_bytes):
     #      故优先选 CJK 最多的解码，避免中文书变乱码。
     candidates = ['utf-8', 'gb18030', 'gbk', 'big5', 'big5hkscs',
                    'gb2312', 'shift-jis', 'euc-kr']
+    sample = (raw_bytes[:DETECT_SAMPLE_BYTES]
+              if len(raw_bytes) > DETECT_SAMPLE_BYTES else raw_bytes)
     decoded = {}
     for enc in candidates:
-        try:
-            decoded[enc] = raw_bytes.decode(enc)
-        except Exception:
-            continue
+        t = _decode_strict_or_none(sample, enc)
+        if t is not None:
+            decoded[enc] = t
     if decoded:
         def _score(s):
             # CJK 计数只取前 5k 字采样，避免逐字符遍历大文件拖慢请求
@@ -81,7 +104,7 @@ def detect_encoding(raw_bytes):
     best_enc, best_fffd, best_cjk = 'utf-8', None, -1
     for enc in candidates:
         try:
-            t = raw_bytes.decode(enc, errors='replace')
+            t = sample.decode(enc, errors='replace')
         except Exception:
             continue
         fffd = t.count('\ufffd')
@@ -89,6 +112,31 @@ def detect_encoding(raw_bytes):
         if best_fffd is None or fffd < best_fffd or (fffd == best_fffd and cjk > best_cjk):
             best_fffd, best_cjk, best_enc = fffd, cjk, enc
     return best_enc
+
+
+def decode_book_text(file_path):
+    """读文件并按探测到的编码解码，只解一次；结果进一个小缓存，重复打开秒开。"""
+    st = os.stat(file_path)
+    key = (str(file_path), st.st_mtime, st.st_size)
+    hit = _decode_cache.get(key)
+    if hit is not None:
+        return hit
+
+    with open(file_path, 'rb') as f:
+        raw = f.read()
+    raw = fix_bom(raw)
+    encoding = detect_encoding(raw)
+    try:
+        text = raw.decode(encoding)
+    except Exception:
+        text = raw.decode(encoding, errors='replace')
+
+    if len(text) <= DECODE_CACHE_MAX_CHARS:
+        _decode_cache[key] = text
+        _decode_cache_order.append(key)
+        while len(_decode_cache_order) > DECODE_CACHE_MAX_ITEMS:
+            _decode_cache.pop(_decode_cache_order.pop(0), None)
+    return text
 
 def fix_bom(raw_bytes):
     if raw_bytes.startswith(b'\xef\xbb\xbf'):
@@ -667,19 +715,14 @@ def get_book_content(book_id):
     # 其余（含 .txt 及其它纯文本扩展名，如 .text/.cn/.log/.md 等）
     # 一律按文本解码后返回 UTF-8，避免 GBK 等中文编码被前端当 UTF-8 硬解成乱码
     try:
-        with open(file_path, 'rb') as f:
-            raw = f.read()
-        raw = fix_bom(raw)
-        encoding = detect_encoding(raw)
-        try:
-            text = raw.decode(encoding)
-        except Exception:
-            text = raw.decode(encoding, errors='replace')
+        text = decode_book_text(str(file_path))
         # 解码出大量替换符 => 实为二进制文件，退回原始文件
         if text.count('\ufffd') > max(5, len(text) // 50):
             return send_file(file_path)
         from flask import Response
-        return Response(text, mimetype='text/plain; charset=utf-8')
+        resp = Response(text, mimetype='text/plain; charset=utf-8')
+        resp.headers['Cache-Control'] = 'private, max-age=300'
+        return resp
     except Exception as e:
         return jsonify({'error': f'读取失败: {str(e)}'}), 500
 
@@ -1654,6 +1697,46 @@ def _rename_book_file(book, new_title):
     except Exception as e:
         return False, str(e), ''
     return True, '文件已重命名为「%s」' % os.path.basename(cand), cand
+
+
+def _move_book_file_to_category(book, tgt):
+    """把书的磁盘文件真实搬到目标分类所在目录（需求 #33）。
+
+    tgt 为 None 表示搬到书库根目录（未分类）。目标目录不存在则自动创建；
+    同名冲突自动加 " (n)" 后缀，绝不覆盖已有文件。
+    返回 (ok, 消息, skipped)；skipped=True 表示无需/未动磁盘。
+    """
+    books_dir = str(current_app.config['BOOKS_DIR'])
+    old_rel = (book.relative_path or book.filename or '').strip()
+    if not old_rel:
+        return False, '没有记录文件路径', True
+    src = os.path.join(books_dir, old_rel)
+    if not os.path.exists(src):
+        return False, '磁盘上找不到原文件', True
+    fname = os.path.basename(old_rel)
+    tgt_sub = (tgt.path if tgt else '') or ''
+    tgt_dir = os.path.join(books_dir, tgt_sub) if tgt_sub else books_dir
+    if os.path.normcase(os.path.dirname(os.path.abspath(src))) == \
+            os.path.normcase(os.path.abspath(tgt_dir)):
+        return True, '文件已在目标目录', True
+    try:
+        os.makedirs(tgt_dir, exist_ok=True)
+    except Exception as e:
+        return False, '创建目标目录失败：' + str(e), False
+    dst = os.path.join(tgt_dir, fname)
+    stem, ext = os.path.splitext(fname)
+    n = 2
+    while os.path.exists(dst):
+        dst = os.path.join(tgt_dir, '%s (%d)%s' % (stem, n, ext))
+        n += 1
+    try:
+        os.rename(src, dst)
+    except Exception as e:
+        return False, '移动文件失败：' + str(e), False
+    new_rel = os.path.relpath(dst, books_dir).replace(os.sep, '/')
+    book.relative_path = new_rel
+    book.filename = os.path.basename(dst)
+    return True, '文件已移动到「%s」' % (tgt.name if tgt else '未分类'), False
 
 
 @bp.route('/admin')
@@ -2849,6 +2932,7 @@ def admin_book_detail(book_id):
         desc = (data.get('description') or '').strip()
         file_type = (data.get('file_type') or '').strip().lower()
         cat_id = data.get('category_id')
+        move_msg = ''
         if title:
             book.title = title
         book.author = author or None
@@ -2858,9 +2942,17 @@ def admin_book_detail(book_id):
         if cat_id is not None:
             try:
                 cid = int(cat_id)
-                book.category_id = cid if cid else None
             except Exception:
-                pass
+                cid = None
+            new_cid = cid if cid else None
+            if data.get('move_files') and new_cid != book.category_id:
+                tgt = Category.query.get(new_cid) if new_cid else None
+                if new_cid and not tgt:
+                    return jsonify({'success': False, 'message': '目标分类不存在'}), 404
+                mok, move_msg, _mskip = _move_book_file_to_category(book, tgt)
+                if not mok:
+                    return jsonify({'success': False, 'message': move_msg}), 500
+            book.category_id = new_cid
         db.session.commit()
         try:
             if book.category_id:
@@ -2871,7 +2963,7 @@ def admin_book_detail(book_id):
         except Exception:
             db.session.rollback()
         log_action(current_user, '编辑书籍信息', '《%s》' % (book.title or book.filename))
-        return jsonify({'success': True})
+        return jsonify({'success': True, 'message': move_msg})
     cats = Category.query.order_by(Category.name).all()
     return jsonify({'success': True, 'book': {
         'id': book.id, 'title': book.title, 'author': book.author,
@@ -3470,6 +3562,8 @@ def admin_books_batch():
     touched = set()
     files_deleted = 0
     files_failed = []
+    files_moved = 0
+    files_skipped = 0
     if action == 'delete':
         for bid in ids:
             b = Book.query.get(bid)
@@ -3488,12 +3582,21 @@ def admin_books_batch():
         tgt = Category.query.get(data.get('category_id')) if data.get('category_id') else None
         if not tgt:
             return jsonify({'success': False, 'message': '目标分类不存在'}), 404
+        move_files = bool(data.get('move_files'))
         for bid in ids:
             b = Book.query.get(bid)
             if not b:
                 failed.append(bid); continue
             if b.category_id:
                 touched.add(b.category_id)
+            if move_files:
+                mok, _mmsg, mskip = _move_book_file_to_category(b, tgt)
+                if not mok:
+                    failed.append(bid); continue
+                if mskip:
+                    files_skipped += 1
+                else:
+                    files_moved += 1
             b.category_id = tgt.id
             ok += 1
         touched.add(tgt.id)
@@ -3532,7 +3635,8 @@ def admin_books_batch():
         db.session.rollback()
     log_action(current_user, '书籍批量操作', '%s 共 %d 本' % (action, ok))
     return jsonify({'success': True, 'affected': ok, 'failed': failed,
-                    'files_deleted': files_deleted, 'files_failed': files_failed})
+                    'files_deleted': files_deleted, 'files_failed': files_failed,
+                    'files_moved': files_moved, 'files_skipped': files_skipped})
 
 
 # ============ 书籍整理工具（ 文件名规范化 /  分册归组 /  番外标记 /  拆分） ============

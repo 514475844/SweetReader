@@ -38,6 +38,7 @@
             <span id="selCount" style="font-size:13px;color:#888;">已选 0 本</span>
             <select id="batchMoveSel" style="max-width:260px;"><option value="">移动到分类…</option>{% for c in categories %}<option value="{{ c.id }}">{{ c.path }}</option>{% endfor %}</select>
             <button class="btn btn-sm btn-outline" onclick="batchMove()">移动</button>
+            <label style="display:inline-flex;align-items:center;gap:4px;font-size:12px;cursor:pointer;"><input type="checkbox" id="batchMoveFiles" checked> 同时移动磁盘文件</label>
             <input type="text" id="batchTag" placeholder="标签" style="width:100px;">
             <button class="btn btn-sm btn-outline" onclick="batchTagOp('add')">打标签</button>
             <button class="btn btn-sm btn-outline" onclick="batchTagOp('remove')">去标签</button>
@@ -574,11 +575,12 @@ function saveEdit() {
         author: document.getElementById('editAuthor').value.trim(),
         file_type: document.getElementById('editType').value.trim(),
         category_id: document.getElementById('editCat').value,
+        move_files: true,
         description: document.getElementById('editDesc').value.trim()
     };
     fetch('/api/admin/book/' + id, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
         .then(function(r){ return r.json(); }).then(function(d){
-            if (d.success) { closeEdit(); location.reload(); } else { alert(d.message || '保存失败'); }
+            if (d.success) { if (d.message) { alert(d.message); } closeEdit(); location.reload(); } else { alert(d.message || '保存失败'); }
         });
 }
 function deleteBook(id, btn) {
@@ -608,7 +610,8 @@ function batchMove() {
     var sel = document.getElementById('batchMoveSel');
     if (!ids.length) { alert('请先勾选书籍'); return; }
     if (!sel || !sel.value) { alert('请选择目标分类'); return; }
-    batchPost({ids: ids, action: 'move', category_id: parseInt(sel.value, 10)});
+    var mf = document.getElementById('batchMoveFiles');
+    batchPost({ids: ids, action: 'move', category_id: parseInt(sel.value, 10), move_files: !!(mf && mf.checked)});
 }
 function batchTagOp(op) {
     var ids = selectedIds();
@@ -627,7 +630,12 @@ function batchPost(payload) {
     fetch('/api/admin/books/batch', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload)})
         .then(function(r){ return r.json(); })
         .then(function(d){
-            if (d && d.success) { alert('已处理 ' + (d.affected || 0) + ' 本'); location.reload(); }
+            if (d && d.success) {
+                var msg = '已处理 ' + (d.affected || 0) + ' 本';
+                if (d.files_moved) { msg += '，已移动文件 ' + d.files_moved + ' 个'; }
+                if (d.files_skipped) { msg += '，跳过 ' + d.files_skipped + ' 个'; }
+                alert(msg); location.reload();
+            }
             else alert((d && d.message) || '操作失败');
         });
 }
