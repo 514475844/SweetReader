@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}SweetReader - 乱码与损坏文件{% endblock %}
+{% block title %}乱码与损坏文件{% endblock %}
 {% block extra_css %}
 <style>
 .broken-page { max-width: 1080px; }
@@ -114,7 +114,7 @@ body.dark-theme .link-btn { background: #2a2d34; color: #e0e0e0; border-color: #
         {% if garbled_cats %}
         <p class="src" style="margin:0 0 10px;">
             这些分类名乱码是<strong>入库时目录名的编码被误读</strong>造成的（GBK 字节被当成 UTF-8 解出），
-            不是 SweetReader 写坏的。其中 <b>{{ garbled_recoverable }}</b> 个可以按编码还原回中文，
+            不是书库程序写坏的。其中 <b>{{ garbled_recoverable }}</b> 个可以按编码还原回中文，
             <b>{{ garbled_empty }}</b> 个是还原不出来、且里面确实没书的空目录（可安全删除）。
         </p>
         <div class="cat-list">

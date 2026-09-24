@@ -2829,7 +2829,7 @@ def admin_export_batch():
                         pass
 
         zf.writestr('README.txt',
-                    'SweetReader 批量导出\n'
+                    '书籍批量导出\n'
                     '书籍 %d 个%s\n'
                     'books_metadata.csv 为随包元数据（若已勾选）。\n'
                     % (exported, '，封面在 covers/ 目录' if with_cover else ''))
@@ -2859,7 +2859,7 @@ def admin_export_batch():
                '%d 本打包为 ZIP（%s）' % (exported, BookUtils.format_file_size(size)))
     stamp = datetime.now().strftime('%Y%m%d_%H%M')
     resp = send_file(tmp_path, as_attachment=True, mimetype='application/zip',
-                     download_name='sweetreader_books_%s.zip' % stamp)
+                     download_name='books_export_%s.zip' % stamp)
     return resp
 
 

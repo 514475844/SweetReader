@@ -493,7 +493,7 @@ function exportSelected() {
             var url = URL.createObjectURL(xhr.response);
             var a = document.createElement('a');
             a.href = url;
-            a.download = 'sweetreader_books.zip';
+            a.download = 'books_export.zip';
             document.body.appendChild(a); a.click(); document.body.removeChild(a);
             setTimeout(function() { URL.revokeObjectURL(url); }, 4000);
             res.textContent = '已导出 ' + ids.length + ' 本，请查看浏览器下载';

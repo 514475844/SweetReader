@@ -9,7 +9,7 @@ PLUGIN = Plugin(
     name='最近阅读',
     description='在首页展示你最近读过的书，点击即可继续阅读。',
     version='1.0.0',
-    author='SweetReader',
+    author='',
     homepage=[PluginEntry(label='最近阅读', widget='recent', order=10)],
     enabled_by_default=True,
 )

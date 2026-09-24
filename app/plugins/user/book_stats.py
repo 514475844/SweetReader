@@ -52,7 +52,7 @@ PLUGIN = Plugin(
     name='书库统计',
     description='查看书库总量、格式分布、热门分类与最近入库。',
     version='1.1.0',
-    author='SweetReader',
+    author='',
     homepage=[PluginEntry(label='书库统计', url='/plugin/stats', order=50, show_on_homepage=False)],
     admin_nav=[{'label': '书库统计', 'url': '/plugin/stats'}],
     # 阅读页工具栏不再注入「统计」按钮：入口保留在插件页 / 管理导航里即可

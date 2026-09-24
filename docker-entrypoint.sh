@@ -20,5 +20,5 @@ with app.app_context():
 # 详见下方「获取初始密码」一节。
 
 # 启动应用
-echo "🚀 启动 SweetReader..."
+echo "🚀 启动书库..."
 exec python run.py

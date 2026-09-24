@@ -10,7 +10,7 @@ PLUGIN = Plugin(
     name='相关推荐',
     description='根据你最近读过的书，推荐同分类或同作者的书。',
     version='1.0.0',
-    author='SweetReader',
+    author='',
     homepage=[PluginEntry(label='相关推荐', widget='related', order=20)],
     enabled_by_default=True,
 )

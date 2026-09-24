@@ -8,7 +8,7 @@
     <meta name="format-detection" content="telephone=no,email=no,address=no">
     <meta name="theme-color" content="#f5f0eb">
     <meta name="renderer" content="webkit">
-    <title>SweetReader - 我的书库</title>
+    <title>我的书库</title>
     <link rel="icon" href="{{ url_for('static', filename='favicon.ico') }}" type="image/x-icon">
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -496,7 +496,7 @@ body.dark-theme .admin-entry{background:rgba(255,255,255,.08);color:#e0e0e0;}
     </div>
     <noscript>
         <div style="background:#fde8e8;color:#a33;font-size:13px;padding:10px 16px;text-align:center;">
-            SweetReader 需要 JavaScript 才能加载书库，请在浏览器设置里开启 JavaScript 后重试。
+            本站需要 JavaScript 才能加载书库，请在浏览器设置里开启 JavaScript 后重试。
         </div>
     </noscript>
     <script>
@@ -516,8 +516,8 @@ body.dark-theme .admin-entry{background:rgba(255,255,255,.08);color:#e0e0e0;}
     </script>
     <div class="container">
         <nav class="navbar">
-            <a href="/library" class="logo" title="SweetReader 书库">
-                <img src="/static/logo.png" alt="SweetReader">
+            <a href="/library" class="logo" title="我的书库">
+                <img src="/static/logo.png" alt="我的书库">
                 <span class="logo-sub">本地书库</span>
             </a>
             {% if current_user.is_authenticated %}
@@ -834,9 +834,9 @@ function copyQQText(num) {
 <!-- ===== 底部 ===== -->
 <footer class="site-footer">
     <div class="site-footer-inner">
-        <a href="/library" class="site-footer-logo" title="SweetReader 书库">
-            <img src="/static/logo.png" alt="SweetReader">
-            <span class="site-footer-name">SweetReader</span>
+        <a href="/library" class="site-footer-logo" title="我的书库">
+            <img src="/static/logo.png" alt="我的书库">
+            <span class="site-footer-name">我的书库</span>
         </a>
         <span class="site-footer-sep"></span>
         <nav class="site-footer-links">

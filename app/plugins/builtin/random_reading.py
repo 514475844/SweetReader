@@ -9,7 +9,7 @@ PLUGIN = Plugin(
     name='随便看看',
     description='一键打开一本随机的书，发现书库里的惊喜。',
     version='1.0.0',
-    author='SweetReader',
+    author='',
     homepage=[PluginEntry(label='随便看看', widget='random', order=20)],
     enabled_by_default=True,
 )

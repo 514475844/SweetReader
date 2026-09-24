@@ -1,4 +1,4 @@
-// SweetReader 阅读器控制脚本
+// 阅读器控制脚本
 document.addEventListener('DOMContentLoaded', function() {
     console.log('阅读器已加载');
     const content = document.getElementById('txtContent');
