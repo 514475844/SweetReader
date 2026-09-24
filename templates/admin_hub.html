@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+{% block title %}管理后台 - SweetReader{% endblock %}
+{% block extra_css %}
+<style>
+.admin-hub { max-width: 1100px; margin: 0 auto; }
+.admin-hub h2 { font-size: 22px; color: var(--text-dark); margin: 8px 0 4px; }
+.hub-sub { color: var(--text-light); font-size: 13px; margin-bottom: 16px; }
+.hub-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 14px; }
+.hub-card { display: flex; align-items: center; gap: 14px; padding: 16px; border: 1px solid #eee; border-radius: 14px; background: #fff; text-decoration: none; color: var(--text-dark); box-shadow: var(--shadow); transition: transform .18s ease-out, box-shadow .18s ease-out; }
+.hub-card:hover { transform: translateY(-3px); box-shadow: 0 8px 22px rgba(232,132,138,.18); }
+.hub-ico { font-size: 26px; flex: 0 0 auto; }
+.hub-t { font-size: 15px; font-weight: 600; }
+.hub-d { font-size: 12px; color: var(--text-light); }
+.hub-tools { margin-top: 20px; display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+.hub-plugin-nav { display: flex; gap: 10px; flex-wrap: wrap; }
+.hub-plugin-link { font-size: 13px; color: var(--primary); text-decoration: none; }
+body.dark-theme .hub-card { background: #23252b; border-color: #3a3d44; }
+body.dark-theme .hub-t { color: #e0e0e0; }
+</style>
+{% endblock %}
+{% block content %}
+<div class="admin-hub">
+    <h2>管理后台</h2>
+    <p class="hub-sub">以下功能仅管理员可见，点击进入对应管理页面。</p>
+    <div class="hub-grid">
+        <a class="hub-card" href="/admin/users"><div class="hub-ico">&#128100;</div><div><div class="hub-t">用户管理</div><div class="hub-d">账号、权限、停用</div></div></a>
+        <a class="hub-card" href="/admin/invite"><div class="hub-ico">&#9993;</div><div><div class="hub-t">邀请码</div><div class="hub-d">生成与查看</div></div></a>
+        <a class="hub-card" href="/admin/logs"><div class="hub-ico">&#128220;</div><div><div class="hub-t">操作日志</div><div class="hub-d">审计记录</div></div></a>
+        <a class="hub-card" href="/admin/plugins"><div class="hub-ico">&#129513;</div><div><div class="hub-t">插件管理</div><div class="hub-d">启用与配置插件</div></div></a>
+        <a class="hub-card" href="/admin/sub-admins"><div class="hub-ico">&#128737;</div><div><div class="hub-t">子管理员</div><div class="hub-d">授权管理</div></div></a>
+        <a class="hub-card" href="/admin/categories"><div class="hub-ico">&#128449;</div><div><div class="hub-t">分类管理</div><div class="hub-d">分类树与移动</div></div></a>
+        <a class="hub-card" href="/admin/books"><div class="hub-ico">&#128218;</div><div><div class="hub-t">书籍管理</div><div class="hub-d">编辑/整理/查重</div></div></a>
+        <a class="hub-card" href="/admin/broken"><div class="hub-ico">&#129689;</div><div><div class="hub-t">乱码与损坏</div><div class="hub-d">扫描与修复</div></div></a>
+    </div>
+    <div class="hub-tools">
+        <button type="button" class="btn btn-primary" onclick="scanBooks()">重新扫描书库</button>
+        <div id="pluginAdminNav" class="hub-plugin-nav"></div>
+    </div>
+</div>
+<script>
+(function(){
+    var box = document.getElementById('pluginAdminNav');
+    if (!box) return;
+    fetch('/api/plugins/nav', { credentials: 'same-origin' })
+        .then(function(r){ return r.json(); })
+        .then(function(d){
+            if (d.success && d.admin_nav && d.admin_nav.length) {
+                d.admin_nav.forEach(function(n){
+                    var a = document.createElement('a');
+                    a.href = n.url; a.textContent = n.label;
+                    a.className = 'hub-plugin-link';
+                    box.appendChild(a);
+                });
+            }
+        })
+        .catch(function(){});
+})();
+</script>
+{% endblock %}

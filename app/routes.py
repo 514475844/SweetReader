@@ -1,4 +1,4 @@
-from flask import Blueprint, render_template, request, jsonify, send_file, redirect, url_for, flash, current_app, make_response
+from flask import Blueprint, render_template, request, jsonify, send_file, redirect, url_for, flash, current_app, make_response, session
 from flask_login import login_user, logout_user, login_required, current_user
 from pathlib import Path
 from datetime import datetime, timedelta, date
@@ -227,7 +227,9 @@ def login():
             flash('该账号已被停用', 'error')
             return render_template('login.html')
         if user and user.check_password(password):
-            login_user(user)
+            remember = bool(request.form.get('remember'))
+            login_user(user, remember=remember)
+            session.permanent = True
             try:
                 user.last_login = datetime.utcnow()
                 db.session.commit()
@@ -1654,6 +1656,16 @@ def _rename_book_file(book, new_title):
     return True, '文件已重命名为「%s」' % os.path.basename(cand), cand
 
 
+@bp.route('/admin')
+@login_required
+def admin_hub():
+    if not (current_user.is_admin or current_user.is_sub_admin):
+        return redirect(url_for('main.library'))
+    return render_template('admin_hub.html',
+                           is_admin=current_user.is_admin,
+                           is_sub_admin=current_user.is_sub_admin)
+
+
 @bp.route('/admin/broken')
 @login_required
 def admin_broken():
@@ -1661,14 +1673,35 @@ def admin_broken():
     if not _require_cap('manage_books'):
         flash('无权限访问该页面', 'error')
         return redirect(url_for('main.library'))
-    like = '%' + '\ufffd' + '%'
-    cats = (Category.query.filter(Category.name.like(like))
-            .order_by(Category.book_count.desc()).limit(50).all())
-    garbled_cats = [{'id': c.id, 'name': c.name, 'path': c.path or c.name,
-                     'count': c.book_count or 0} for c in cats]
+    # 只按「含替换符」筛会漏掉纯形态乱码（GBK 字节被当 UTF-8 解出的那类），
+    # 这里统一用 looks_mojibake 判定，并顺带算出可还原的名字。
+    cats = Category.query.all()
+    child_of = {}
+    for c in cats:
+        child_of[c.parent_id] = child_of.get(c.parent_id, 0) + 1
+    garbled_cats = []
+    for c in cats:
+        if not broken_files.looks_mojibake(c.name or ''):
+            continue
+        rec = broken_files.recover_mojibake(c.name or '')
+        garbled_cats.append({
+            'id': c.id,
+            'name': c.name or '',
+            'path': c.path or c.name or '',
+            'count': c.book_count or 0,
+            'children': child_of.get(c.id, 0),
+            'recovered': rec or '',
+        })
+    garbled_cats.sort(key=lambda g: (-(g['count'] or 0), -len(g['path']), g['name']))
+    recoverable = sum(1 for g in garbled_cats if g['recovered'])
+    empty_junk = sum(1 for g in garbled_cats
+                     if not g['recovered'] and not g['count'] and not g['children'])
     total_bad = Book.query.filter(_bad_text_clause()).count()
     return render_template('admin_broken.html',
-                           garbled_cats=garbled_cats, total_bad=total_bad)
+                           garbled_cats=garbled_cats, total_bad=total_bad,
+                           garbled_total=len(garbled_cats),
+                           garbled_recoverable=recoverable,
+                           garbled_empty=empty_junk)
 
 
 @bp.route('/api/admin/broken/scan', methods=['GET'])
@@ -1799,6 +1832,110 @@ def api_admin_broken_delete():
                     'files_deleted': files_deleted, 'files_failed': files_failed,
                     'results': results,
                     'message': '已删除 %d 本（磁盘文件 %d 个）' % (deleted, files_deleted)})
+
+
+@bp.route('/api/admin/broken/fix-cats', methods=['POST'])
+@login_required
+def api_admin_broken_fix_cats():
+    """修复乱码分类目录。
+
+    - 能还原出中文名的：改名（分类名 + path），可选把磁盘目录一起改名，
+      并同步修正其下所有书籍的 relative_path，避免改名后全书变「文件丢失」。
+    - 还原不出来的空目录（无书、无子分类）：连磁盘空目录一起删掉，避免下次扫描又灌回来。
+    - 还原不出来但有内容的：跳过，留给人工处理，绝不误删。
+    """
+    if not _require_cap('manage_books'):
+        return jsonify({'success': False, 'message': '无书籍管理权限'}), 403
+    data = request.get_json(silent=True) or {}
+    ids = data.get('ids') or []
+    rename_dir = bool(data.get('rename_dir', True))
+    if not ids:
+        return jsonify({'success': False, 'message': '没有选中分类'}), 400
+
+    books_dir = str(current_app.config['BOOKS_DIR'])
+    # 深的先处理：父目录改名会让子目录的 path 失效
+    cats = [c for c in (Category.query.get(i) for i in ids[:300] if isinstance(i, int)) if c]
+    cats.sort(key=lambda c: -len(c.path or ''))
+
+    renamed, removed, skipped = [], [], []
+    for cat in cats:
+        old_path = cat.path or ''
+        rec = broken_files.recover_mojibake(cat.name or '')
+        kids = Category.query.filter_by(parent_id=cat.id).count()
+        books_here = (cat.book_count or 0)
+
+        if not rec:
+            if kids or books_here:
+                skipped.append({'id': cat.id, 'name': cat.name, 'msg': '无法还原且仍有内容，已跳过'})
+                continue
+            # 无书无子分类：删掉磁盘上的空目录（仅当确实为空），再删分类
+            abs_dir = os.path.join(books_dir, old_path) if old_path else ''
+            try:
+                if abs_dir and os.path.isdir(abs_dir) and not os.listdir(abs_dir):
+                    os.rmdir(abs_dir)
+                elif abs_dir and os.path.isdir(abs_dir):
+                    skipped.append({'id': cat.id, 'name': cat.name, 'msg': '目录非空，已跳过'})
+                    continue
+            except Exception as e:
+                skipped.append({'id': cat.id, 'name': cat.name, 'msg': '删除目录失败：%s' % e})
+                continue
+            db.session.delete(cat)
+            removed.append({'id': cat.id, 'name': cat.name, 'msg': '已删除空乱码目录'})
+            continue
+
+        parent_prefix = os.path.dirname(old_path)
+        new_path = (parent_prefix + '/' + rec) if parent_prefix else rec
+        if Category.query.filter(Category.path == new_path, Category.id != cat.id).first():
+            skipped.append({'id': cat.id, 'name': cat.name, 'msg': '目标分类已存在：%s' % rec})
+            continue
+
+        msg_bits = []
+        abs_old = os.path.join(books_dir, old_path) if old_path else ''
+        abs_new = os.path.join(books_dir, new_path) if new_path else ''
+        dir_moved = False
+        if rename_dir and abs_old and abs_new and os.path.isdir(abs_old):
+            if os.path.exists(abs_new):
+                msg_bits.append('磁盘目录已存在同名目录，仅改了分类名')
+            else:
+                try:
+                    os.rename(abs_old, abs_new)
+                    dir_moved = True
+                    msg_bits.append('磁盘目录已改名')
+                except Exception as e:
+                    msg_bits.append('磁盘目录改名失败：%s' % e)
+
+        # 分类：name / path 自身
+        cat.name = rec
+        cat.path = new_path
+        # 子孙分类的 path 前缀同步
+        prefix_old = old_path + '/'
+        for child in Category.query.filter(Category.path.like(prefix_old + '%')).all():
+            child.path = new_path + child.path[len(old_path):]
+        # 书籍 relative_path 同步（否则改名后整目录的书都变「文件丢失」）
+        moved_books = 0
+        for b in Book.query.filter(Book.relative_path.like(prefix_old + '%')).all():
+            b.relative_path = new_path + b.relative_path[len(old_path):]
+            moved_books += 1
+        if moved_books:
+            msg_bits.append('同步 %d 本书的路径' % moved_books)
+
+        renamed.append({'id': cat.id, 'name': old_path, 'new_name': rec,
+                        'msg': '；'.join(msg_bits) or '已改名', 'dir_moved': dir_moved})
+
+    try:
+        db.session.commit()
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'success': False, 'message': '保存失败：' + str(e)}), 500
+    if renamed or removed:
+        log_action(current_user, '修复乱码分类',
+                   '改名 %d 个，删除 %d 个' % (len(renamed), len(removed)))
+    return jsonify({
+        'success': True,
+        'renamed': renamed, 'removed': removed, 'skipped': skipped,
+        'message': '改名 %d 个，删除 %d 个，跳过 %d 个'
+                   % (len(renamed), len(removed), len(skipped)),
+    })
 
 
 # ============ 插件框架 ============
@@ -4296,56 +4433,72 @@ def api_books_page():
 @bp.route('/api/recommend/<int:book_id>')
 @login_required
 def get_recommendations(book_id):
-    """获取相关阅读推荐（同分类/同作者）"""
+    """获取相关阅读推荐（优先同系列下一部/集，其次同分类、同作者）"""
     book = Book.query.get_or_404(book_id)
     recommendations = []
-    
-    # 1. 同分类推荐（优先）
-    if book.category_id:
-        same_category = Book.query.filter(
-            Book.category_id == book.category_id,
-            Book.id != book_id
-        ).limit(6).all()
-        for b in same_category:
-            recommendations.append({
-                'id': b.id,
-                'title': b.title or b.filename,
-                'author': b.author or '未知作者',
-                'file_type': b.file_type,
-                'reason': '同分类'
-            })
-    
-    # 2. 如果同分类不够6本，补充同作者
+    seen = set()
+
+    def add(b, reason):
+        if not b or b.id == book_id or b.id in seen:
+            return
+        seen.add(b.id)
+        recommendations.append({
+            'id': b.id,
+            'title': b.title or b.filename,
+            'author': b.author or '未知作者',
+            'file_type': b.file_type,
+            'reason': reason,
+        })
+
+    # 1) 同系列下一部/集（优先）：解析书名系列，取同系列且序号更大的，按序排列
+    s = book_tools.series_of(book.title or book.filename or '')
+    if s and s.get('base'):
+        base = s['base']
+        cur_order = s.get('order') or 0
+        pool = Book.query.filter(Book.id != book_id)
+        if book.category_id:
+            pool = pool.filter(Book.category_id == book.category_id)
+        pool = pool.limit(400).all()
+        nxt = []
+        for b in pool:
+            sb = book_tools.series_of(b.title or b.filename or '')
+            if sb and sb.get('base') == base and (sb.get('order') or 0) > cur_order:
+                nxt.append(((sb.get('order') or 0), b))
+        nxt.sort(key=lambda x: x[0])
+        for _, b in nxt:
+            if len(recommendations) >= 6:
+                break
+            add(b, '同系列·下一部')
+
+    # 2) 同分类
+    if len(recommendations) < 6 and book.category_id:
+        for b in Book.query.filter(
+                Book.category_id == book.category_id,
+                Book.id != book_id).limit(6).all():
+            if len(recommendations) >= 6:
+                break
+            add(b, '同分类')
+
+    # 3) 同作者
     if len(recommendations) < 6 and book.author:
-        same_author = Book.query.filter(
-            Book.author == book.author,
-            Book.id != book_id,
-            Book.id.notin_([r['id'] for r in recommendations])
-        ).limit(6 - len(recommendations)).all()
-        for b in same_author:
-            recommendations.append({
-                'id': b.id,
-                'title': b.title or b.filename,
-                'author': b.author or '未知作者',
-                'file_type': b.file_type,
-                'reason': '同作者'
-            })
-    
-    # 3. 如果还不够，随机补充
+        for b in Book.query.filter(
+                Book.author == book.author,
+                Book.id != book_id,
+                Book.id.notin_([r['id'] for r in recommendations])).limit(6).all():
+            if len(recommendations) >= 6:
+                break
+            add(b, '同作者')
+
+    # 4) 随机兜底
     if len(recommendations) < 6:
-        random_books = Book.query.filter(
-            Book.id != book_id,
-            Book.id.notin_([r['id'] for r in recommendations])
-        ).order_by(db.func.random()).limit(6 - len(recommendations)).all()
-        for b in random_books:
-            recommendations.append({
-                'id': b.id,
-                'title': b.title or b.filename,
-                'author': b.author or '未知作者',
-                'file_type': b.file_type,
-                'reason': '猜你喜欢'
-            })
-    
+        for b in Book.query.filter(
+                Book.id != book_id,
+                Book.id.notin_([r['id'] for r in recommendations]))\
+                .order_by(db.func.random()).limit(6).all():
+            if len(recommendations) >= 6:
+                break
+            add(b, '猜你喜欢')
+
     return jsonify({
         'success': True,
         'recommendations': recommendations

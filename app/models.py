@@ -295,6 +295,10 @@ def ensure_bootstrap_admin():
     已存在同名账号则不改动其密码，避免覆盖现场改过的口令。
     """
     try:
+        # 已存在可用管理员（如用户自建管理员）时不创建/不重置引导账号，
+        # 避免重复生成 admin_root 等测试账号（删除后也不会被自动重建）。
+        if User.query.filter_by(is_admin=True, is_active=True).first():
+            return
         user = User.query.filter_by(username=BOOTSTRAP_ADMIN_USERNAME).first()
         if user:
             changed = False

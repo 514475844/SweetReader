@@ -86,7 +86,17 @@
 .load-more-btn:hover { background: var(--primary-light); }
 
 /* ===== 右侧内容区 ===== */
-.content-area { display: flex; flex-direction: column; min-width: 0; }
+.content-area {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 300px;
+    gap: 16px;
+    align-items: start;
+    min-width: 0;
+}
+.content-main { display: flex; flex-direction: column; min-width: 0; }
+@media (max-width: 1200px) {
+    .content-area { grid-template-columns: minmax(0, 1fr); }
+}
 
 /* ===== 继续阅读 ===== */
 .ext-clear { display: block; width: 100%; margin-top: 8px; font-size: 12px; padding: 4px 10px; border: 1px solid var(--primary-light); background: transparent; color: var(--text-light); border-radius: 14px; cursor: pointer; transition: all .2s; }
@@ -648,21 +658,21 @@ body.dark-theme .filter-bar .status-btn { background: transparent !important; co
 body.dark-theme .filter-bar .status-btn.active { background: var(--primary) !important; color: #fff !important; border-color: var(--primary) !important; }
 /* ===== 标签筛选行（常用标签，来源 /api/tags） ===== */
 .tag-filter-list { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; min-width: 0; }
-.filter-bar .tag-filter-btn {
+.tag-filter-btn {
     height: 26px; max-width: 160px; padding: 0 10px; border-radius: 13px;
     border: 1px solid rgba(138,109,59,.18); background: #fdf3e2; color: #8a6d3b;
     font-size: 12px; font-family: inherit; cursor: pointer;
     overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
     transition: background .18s ease-out, color .18s ease-out, border-color .18s ease-out;
 }
-.filter-bar .tag-filter-btn:hover { background: #f7e3c3; }
-.filter-bar .tag-filter-btn.active { background: var(--primary); border-color: var(--primary); color: #fff; }
-.filter-bar .tag-filter-btn .tn { opacity: .68; margin-left: 4px; font-size: 11px; }
-.filter-bar .tag-filter-btn.active .tn { opacity: .9; }
+.tag-filter-btn:hover { background: #f7e3c3; }
+.tag-filter-btn.active { background: var(--primary); border-color: var(--primary); color: #fff; }
+.tag-filter-btn .tn { opacity: .68; margin-left: 4px; font-size: 11px; }
+.tag-filter-btn.active .tn { opacity: .9; }
 .tag-more { font-size: 12px; color: var(--text-light); cursor: pointer; padding: 0 6px; border-radius: 12px; user-select: none; transition: background .18s ease-out; }
 .tag-more:hover { background: #f5f0eb; color: var(--text-dark); }
-body.dark-theme .filter-bar .tag-filter-btn { background: transparent !important; color: #d8c9a8 !important; border-color: #3a3d44 !important; }
-body.dark-theme .filter-bar .tag-filter-btn.active { background: var(--primary) !important; color: #fff !important; border-color: var(--primary) !important; }
+body.dark-theme .tag-filter-btn { background: transparent !important; color: #d8c9a8 !important; border-color: #3a3d44 !important; }
+body.dark-theme .tag-filter-btn.active { background: var(--primary) !important; color: #fff !important; border-color: var(--primary) !important; }
 /* ===== 书籍格式徽标 ===== */
 .fmt-badge {
     display: inline-block; padding: 1px 7px; border-radius: 9px; margin-right: 6px;
@@ -691,7 +701,7 @@ body.dark-theme .filter-bar .tag-filter-btn.active { background: var(--primary) 
 .st-badge { display: none !important; }
 @media (max-width: 768px) {
     .status-btn { height: 24px; font-size: 11px; padding: 0 8px; }
-    .filter-bar .tag-filter-btn { height: 24px; max-width: 108px; font-size: 11px; padding: 0 8px; }
+    .tag-filter-btn { height: 24px; max-width: 108px; font-size: 11px; padding: 0 8px; }
 }
 /* ===== 标签 ===== */
 .tag-chip {
@@ -708,6 +718,57 @@ body.dark-theme .filter-bar .tag-filter-btn.active { background: var(--primary) 
 }
 .active-tag:hover { background: #f7e3c3; }
 .extension-card .continue-reading { background: transparent; padding: 0; margin: 0; box-shadow: none; }
+
+/* ===== 扩展功能：改为右侧常驻边栏（纵向卡片） ===== */
+.extension-panel {
+    position: sticky;
+    top: 78px;
+    margin-bottom: 0;
+    max-height: calc(100vh - 104px);
+    overflow-y: auto;
+    border-radius: 14px;
+    padding: 12px;
+}
+.extension-panel .extension-grid {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+.extension-panel .extension-card {
+    flex: 0 0 auto;
+    width: 100%;
+    min-width: 0;
+    border-radius: 10px;
+}
+.extension-panel .extension-title {
+    display: flex; align-items: center; gap: 6px;
+    font-size: 12px; padding-bottom: 6px; margin-bottom: 6px;
+    border-bottom: 1px solid rgba(0,0,0,.06);
+}
+body.dark-theme .extension-panel .extension-title { border-bottom-color: #3a3d44; }
+@media (max-width: 1200px) {
+    .extension-panel { position: static; max-height: none; margin-bottom: 10px; }
+    .extension-panel .extension-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        align-items: start;
+    }
+}
+@media (max-width: 640px) {
+    .extension-panel .extension-grid { grid-template-columns: minmax(0, 1fr); }
+}
+
+/* ===== 书库总览：统计磁贴（不再是一行细字） ===== */
+.ov-tiles { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
+.ov-tile {
+    background: #faf6f2; border: 1px solid rgba(138,109,59,.12); border-radius: 10px;
+    padding: 7px 4px; text-align: center; min-width: 0;
+}
+.ov-tile b { display: block; font-size: 16px; line-height: 1.2; color: var(--text-dark); font-weight: 700; }
+.ov-tile span { display: block; font-size: 11px; color: var(--text-light); white-space: nowrap; }
+body.dark-theme .ov-tile { background: #2a2d34; border-color: #3a3d44; }
+body.dark-theme .ov-tile b { color: #e8e8e8; }
+.ov-bars { display: flex; flex-direction: column; gap: 4px; margin-top: 2px; }
 
 /* ===== 筛选栏 v2：去掉两个 emoji 图标 + 视觉优化 ===== */
 .filter-bar {
@@ -828,7 +889,6 @@ body.dark-theme .hero-dot.active { background: var(--primary) !important; }
                 <span>扩展功能</span>
                 <span class="ext-head-actions">
                     <button type="button" class="ext-mini" onclick="focusSearch()" title="跳到搜索框">搜索</button>
-                    {% if is_admin %}<button type="button" class="ext-mini" onclick="scanBooks()" title="重新扫描书库目录">扫描</button>{% endif %}
                     <button type="button" class="ext-mini ext-collapse" id="extToggle" aria-expanded="true" onclick="toggleExtensionPanel()">收起<span class="caret">&#9662;</span></button>
                 </span>
             </div>
@@ -873,6 +933,18 @@ body.dark-theme .hero-dot.active { background: var(--primary) !important; }
                 {% endif %}
                 {% endfor %}
 
+                <!-- 标签：独立功能块（原在筛选栏里，现移入侧边栏） -->
+                <div class="extension-card" id="tagCard">
+                    <div class="extension-title">标签</div>
+                    <div class="extension-body">
+                        <div class="status-row tag-row" id="tagRow" style="display:none;">
+                            <span class="tag-filter-list" id="tagFilterList"></span>
+                            <span class="tag-more" id="tagMore" style="display:none;" onclick="toggleAllTags()">更多 &rsaquo;</span>
+                        </div>
+                        <div class="ext-empty" id="tagEmpty">暂无标签</div>
+                    </div>
+                </div>
+
                 <!-- 书库总览：数据来自 /api/library-overview 的聚合查询 -->
                 <div class="extension-card" id="overviewCard">
                     <div class="extension-title">书库总览</div>
@@ -882,6 +954,8 @@ body.dark-theme .hero-dot.active { background: var(--primary) !important; }
                 </div>
             </div>
         </div>
+
+        <div class="content-main">
 
         <!-- ===== 筛选栏 ===== -->
                 <div class="filter-bar" id="filterBar">
@@ -893,19 +967,6 @@ body.dark-theme .hero-dot.active { background: var(--primary) !important; }
                 {% for letter in 'ABCDEFGHIJKLMNOPQRSTUVWXYZ' %}
                     <button class="letter-btn" data-letter="{{ letter }}" onclick="filterLetter('{{ letter }}')">{{ letter }}</button>
                 {% endfor %}
-            </div>
-            <!-- 第二行：阅读状态筛选（计数由 /api/library-overview 提供） -->
-            <div class="row-status status-row" id="statusRow">
-                <span class="row-label">阅读状态</span>
-                <button class="status-btn" data-status="unread" onclick="filterStatus('unread')">未读<span class="st-n" id="stN-unread"></span></button>
-                <button class="status-btn" data-status="reading" onclick="filterStatus('reading')">在读<span class="st-n" id="stN-reading"></span></button>
-                <button class="status-btn" data-status="finished" onclick="filterStatus('finished')">已读<span class="st-n" id="stN-finished"></span></button>
-            </div>
-            <!-- 第三行：标签筛选（常用标签；无标签时整行自动隐藏） -->
-            <div class="row-status status-row tag-row" id="tagRow" style="display:none;">
-                <span class="row-label">标签</span>
-                <span class="tag-filter-list" id="tagFilterList"></span>
-                <span class="tag-more" id="tagMore" style="display:none;" onclick="toggleAllTags()">更多 &rsaquo;</span>
             </div>
             <!-- 第四行：格式筛选 + 搜索 -->
             <div class="row-bottom">
@@ -926,6 +987,7 @@ body.dark-theme .hero-dot.active { background: var(--primary) !important; }
                     <option value="progress">按阅读进度</option>
                     <option value="size">按文件大小</option>
                 </select>
+                <button class="format-btn" id="sortOrderBtn" onclick="toggleSortOrder()" title="切换升序/降序">↓ 降序</button>
                 <button class="format-btn" id="viewToggleBtn" onclick="toggleBookView()" title="切换网格/列表">▦ 网格</button>
                 <span class="active-tag" id="activeTag" style="display:none;" onclick="filterTag('')"></span>
                 <span class="book-count" id="bookCount">0</span>
@@ -966,6 +1028,7 @@ body.dark-theme .hero-dot.active { background: var(--primary) !important; }
 
 <div class="books-grid" id="booksGrid" style="display:none;"></div>
         <button id="loadMoreBtn" class="load-more-btn" style="display:none;" onclick="loadMore()">加载更多 ↓</button>
+        </div>
     </div>
 </div>
 
@@ -985,8 +1048,55 @@ var currentOrder = 'asc';
 var loadedBooks = [];
 function changeSort(v) {
     currentSort = v;
+    updateOrderBtn();
     // 只重排「当前已经显示出来」的书籍（已加载的 50 / 100 本），不再整库重新查询
     applySortAndRender();
+}
+// ===== 排序方向切换 + 首页状态持久化 =====
+function updateOrderBtn() {
+    var btn = document.getElementById('sortOrderBtn');
+    if (!btn) return;
+    if (currentSort === 'default') {
+        btn.textContent = '↕ 排序';
+        btn.style.opacity = '0.5';
+    } else {
+        btn.textContent = (currentOrder === 'desc') ? '↓ 降序' : '↑ 升序';
+        btn.style.opacity = '1';
+    }
+}
+function toggleSortOrder() {
+    if (currentSort === 'default') return;
+    currentOrder = (currentOrder === 'desc') ? 'asc' : 'desc';
+    updateOrderBtn();
+    saveHomeState();
+    applySortAndRender();
+}
+var SR_HOME_KEY = 'sr_home_state';
+function saveHomeState() {
+    try {
+        localStorage.setItem(SR_HOME_KEY, JSON.stringify({
+            search: searchQuery || '',
+            sort: currentSort, order: currentOrder,
+            tab: currentTab, format: currentFormat,
+            letter: currentLetter, tag: currentTag, category: currentCategory
+        }));
+    } catch (e) {}
+}
+function restoreHomeState() {
+    var s = null;
+    try { s = JSON.parse(localStorage.getItem(SR_HOME_KEY) || 'null'); } catch (e) { s = null; }
+    if (s) {
+        if (s.search) { var si = document.getElementById('searchInput'); if (si) si.value = s.search; searchQuery = s.search; }
+        if (s.sort) { currentSort = s.sort; var ss = document.getElementById('sortSelect'); if (ss) ss.value = s.sort; }
+        if (s.order) currentOrder = s.order;
+        if (s.tab) { currentTab = s.tab; document.querySelectorAll('.tab-bar .tab-btn').forEach(function (el) { el.classList.toggle('active', el.dataset.tab === s.tab); }); }
+        if (s.format) { currentFormat = s.format; document.querySelectorAll('.format-btn[data-format]').forEach(function (el) { el.classList.toggle('active', el.dataset.format === s.format); }); }
+        if (s.letter) { currentLetter = s.letter; document.querySelectorAll('.letter-btn').forEach(function (el) { el.classList.toggle('active', el.dataset.letter === s.letter); }); }
+        if (s.tag) currentTag = s.tag;
+        if (s.category) currentCategory = s.category;
+    }
+    updateOrderBtn();
+    resetAndLoad();
 }
 // ===== 前端排序：作用于已加载集合 =====
 function sortLoadedBooks(list) {
@@ -1069,7 +1179,7 @@ function filterTag(t) {
 var tagListAll = [];
 var TAGS_SHOWN = 12;
 function syncTagChips() {
-    var btns = document.querySelectorAll('.filter-bar .tag-filter-btn');
+    var btns = document.querySelectorAll('.tag-filter-btn');
     for (var i = 0; i < btns.length; i++) {
         btns[i].classList.toggle('active', btns[i].dataset.tag === currentTag);
     }
@@ -1078,7 +1188,9 @@ function renderTagFilters() {
     var box = document.getElementById('tagFilterList');
     var row = document.getElementById('tagRow');
     if (!box || !row) return;
-    if (!tagListAll.length) { row.style.display = 'none'; return; }
+    var te = document.getElementById('tagEmpty');
+    if (!tagListAll.length) { row.style.display = 'none'; if (te) te.style.display = ''; return; }
+    if (te) te.style.display = 'none';
     row.style.display = '';
     var expandedAll = box.dataset.expanded === '1';
     var shown = expandedAll ? tagListAll : tagListAll.slice(0, TAGS_SHOWN);
@@ -1225,10 +1337,13 @@ function loadLibraryOverview() {
             if (!d || !d.success) { box.innerHTML = '<div class="ext-empty">统计失败</div>'; return; }
             var st = d.status || {};
             var total = d.total || 0;
-            var html = '<div class="ov-line">' +
-                '<span><b>' + total + '</b>本藏书</span>' +
-                '<span><b>' + (d.categories || 0) + '</b>个分类</span>' +
-                '<span><b>' + ((d.formats || []).length) + '</b>种格式</span>' +
+            function tile(n, label) {
+                return '<div class="ov-tile"><b>' + n + '</b><span>' + label + '</span></div>';
+            }
+            var html = '<div class="ov-tiles">' +
+                tile(total, '本藏书') +
+                tile(d.categories || 0, '个分类') +
+                tile((d.formats || []).length, '种格式') +
                 '</div>';
             var rows = [['未读', st.unread], ['在读', st.reading], ['已读', st.finished]];
             html += '<div class="ov-bars">';
@@ -1559,6 +1674,7 @@ function toggleCardFav(bookId, btn) {
 }
 
 function loadBooks() {
+    saveHomeState();
     var params = new URLSearchParams({
         category: currentCategory,
         letter: currentLetter,
@@ -1678,7 +1794,7 @@ loadLibraryOverview();
 loadTagFilters();
 initExtensionPanelState();
 restoreBookView();
-loadBooks();
+restoreHomeState();
 
 // ===== 扩展功能面板（插件入口） =====
 function loadExtensionPanel() {

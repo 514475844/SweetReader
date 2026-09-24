@@ -391,23 +391,52 @@ body.immersive .reader-panel.show, body.immersive .reader-settings-panel.show { 
 
 /* ===== 移动端适配 ===== */
 @media (max-width: 768px) {
-    .reader-content { padding: 10px 12px;     padding-bottom: 120px;
-}
+    /* 正文左右贴边（与 PC 一致），只保留系统安全区，避免被刘海/圆角裁掉 */
+    .reader-content {
+        padding: 10px 0 120px;
+        padding-left: env(safe-area-inset-left, 0px);
+        padding-right: env(safe-area-inset-right, 0px);
+    }
+    .reader-content .txt-content { padding: 0; }
     .reader-content .txt-content { font-size: 16px; line-height: 1.9; }
     .reader-toolbar { padding: 4px 10px; min-height: 40px; }
     .reader-toolbar .left .book-title { font-size: 12px; max-width: 100px; }
     .reader-toolbar .center .time-display { font-size: 12px; }
     .reader-toolbar .right .btn-icon { font-size: 14px; padding: 3px 5px; }
     .reader-toolbar .right .btn { font-size: 12px; padding: 2px 8px; }
-    .reader-settings-panel { min-width: 220px; padding: 12px 16px; bottom: 48px; }
+    /* 移动端：设置项比屏幕高时原来的居中浮层会被截断且无法滚动，
+       改成贴底抽屉——限高 + 可滚动 + 顶部小横条 + 下拉关闭。 */
+    .reader-settings-panel {
+        left: 0; right: 0; bottom: 0;
+        transform: none;
+        width: 100%; min-width: 0; max-width: 100%;
+        max-height: 74vh;
+        overflow-y: auto;
+        -webkit-overflow-scrolling: touch;
+        overscroll-behavior: contain;
+        padding: 4px 14px calc(14px + env(safe-area-inset-bottom, 0px));
+        border-radius: 16px 16px 0 0;
+        box-shadow: 0 -6px 30px rgba(0,0,0,.18);
+    }
+    .reader-settings-panel::before {
+        content: '';
+        display: block;
+        width: 40px; height: 4px; border-radius: 2px;
+        background: rgba(0,0,0,.16);
+        margin: 8px auto 10px;
+    }
+    body.dark-theme .reader-settings-panel::before { background: rgba(255,255,255,.22); }
     .reader-settings-panel .setting-row { font-size: 13px; }
-    .reader-settings-panel .setting-row input[type="range"] { width: 90px; }
+    .reader-settings-panel .setting-row input[type="range"] { width: 110px; }
     .reader-toolbar .right { overflow-x: auto; }
     .reader-toolbar .left .book-title { max-width: 90px; }
 }
 @media (max-width: 480px) {
-    .reader-content { padding: 4px 8px;     padding-bottom: 120px;
-}
+    .reader-content {
+        padding: 4px 0 120px;
+        padding-left: env(safe-area-inset-left, 0px);
+        padding-right: env(safe-area-inset-right, 0px);
+    }
     .reader-content .txt-content { font-size: 15px; line-height: 1.8; }
     .reader-toolbar .left .book-title { font-size: 11px; max-width: 70px; }
     .reader-toolbar .center .time-display { display: none; }
@@ -3066,6 +3095,32 @@ function srToastFontSize() {
 initPageNavPos();
 initAutoScrollPrefs();
 maybeShowReaderGuide();
+
+/* 移动端设置抽屉：在顶部下拉即可关闭（滚动到顶部时才触发，不影响内部滚动） */
+(function () {
+    var panel = document.querySelector('.reader-settings-panel');
+    if (!panel || !window.matchMedia) return;
+    var startY = null;
+    var dragging = false;
+    panel.addEventListener('touchstart', function (e) {
+        if (panel.scrollTop > 0) { dragging = false; return; }
+        startY = e.touches[0].clientY;
+        dragging = true;
+    }, { passive: true });
+    panel.addEventListener('touchmove', function (e) {
+        if (!dragging || startY === null) return;
+        var dy = e.touches[0].clientY - startY;
+        if (dy > 0) { panel.style.transform = 'translateY(' + Math.min(dy, 240) + 'px)'; }
+    }, { passive: true });
+    panel.addEventListener('touchend', function (e) {
+        if (!dragging || startY === null) return;
+        var dy = e.changedTouches[0].clientY - startY;
+        dragging = false;
+        startY = null;
+        panel.style.transform = '';
+        if (dy > 80) { panel.classList.remove('show'); }
+    });
+})();
 
 </script>
 {% endblock %}

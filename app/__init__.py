@@ -5,6 +5,7 @@ from app.models import (db, User, ensure_schema, ensure_bootstrap_admin,
                         disable_weak_password_accounts)
 import os
 import secrets
+from datetime import timedelta
 
 login_manager = LoginManager()
 
@@ -53,6 +54,13 @@ def create_app():
     )
     app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
     app.config['MAX_CONTENT_LENGTH'] = 200 * 1024 * 1024
+    # 会话与“记住我”时长：避免 cookie 总失效（用户诉求 #8）
+    app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(days=30)
+    app.config['SESSION_COOKIE_NAME'] = 'sweetreader_session'
+    app.config['SESSION_COOKIE_HTTPONLY'] = True
+    app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
+    app.config['REMEMBER_COOKIE_DURATION'] = timedelta(days=30)
+    app.config['REMEMBER_COOKIE_HTTPONLY'] = True
 
     db.init_app(app)
     migrate = Migrate(app, db)

@@ -148,6 +148,22 @@ class CategoryScanner:
                     result, existing_categories, existing_books, force, incremental, existing_files
                 )
 
+    @staticmethod
+    def _readable_dir_name(name):
+        """目录名是乱码时，尽量还原成可读中文再拿去建分类。
+
+        只改「分类显示名」，绝不动磁盘目录，避免扫描器产生副作用。
+        """
+        if not name:
+            return name
+        try:
+            from app import broken_files  # 延迟导入，避免与 routes 形成循环依赖
+            if broken_files.looks_mojibake(name):
+                return broken_files.recover_mojibake(name) or name
+        except Exception:
+            pass
+        return name
+
     @classmethod
     def _get_or_create_category_fast(cls, name, parent, relative_path,
                                      result, existing_categories):
@@ -162,7 +178,7 @@ class CategoryScanner:
 
         if not category:
             category = Category(
-                name=name,
+                name=cls._readable_dir_name(name),
                 path=full_path,
                 parent_id=parent.id if parent else None,
                 level=parent.level + 1 if parent else 0

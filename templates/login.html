@@ -22,7 +22,10 @@
 .login-box .links a { color: #e8848a; text-decoration: none; font-weight: 600; }
 .login-box .links a:hover { text-decoration: underline; }
 .login-box .hint { text-align: center; margin-top: 24px; padding-top: 18px; border-top: 1px solid #f0f0f0; font-size: 13px; color: #bbb; }
-.login-box .hint strong { color: #8a7a7a; }
+    .login-box .hint strong { color: #8a7a7a; }
+    .login-logo { height: 64px; width: auto; margin-bottom: 10px; }
+    .remember { display: flex; align-items: center; gap: 8px; font-weight: 500; margin-bottom: 18px; color: #4a3a3a; font-size: 14px; cursor: pointer; }
+    .remember input { width: 16px; height: 16px; accent-color: #e8848a; cursor: pointer; }
 
     /* 登录按钮增强 */
     .login-btn {
@@ -65,7 +68,7 @@
 {% endblock %}
 {% block content %}
 <div class="login-box">
-    <div class="logo-text">📚 <span class="sweet">Sweet</span><span class="reader">Reader</span></div>
+    <div class="logo-text"><img src="{{ url_for('static', filename='logo.png') }}" alt="SweetReader" class="login-logo"><span class="sweet">Sweet</span><span class="reader">Reader</span></div>
     <div class="sub">🍭 登录以管理你的书籍</div>
     {% with messages = get_flashed_messages(with_categories=true) %}
         {% for category, message in messages %}
@@ -77,8 +80,27 @@
         <input type="text" name="username" placeholder="请输入用户名或邮箱" required>
         <label>🔒 密码</label>
         <input type="password" name="password" placeholder="请输入密码" required>
+        <label class="remember"><input type="checkbox" name="remember" id="rememberMe"> 记住账号</label>
         <button type="submit" class="btn login-btn">🍭 登录</button>
     </form>
     <div class="links">还没有账号？<a href="{{ url_for('main.register') }}">使用邀请码注册</a></div>
 </div>
+<script>
+(function(){
+  try {
+    var un = localStorage.getItem('sr_remember_user');
+    var box = document.getElementById('rememberMe');
+    if (un) { var i = document.querySelector('input[name=username]'); if (i) i.value = un; if (box) box.checked = true; }
+  } catch(e){}
+  var form = document.querySelector('.login-box form');
+  if (form) form.addEventListener('submit', function(){
+    try {
+      var u = document.querySelector('input[name=username]').value.trim();
+      var chk = document.getElementById('rememberMe');
+      if (chk && chk.checked && u) localStorage.setItem('sr_remember_user', u);
+      else localStorage.removeItem('sr_remember_user');
+    } catch(e){}
+  });
+})();
+</script>
 {% endblock %}

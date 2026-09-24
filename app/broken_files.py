@@ -164,6 +164,71 @@ def extract_title(path, ext):
     return None, ''
 
 
+MOJI_RANGES = (
+    ('\u0080', '\u00ff'),    # Latin-1 补充区：GBK 首字节被当 Unicode 码位
+    ('\u0100', '\u024f'),    # Latin 扩展区
+    ('\u0370', '\u04ff'),    # 希腊/西里尔：GBK 双字节被当 UTF-8 解出的典型形态
+    ('\u02b0', '\u036f'),    #  Modifier 区
+)
+
+
+def _in_moji_ranges(ch):
+    for lo, hi in MOJI_RANGES:
+        if lo <= ch <= hi:
+            return True
+    return False
+
+
+def looks_mojibake(s):
+    """名字是否像「编码被误读」的乱码（含替换符或大量异体字符）。"""
+    if not s:
+        return False
+    if REPLACEMENT in s:
+        return True
+    hit = sum(1 for ch in s if _in_moji_ranges(ch))
+    return hit >= max(2, len(s) // 4)
+
+
+def recover_mojibake(s):
+    """把「UTF-8 化的 GBK/Big5」这类乱码还原成中文。
+
+    典型形态：目录名原本是 GBK 字节，落盘时被按 UTF-8 解码，于是每个中文变成
+    2~3 个西里尔/拉丁扩展字符（如 '小说系' -> 'С˵ϵ'）。此时
+    ``name.encode('utf-8').decode('gbk')`` 可以精确还原。
+
+    还原结果必须通过校验才返回：不含替换符、含至少一个汉字、长度不长于原文。
+    无法还原返回 None。
+    """
+    if not s or not looks_mojibake(s):
+        return None
+    for enc in ('gb18030', 'gbk', 'big5'):
+        for raw in (s.encode('utf-8', 'ignore'), s.encode('latin-1', 'ignore')):
+            if not raw:
+                continue
+            try:
+                cand = raw.decode(enc)
+            except Exception:
+                continue
+            if REPLACEMENT in cand:
+                continue
+            if not CJK.search(cand):
+                continue
+            # 还原后不应引入不可见控制符，也不该比原文更长
+            if BAD_CTRL.search(cand):
+                continue
+            if len(cand) > len(s):
+                continue
+            # 必须能原样逆变换回去：否则说明只是「碰巧解出了汉字」，名字未必正确。
+            # 改名涉及磁盘目录，宁可少改也不要改错。
+            try:
+                if cand.encode(enc) != raw:
+                    continue
+            except Exception:
+                continue
+            return cand
+    return None
+
+
 def inspect_file(path, ext):
     """判断文件是否可正常解析。返回 (status, detail)。
 

@@ -2,163 +2,279 @@
 {% block title %}SweetReader - 插件管理{% endblock %}
 {% block extra_css %}
 <style>
-.plugin-list { max-width: 820px; display: flex; flex-direction: column; gap: 14px; margin-top: 8px; }
-.plugin-card { border: 1px solid #eee; border-radius: 10px; padding: 14px 18px; background: white; box-shadow: var(--shadow); display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
+/* ===== 页面头部 ===== */
+.pg-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 14px; flex-wrap: wrap; margin-bottom: 14px; }
+.pg-head h2 { color: var(--text-dark); font-size: 22px; margin: 0; }
+.pg-head .pg-sub { color: var(--text-light); font-size: 13px; margin: 4px 0 0; }
+.pg-head .pg-actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.pg-btn { font-size: 13px; padding: 6px 14px; border: 1px solid #d8d8dd; border-radius: 9px; background: #fff; color: var(--text-dark); cursor: pointer; transition: all .18s ease-out; }
+.pg-btn:hover { border-color: var(--primary); color: var(--primary-dark); }
+body.dark-theme .pg-btn { background: #23252b; color: #e0e0e0; border-color: #3a3d44; }
+.pg-btn.primary { background: #2b5fd9; border-color: #2b5fd9; color: #fff; }
+.pg-btn.primary:hover { background: #234fb0; color: #fff; }
+
+/* ===== Chrome 风格：插件卡片网格 ===== */
+.plugin-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+    gap: 14px;
+    margin-top: 4px;
+}
+.plugin-card {
+    display: flex; flex-direction: column; gap: 10px;
+    background: #fff; border: 1px solid #ececed; border-radius: 14px;
+    padding: 14px; box-shadow: 0 1px 4px rgba(0,0,0,.04);
+    transition: box-shadow .18s ease-out, transform .18s ease-out, border-color .18s ease-out;
+    min-width: 0;
+}
+.plugin-card:hover { box-shadow: 0 4px 16px rgba(0,0,0,.09); transform: translateY(-1px); border-color: #e0dcd8; }
 body.dark-theme .plugin-card { background: #23252b; border-color: #3a3d44; }
-.plugin-name { font-weight: 600; color: var(--text-dark); font-size: 15px; }
-body.dark-theme .plugin-name { color: #e0e0e0; }
-.plugin-meta { color: var(--text-light); font-size: 12px; margin-top: 3px; }
-.plugin-id { color: var(--text-light); font-size: 11px; margin-top: 4px; }
-.plugin-extra { color: var(--text-light); font-size: 11px; margin-top: 3px; }
-.caps { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
-.cap { font-size: 11px; padding: 1px 8px; border-radius: 10px; background: #f0f0f3; color: #555; }
-body.dark-theme .cap { background: #2c2f36; color: #b8bcc4; }
-.badge { display: inline-block; font-size: 11px; padding: 1px 8px; border-radius: 10px; margin-left: 6px; vertical-align: middle; }
+.plugin-card.is-off { opacity: .62; }
+
+.pc-top { display: flex; align-items: flex-start; gap: 10px; min-width: 0; }
+.plugin-icon {
+    width: 40px; height: 40px; flex: 0 0 40px; border-radius: 11px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 18px; font-weight: 700; color: #fff; letter-spacing: 0;
+    user-select: none;
+}
+.ci-0 { background: linear-gradient(135deg,#7c5cd6,#a78bfa); }
+.ci-1 { background: linear-gradient(135deg,#e8848a,#f2a9ad); }
+.ci-2 { background: linear-gradient(135deg,#2f9e8f,#5fd0bf); }
+.ci-3 { background: linear-gradient(135deg,#e08a3c,#f0b26b); }
+.ci-4 { background: linear-gradient(135deg,#5b8def,#8fb0ff); }
+.ci-5 { background: linear-gradient(135deg,#8a6d3b,#c3a373); }
+
+.pc-idtext { min-width: 0; flex: 1; }
+.plugin-name {
+    font-weight: 600; color: var(--text-dark); font-size: 14px; line-height: 1.35;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+body.dark-theme .plugin-name { color: #e6e6e6; }
+.plugin-ver { color: var(--text-light); font-size: 11px; font-weight: 400; margin-left: 4px; }
+.plugin-desc {
+    color: var(--text-light); font-size: 12px; line-height: 1.5; margin-top: 2px;
+    display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+    overflow: hidden; overflow-wrap: anywhere;
+}
+.plugin-id { color: #a0a0a6; font-size: 11px; margin-top: 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.plugin-err { color: #c0392b; font-size: 11px; margin-top: 4px; overflow-wrap: anywhere; }
+
+.badge { display: inline-block; font-size: 10px; padding: 1px 7px; border-radius: 9px; margin-left: 5px; vertical-align: middle; font-weight: 600; }
 .badge-builtin { background: #e8f0ff; color: #2b5fd9; }
 body.dark-theme .badge-builtin { background: #1c2a4a; color: #8fb0ff; }
 .badge-user { background: #e8f7ee; color: #2e7d44; }
 body.dark-theme .badge-user { background: #143524; color: #7fd99a; }
 .badge-broken { background: #fde8e8; color: #c0392b; }
 body.dark-theme .badge-broken { background: #3a1c1c; color: #ff9b9b; }
-.plugin-side { display: flex; flex-direction: column; align-items: flex-end; gap: 8px; white-space: nowrap; }
-.toggle-label { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--text-light); cursor: pointer; }
-.btn-link { font-size: 12px; padding: 4px 10px; border: 1px solid #2b5fd9; border-radius: 8px; color: #2b5fd9; text-decoration: none; }
-body.dark-theme .btn-link { color: #8fb0ff; border-color: #8fb0ff; }
-.head-actions { display: flex; gap: 10px; align-items: center; margin-top: 6px; }
-.btn-rescan { font-size: 13px; padding: 5px 14px; border: 1px solid #ccc; border-radius: 8px; background: white; cursor: pointer; color: var(--text-dark); }
-body.dark-theme .btn-rescan { background: #23252b; color: #e0e0e0; border-color: #3a3d44; }
-.settings-box { border: 1px solid #e3e3e8; border-radius: 10px; padding: 14px 18px; background: #fafbff; margin-top: 0; }
+
+.caps { display: flex; flex-wrap: wrap; gap: 5px; }
+.cap { font-size: 10px; padding: 1px 8px; border-radius: 9px; background: #f2f2f5; color: #666; }
+body.dark-theme .cap { background: #2c2f36; color: #b8bcc4; }
+
+/* 底部操作条：开关 + 详情 + 删除（Chrome 插件卡的信息密度） */
+.pc-foot {
+    display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+    border-top: 1px solid rgba(0,0,0,.06); padding-top: 9px; margin-top: auto;
+}
+body.dark-theme .pc-foot { border-top-color: #3a3d44; }
+.switch { position: relative; display: inline-flex; align-items: center; gap: 6px; cursor: pointer; font-size: 12px; color: var(--text-light); user-select: none; }
+.switch input { position: absolute; opacity: 0; width: 0; height: 0; }
+.switch .track {
+    width: 34px; height: 19px; border-radius: 10px; background: #d3d3d8;
+    transition: background .18s ease-out; position: relative;
+}
+.switch .track::after {
+    content: ''; position: absolute; top: 2px; left: 2px; width: 15px; height: 15px;
+    border-radius: 50%; background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,.2);
+    transition: transform .18s ease-out;
+}
+.switch input:checked + .track { background: #2bb673; }
+.switch input:checked + .track::after { transform: translateX(15px); }
+.pc-link {
+    font-size: 12px; color: #2b5fd9; text-decoration: none; cursor: pointer;
+    background: none; border: none; padding: 2px 4px; font-family: inherit;
+}
+.pc-link:hover { text-decoration: underline; }
+body.dark-theme .pc-link { color: #8fb0ff; }
+.pc-danger { font-size: 12px; color: #c0392b; cursor: pointer; background: none; border: none; padding: 2px 4px; font-family: inherit; }
+.pc-danger:hover { text-decoration: underline; }
+body.dark-theme .pc-danger { color: #ff9b9b; }
+.pc-spacer { margin-left: auto; }
+
+/* 详情（设置）折叠区，Chrome 的「详细信息」同理 */
+.pc-details { margin-top: 2px; }
+.pc-details > summary {
+    list-style: none; cursor: pointer; font-size: 12px; color: var(--text-light);
+    padding: 4px 0; user-select: none;
+}
+.pc-details > summary::-webkit-details-marker { display: none; }
+.pc-details > summary::before { content: '\25B8'; display: inline-block; margin-right: 5px; transition: transform .18s ease-out; }
+.pc-details[open] > summary::before { transform: rotate(90deg); }
+.settings-box {
+    border: 1px solid #e6e6ec; border-radius: 10px; padding: 12px 14px;
+    background: #fafbff; margin-top: 6px;
+}
 body.dark-theme .settings-box { background: #1f2228; border-color: #3a3d44; }
-.settings-title { font-weight: 600; color: var(--text-dark); font-size: 13px; margin-bottom: 10px; }
+.settings-title { font-weight: 600; color: var(--text-dark); font-size: 12px; margin-bottom: 9px; }
 body.dark-theme .settings-title { color: #e0e0e0; }
-.field { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
-.field > label { width: 130px; font-size: 13px; color: var(--text-dark); flex-shrink: 0; }
+.field { display: flex; align-items: flex-start; gap: 10px; margin-bottom: 9px; }
+.field > label { width: 118px; font-size: 12px; color: var(--text-dark); flex-shrink: 0; line-height: 1.6; }
 body.dark-theme .field > label { color: #d0d0d0; }
-.field .help { display: block; color: var(--text-light); font-size: 11px; margin-top: 2px; }
+.field .help { display: block; color: var(--text-light); font-size: 11px; margin-top: 1px; }
 .field input[type=text], .field input[type=number], .field select, .field textarea {
-    flex: 1; padding: 6px 9px; border: 1px solid #ccc; border-radius: 7px; font-size: 13px;
-    background: white; color: var(--text-dark); max-width: 360px;
+    flex: 1; padding: 5px 8px; border: 1px solid #ccc; border-radius: 7px; font-size: 12px;
+    background: #fff; color: var(--text-dark); max-width: 100%; min-width: 0;
 }
 body.dark-theme .field input, body.dark-theme .field select, body.dark-theme .field textarea {
     background: #2a2d34; color: #e0e0e0; border-color: #3a3d44;
 }
-.field textarea { min-height: 60px; resize: vertical; }
-.btn-save { font-size: 13px; padding: 6px 18px; border: none; border-radius: 8px; background: #2b5fd9; color: white; cursor: pointer; }
+.field textarea { min-height: 56px; resize: vertical; }
+.btn-save { font-size: 12px; padding: 5px 16px; border: none; border-radius: 8px; background: #2b5fd9; color: #fff; cursor: pointer; }
 .btn-save:hover { background: #234fb0; }
-.save-msg { font-size: 12px; color: #2e7d44; margin-left: 10px; }
+.save-msg { font-size: 12px; color: #2e7d44; margin-left: 8px; }
 body.dark-theme .save-msg { color: #7fd99a; }
-.upload-box { border: 1px solid #e3e3e8; border-radius: 10px; padding: 14px 18px; background: #fafbff; max-width: 820px; margin-top: 12px; }
+
+/* ===== 上传 / 说明：收进折叠块，别把主界面弄乱 ===== */
+.upload-box {
+    border: 1px dashed #d6d6dd; border-radius: 12px; padding: 12px 14px;
+    background: #fcfcfe; margin-bottom: 14px; max-width: 100%;
+}
 body.dark-theme .upload-box { background: #1f2228; border-color: #3a3d44; }
-.upload-title { font-weight: 600; color: var(--text-dark); font-size: 13px; margin-bottom: 10px; }
+.upload-title { font-weight: 600; color: var(--text-dark); font-size: 13px; }
 body.dark-theme .upload-title { color: #e0e0e0; }
-.upload-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
-.upload-row input[type=file] { font-size: 13px; color: var(--text-dark); flex: 1 1 240px; min-width: 0; }
+.upload-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 9px; }
+.upload-row input[type=file] { font-size: 12px; color: var(--text-dark); flex: 1 1 240px; min-width: 0; }
 .upload-hint { color: var(--text-light); font-size: 11.5px; margin-top: 8px; line-height: 1.7; }
 .upload-hint code { background: rgba(127,127,127,.14); padding: 0 4px; border-radius: 4px; }
-.btn-danger-sm { font-size: 12px; padding: 4px 10px; border: 1px solid #e0b4b4; border-radius: 8px; background: #fff; color: #c0392b; cursor: pointer; }
-.btn-danger-sm:hover { background: #fdeaea; }
-body.dark-theme .btn-danger-sm { background: #2a2d34; border-color: #5a3a3a; color: #ff9b9b; }
+.plugin-empty { color: var(--text-light); font-size: 13px; padding: 24px 0; text-align: center; }
+.plugin-msg { color: var(--text-light); font-size: 12px; margin-top: 14px; min-height: 18px; }
+
 @media (max-width: 768px) {
-    .main-layout { padding: 12px !important; }
-    .plugin-list, .upload-box { max-width: 100%; }
-    .plugin-card { flex-direction: column; align-items: stretch; gap: 10px; }
-    .plugin-side { flex-direction: row; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px; }
-    .settings-box .field { flex-direction: column; align-items: stretch; gap: 4px; }
+    .plugin-grid { grid-template-columns: minmax(0, 1fr); }
+    .pg-head { flex-direction: column; }
+    .field { flex-direction: column; gap: 4px; }
     .field > label { width: auto; }
-    .field input[type=text], .field input[type=number], .field select, .field textarea { max-width: 100%; }
-    .upload-row { flex-direction: column; align-items: stretch; }
 }
 </style>
 {% endblock %}
 {% block content %}
 <div class="main-layout" style="padding:24px;">
-    <h2 style="color:var(--text-dark);font-size:22px;">插件管理</h2>
-    <p style="color:var(--text-light);font-size:13px;margin:4px 0 0;">启用 / 停用插件，并配置每个插件自带的图形化选项。改动即时生效，无需重启。</p>
-    <div class="head-actions">
-        <button class="btn-rescan" onclick="scanPlugins()">重新扫描插件目录</button>
-        <span style="color:var(--text-light);font-size:12px;">用户插件放 <code>instance/plugins/</code>，扫描后自动出现并可在下方配置</span>
+
+    <div class="pg-head">
+        <div>
+            <h2>插件管理</h2>
+            <p class="pg-sub">启用 / 停用插件，并配置每个插件自带的图形化选项。改动即时生效，无需重启。</p>
+        </div>
+        <div class="pg-actions">
+            <button class="pg-btn" onclick="scanPlugins()">重新扫描</button>
+            <button class="pg-btn" onclick="toggleUpload()">上传插件</button>
+        </div>
     </div>
 
-    <div class="upload-box">
+    <div class="upload-box" id="uploadBox" style="display:none;">
         <div class="upload-title">上传插件</div>
         <div class="upload-row">
             <input type="file" id="pluginFile" accept=".py,.zip">
-            <button class="btn-save" onclick="uploadPlugin()">上传并安装</button>
+            <button class="pg-btn primary" onclick="uploadPlugin()">上传并安装</button>
             <span class="save-msg" id="uploadMsg"></span>
         </div>
         <div class="upload-hint">
             支持 <b>.py</b> 单文件插件（文件名即插件 ID，如 <code>my_tool.py</code>）与 <b>.zip</b> 插件包
             （内含 <code>__init__.py</code>，或以插件 ID 命名的 <code>id.py</code>，可带 <code>templates/</code>、<code>static/</code>）。
-            上传后会校验编码、语法与 <code>PLUGIN</code> 定义，通过即落盘并自动启用。
+            上传后会校验编码、语法与 <code>PLUGIN</code> 定义，通过即落盘并自动启用。用户插件目录：<code>instance/plugins/</code>
         </div>
     </div>
 
-    <div class="plugin-list">
+    {% if plugins %}
+    <div class="plugin-grid">
         {% for p in plugins %}
-        <div>
-            <div class="plugin-card">
-                <div style="flex:1;">
-                    <div class="plugin-name">{{ p.name }} <span class="plugin-meta">v{{ p.version }}</span>
-                        {% if p.error %}<span class="badge badge-broken">导入失败</span>
+        <div class="plugin-card{% if not p.enabled %} is-off{% endif %}" id="card-{{ p.id }}">
+            <div class="pc-top">
+                <div class="plugin-icon ci-{{ loop.index0 % 6 }}">{{ p.name[:1] }}</div>
+                <div class="pc-idtext">
+                    <div class="plugin-name">{{ p.name }}<span class="plugin-ver">v{{ p.version }}</span>
+                        {% if p.error %}<span class="badge badge-broken">异常</span>
                         {% elif p.source == 'builtin' %}<span class="badge badge-builtin">内置</span>
                         {% else %}<span class="badge badge-user">用户</span>{% endif %}
                     </div>
-                    <div class="plugin-meta">{{ p.description }}</div>
-                    <div class="caps">
-                        {% if p.capabilities.homepage %}<span class="cap">首页入口</span>{% endif %}
-                        {% if p.capabilities.blueprint %}<span class="cap">独立页面</span>{% endif %}
-                        {% if p.capabilities.reader_tools %}<span class="cap">阅读页按钮</span>{% endif %}
-                        {% if p.capabilities.admin_nav %}<span class="cap">管理侧栏</span>{% endif %}
-                        {% if p.capabilities.settings or p.capabilities.custom_settings %}<span class="cap">图形化设置</span>{% endif %}
-                    </div>
-                    <div class="plugin-id">ID: {{ p.id }}{% if p.author %} · 作者：{{ p.author }}{% endif %}</div>
-                    {% if p.error %}<div class="plugin-extra" style="color:#c0392b;">错误：{{ p.error }}</div>{% endif %}
-                </div>
-                <div class="plugin-side">
-                    <label class="toggle-label">
-                        <input type="checkbox" {% if p.enabled %}checked{% endif %} onchange="togglePlugin('{{ p.id }}', this.checked)"> 启用
-                    </label>
-                    {% if p.has_custom_settings %}
-                    <a class="btn-link" href="/plugin/{{ p.id }}/settings" target="_blank">自定义设置页 ↗</a>
-                    {% endif %}
-                    {% if p.removable %}
-                    <button class="btn-danger-sm" onclick="deletePlugin('{{ p.id }}', '{{ p.name }}')">删除插件</button>
-                    {% endif %}
+                    <div class="plugin-desc">{{ p.description or '暂无描述' }}</div>
+                    <div class="plugin-id">{{ p.id }}{% if p.author %} · {{ p.author }}{% endif %}</div>
+                    {% if p.error %}<div class="plugin-err">{{ p.error }}</div>{% endif %}
                 </div>
             </div>
 
-            {% if p.settings_schema %}
-            <div class="settings-box">
-                <div class="settings-title">「{{ p.name }}」图形化设置</div>
-                <form id="form-{{ p.id }}" data-schema='{{ p.settings_schema | tojson }}' onsubmit="return false;">
-                    {% for f in p.settings_schema %}
-                    <div class="field">
-                        <label>{{ f.label }}{% if f.help %}<span class="help">{{ f.help }}</span>{% endif %}</label>
-                        {% if f.type == 'bool' %}
-                            <input type="checkbox" id="{{ p.id }}_{{ f.key }}" {% if p.settings[f.key] %}checked{% endif %}>
-                        {% elif f.type == 'int' or f.type == 'float' %}
-                            <input type="number" id="{{ p.id }}_{{ f.key }}" value="{{ p.settings[f.key] }}" {% if f.min is defined %}min="{{ f.min }}"{% endif %} {% if f.max is defined %}max="{{ f.max }}"{% endif %}>
-                        {% elif f.type == 'select' %}
-                            <select id="{{ p.id }}_{{ f.key }}">{% for o in f.options %}<option value="{{ o.value }}" {% if p.settings[f.key] == o.value %}selected{% endif %}>{{ o.label }}</option>{% endfor %}</select>
-                        {% elif f.type == 'textarea' %}
-                            <textarea id="{{ p.id }}_{{ f.key }}">{{ p.settings[f.key] }}</textarea>
-                        {% else %}
-                            <input type="text" id="{{ p.id }}_{{ f.key }}" value="{{ p.settings[f.key] }}">
-                        {% endif %}
-                    </div>
-                    {% endfor %}
-                    <button class="btn-save" onclick="saveSettings('{{ p.id }}')">保存设置</button>
-                    <span class="save-msg" id="msg-{{ p.id }}"></span>
-                </form>
+            <div class="caps">
+                {% if p.capabilities.homepage %}<span class="cap">首页入口</span>{% endif %}
+                {% if p.capabilities.blueprint %}<span class="cap">独立页面</span>{% endif %}
+                {% if p.capabilities.reader_tools %}<span class="cap">阅读页按钮</span>{% endif %}
+                {% if p.capabilities.admin_nav %}<span class="cap">管理侧栏</span>{% endif %}
+                {% if p.capabilities.settings or p.capabilities.custom_settings %}<span class="cap">图形化设置</span>{% endif %}
             </div>
+
+            {% if p.settings_schema %}
+            <details class="pc-details">
+                <summary>详细信息与设置</summary>
+                <div class="settings-box">
+                    <div class="settings-title">「{{ p.name }}」设置</div>
+                    <form id="form-{{ p.id }}" data-schema='{{ p.settings_schema | tojson }}' onsubmit="return false;">
+                        {% for f in p.settings_schema %}
+                        <div class="field">
+                            <label>{{ f.label }}{% if f.help %}<span class="help">{{ f.help }}</span>{% endif %}</label>
+                            {% if f.type == 'bool' %}
+                                <input type="checkbox" id="{{ p.id }}_{{ f.key }}" {% if p.settings[f.key] %}checked{% endif %}>
+                            {% elif f.type == 'int' or f.type == 'float' %}
+                                <input type="number" id="{{ p.id }}_{{ f.key }}" value="{{ p.settings[f.key] }}" {% if f.min is defined %}min="{{ f.min }}"{% endif %} {% if f.max is defined %}max="{{ f.max }}"{% endif %}>
+                            {% elif f.type == 'select' %}
+                                <select id="{{ p.id }}_{{ f.key }}">{% for o in f.options %}<option value="{{ o.value }}" {% if p.settings[f.key] == o.value %}selected{% endif %}>{{ o.label }}</option>{% endfor %}</select>
+                            {% elif f.type == 'textarea' %}
+                                <textarea id="{{ p.id }}_{{ f.key }}">{{ p.settings[f.key] }}</textarea>
+                            {% else %}
+                                <input type="text" id="{{ p.id }}_{{ f.key }}" value="{{ p.settings[f.key] }}">
+                            {% endif %}
+                        </div>
+                        {% endfor %}
+                        <button class="btn-save" onclick="saveSettings('{{ p.id }}')">保存设置</button>
+                        <span class="save-msg" id="msg-{{ p.id }}"></span>
+                    </form>
+                </div>
+            </details>
             {% endif %}
+
+            <div class="pc-foot">
+                <label class="switch">
+                    <input type="checkbox" {% if p.enabled %}checked{% endif %} onchange="togglePlugin('{{ p.id }}', this.checked)">
+                    <span class="track"></span>
+                    <span class="sw-text">{% if p.enabled %}已启用{% else %}已停用{% endif %}</span>
+                </label>
+                <span class="pc-spacer"></span>
+                {% if p.has_custom_settings %}
+                <a class="pc-link" href="/plugin/{{ p.id }}/settings" target="_blank">设置页 ↗</a>
+                {% endif %}
+                {% if p.removable %}
+                <button class="pc-danger" onclick="deletePlugin('{{ p.id }}', '{{ p.name }}')">移除</button>
+                {% endif %}
+            </div>
         </div>
         {% endfor %}
     </div>
-    <p id="pluginMsg" style="color:var(--text-light);font-size:12px;margin-top:14px;"></p>
+    {% else %}
+    <div class="plugin-empty">还没有任何插件。点右上角「上传插件」安装，或把插件文件放进 <code>instance/plugins/</code> 后「重新扫描」。</div>
+    {% endif %}
+
+    <p class="plugin-msg" id="pluginMsg"></p>
 </div>
 <script>
+function toggleUpload() {
+    var b = document.getElementById('uploadBox');
+    if (b) b.style.display = (b.style.display === 'none') ? '' : 'none';
+}
+function setMsg(text) {
+    var el = document.getElementById('pluginMsg');
+    if (el) el.textContent = text || '';
+}
 function togglePlugin(id, enabled) {
+    setMsg('');
     fetch('/api/plugins/' + id + '/toggle', {
         method: 'POST', credentials: 'same-origin',
         headers: {'Content-Type': 'application/json'},
@@ -166,10 +282,19 @@ function togglePlugin(id, enabled) {
     })
     .then(function(r){ return r.json(); })
     .then(function(d){
-        document.getElementById('pluginMsg').textContent =
-            d.success ? ('「' + id + '」已' + (enabled ? '启用' : '停用')) : ('操作失败：' + (d.message || ''));
+        if (d && d.success) {
+            var card = document.getElementById('card-' + id);
+            if (card) {
+                card.classList.toggle('is-off', !enabled);
+                var t = card.querySelector('.sw-text');
+                if (t) t.textContent = enabled ? '已启用' : '已停用';
+            }
+            setMsg('「' + id + '」已' + (enabled ? '启用' : '停用'));
+        } else {
+            setMsg('操作失败：' + ((d && d.message) || ''));
+        }
     })
-    .catch(function(){ document.getElementById('pluginMsg').textContent = '请求失败'; });
+    .catch(function(){ setMsg('请求失败'); });
 }
 function saveSettings(id) {
     var form = document.getElementById('form-' + id);
@@ -192,9 +317,7 @@ function saveSettings(id) {
         body: JSON.stringify({settings: data})
     })
     .then(function(r){ return r.json(); })
-    .then(function(d){
-        msg.textContent = d.success ? '已保存 ✓' : ('失败：' + (d.message || ''));
-    })
+    .then(function(d){ msg.textContent = (d && d.success) ? '已保存 ✓' : ('失败：' + ((d && d.message) || '')); })
     .catch(function(){ msg.textContent = '请求失败'; });
     return false;
 }
@@ -213,41 +336,31 @@ function uploadPlugin() {
     fetch('/api/plugins/upload', { method: 'POST', credentials: 'same-origin', body: fd })
         .then(function(r){ return r.json(); })
         .then(function(d){
-            if (d && d.success) {
-                msg.textContent = d.message || '已安装';
-                window.location.reload();
-            } else {
-                msg.style.color = '#c0392b';
-                msg.textContent = '失败：' + ((d && d.message) || '未知错误');
-            }
+            if (d && d.success) { msg.textContent = d.message || '已安装'; window.location.reload(); }
+            else { msg.style.color = '#c0392b'; msg.textContent = '失败：' + ((d && d.message) || '未知错误'); }
         })
-        .catch(function(){
-            msg.style.color = '#c0392b';
-            msg.textContent = '请求失败';
-        });
+        .catch(function(){ msg.style.color = '#c0392b'; msg.textContent = '请求失败'; });
 }
 function deletePlugin(id, name) {
-    if (!confirm('确定删除插件「' + name + '」？' + String.fromCharCode(10) + String.fromCharCode(10) + '会同时删除磁盘上的插件文件，删除后不可恢复。')) return;
-    var msg = document.getElementById('pluginMsg');
-    msg.textContent = '删除中…';
+    if (!confirm('确定移除插件「' + name + '」？\n\n会同时删除磁盘上的插件文件，移除后不可恢复。')) return;
+    setMsg('移除中…');
     fetch('/api/plugins/' + id + '/delete', { method: 'POST', credentials: 'same-origin' })
         .then(function(r){ return r.json(); })
         .then(function(d){
             if (d && d.success) { window.location.reload(); }
-            else { msg.textContent = '删除失败：' + ((d && d.message) || ''); }
+            else { setMsg('移除失败：' + ((d && d.message) || '')); }
         })
-        .catch(function(){ msg.textContent = '请求失败'; });
+        .catch(function(){ setMsg('请求失败'); });
 }
 function scanPlugins() {
-    var msg = document.getElementById('pluginMsg');
-    msg.textContent = '扫描中…';
+    setMsg('扫描中…');
     fetch('/api/plugins/scan', { method: 'POST', credentials: 'same-origin' })
         .then(function(r){ return r.json(); })
         .then(function(d){
-            if (d.success) { window.location.reload(); }
-            else { msg.textContent = '扫描失败：' + (d.message || ''); }
+            if (d && d.success) { window.location.reload(); }
+            else { setMsg('扫描失败：' + ((d && d.message) || '')); }
         })
-        .catch(function(){ msg.textContent = '请求失败'; });
+        .catch(function(){ setMsg('请求失败'); });
 }
 </script>
 {% endblock %}
