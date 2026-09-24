@@ -369,3 +369,41 @@ def extra_tags(title, filename=''):
         if pat.search(text):
             tags.append(tag)
     return tags
+
+
+# ── 版本质量标记（精校 / 全本 / 扫描版…），同样只读不写库 ──────────────────
+
+QUALITY_RULES = (
+    ('精校', re.compile(r'精校|精排|校对版')),
+    ('全本', re.compile(r'全本|完整版|无删减|未删减|足本')),
+    ('扫描版', re.compile(r'扫描版|影印版|扫描件')),
+    ('点校', re.compile(r'点校')),
+    ('插图版', re.compile(r'插图|插画|图文版')),
+    ('注释版', re.compile(r'注释|评注|批注|笺注')),
+    ('双语', re.compile(r'双语|中英对照')),
+)
+
+
+def quality_tags(title, filename=''):
+    """按书名/文件名识别版本质量标记，返回建议标签（只读，不写库）。"""
+    text = '%s %s' % (title or '', os.path.splitext(filename or '')[0])
+    if not text.strip():
+        return []
+    tags = []
+    for tag, pat in QUALITY_RULES:
+        if pat.search(text):
+            tags.append(tag)
+    return tags
+
+
+def series_tag(title, filename='', max_len=20):
+    """书名带分册/分章标记时给出「系列名」标签建议（无标记返回 ''）。
+
+    复用 series_of 的判定：只有真的带（上/下/第N部/第N章/编号）等尾部标记
+    才提取主干当系列名，避免把「人类简史 2」这类真续作误标。
+    """
+    name = (title or '').strip() or os.path.splitext(filename or '')[0]
+    info = series_of(name)
+    if not info:
+        return ''
+    return (info['base'] or '')[:max_len]

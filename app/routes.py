@@ -492,6 +492,24 @@ def epub_reader():
     return resp
 
 
+@bp.route('/pdf-reader')
+@login_required
+def pdf_reader():
+    """PDF 深度阅读器页面（pdf.js 前端渲染：目录大纲 / 页码进度 / 缩放 / 双页）。"""
+    book_id = request.args.get('id', type=int)
+    if not book_id:
+        return redirect(url_for('main.library'))
+    book = Book.query.get_or_404(book_id)
+    ft = (book.file_type or '').lower()
+    if ft != 'pdf' and not (book.filename or '').lower().endswith('.pdf'):
+        flash('该文件不是 PDF 格式', 'error')
+        return redirect(url_for('main.library'))
+    resp = make_response(render_template('pdf_reader.html', book=book))
+    resp.headers['Cache-Control'] = 'no-store'
+    resp.headers['Pragma'] = 'no-cache'
+    return resp
+
+
 def _doc_esc(t):
     if not t:
         return ''
@@ -3489,10 +3507,27 @@ def admin_books_auto_tags():
         return jsonify({'success': False, 'message': '无书籍管理权限'}), 403
     offset = max(0, request.args.get('offset', 0, type=int))
     limit = min(max(request.args.get('limit', 800, type=int), 1), 2000)
+    include_series = request.args.get('include_series') == '1'
+    # 系列名标签：按 group_series 全库扫一遍（与 /api/admin/books/series 同成本），
+    # 只给「同系列 >= 2 本」的组员建议系列名标签——比逐本判断误标率低得多。
+    series_map = {}
+    if include_series:
+        all_rows = (db.session.query(Book.id, Book.title, Book.filename)
+                    .order_by(Book.id.asc()).all())
+        data = [{'id': r[0], 'title': r[1], 'filename': r[2], 'file_type': ''}
+                for r in all_rows]
+        for g in book_tools.group_series(data, min_size=2, max_groups=400):
+            base = (g['base'] or '')[:20]
+            for m in g['books']:
+                series_map[m['id']] = base
     rows = _tidy_rows(offset, limit)
     items = []
     for bid, title, fn, ft, cid in rows:
-        tags = book_tools.extra_tags(title, fn)
+        tags = book_tools.extra_tags(title, fn) + book_tools.quality_tags(title, fn)
+        if bid in series_map:
+            tags = tags + [series_map[bid]]
+        seen = set()
+        tags = [t for t in tags if not (t in seen or seen.add(t))]
         if not tags:
             continue
         items.append({'id': bid, 'title': title or fn or '', 'filename': fn or '',
@@ -3501,6 +3536,50 @@ def admin_books_auto_tags():
     return jsonify({'success': True, 'items': items, 'scanned': scanned,
                     'offset': offset, 'next_offset': offset + scanned,
                     'has_more': scanned == limit})
+
+
+@bp.route('/api/admin/books/auto-tags/apply', methods=['POST'])
+@login_required
+def admin_books_auto_tags_apply():
+    """批量应用建议标签：body {'items':[{'id':..,'tags':['..']}]}，一律追加去重。
+
+    服务端一次事务落库，替代前端按标签循环调用 batch 接口的 N 次请求。
+    """
+    if not _require_cap('manage_books'):
+        return jsonify({'success': False, 'message': '无书籍管理权限'}), 403
+    data = request.get_json(silent=True) or {}
+    items = data.get('items') or []
+    if not items or len(items) > 1000:
+        return jsonify({'success': False, 'message': 'items 需在 1~1000 条之间'}), 400
+    ok = 0
+    failed = []
+    for it in items:
+        bid = it.get('id')
+        tags = []
+        for t in (it.get('tags') or []):
+            t = str(t).strip()[:MAX_TAG_LEN]
+            if t:
+                tags.append(t)
+        b = Book.query.get(bid) if isinstance(bid, int) else None
+        if not b or not tags:
+            failed.append(bid)
+            continue
+        cur = _parse_tags(b.tags)
+        changed = False
+        for t in tags:
+            if t not in cur and len(cur) < MAX_TAGS:
+                cur.append(t)
+                changed = True
+        if changed:
+            b.tags = TAG_SEP.join(cur)[:MAX_TAGS_STR]
+            ok += 1
+    try:
+        db.session.commit()
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'success': False, 'message': '写入失败：' + str(e)}), 500
+    log_action(current_user, '书籍批量操作', '自动标签应用 %d 本' % ok)
+    return jsonify({'success': True, 'affected': ok, 'failed': failed})
 
 
 @bp.route('/api/admin/book/<int:book_id>/split', methods=['POST'])

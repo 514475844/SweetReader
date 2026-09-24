@@ -625,7 +625,7 @@ body.immersive .reader-guide, body.immersive .auto-pill { display: none !importa
         {% if ext == 'epub' %}
             <iframe id="srEmbedFrame" data-embed="epub" src="/epub-reader?id={{ book.id }}" title="EPUB 阅读器"></iframe>
         {% elif ext == 'pdf' %}
-            <iframe id="srEmbedFrame" data-embed="pdf" src="/api/read/{{ book.id }}" title="PDF 阅读器" onload="srTryPdfProgress()"></iframe>
+            <iframe id="srEmbedFrame" data-embed="pdf" src="/pdf-reader?id={{ book.id }}" title="PDF 阅读器"></iframe>
         {% elif ext == 'doc' or ext == 'docx' %}
             <iframe id="srEmbedFrame" data-embed="doc" src="/api/read/{{ book.id }}" title="文档阅读器"></iframe>
         {% elif ext == 'txt' %}
@@ -1068,21 +1068,6 @@ function srPushToEmbed() {
 window.addEventListener('message', function(e){
     if(e.data && e.data.type === 'sr-embed-ready'){ srPushToEmbed(); }
 });
-// PDF 进度 best-effort：原生 viewer 多数情况父页读不到内部滚动，读到才回写，读不到静默跳过
-function srTryPdfProgress(){
-    var f = srEmbedFrame();
-    if(!f || f.dataset.embed !== 'pdf') return;
-    try{
-        var w = f.contentWindow, d = w.document;
-        var h = d.documentElement.scrollHeight - w.innerHeight;
-        if(h > 0){
-            var p = Math.min(100, Math.round(w.scrollY / h * 100));
-            fetch('/api/progress/' + currentBookId, {method:'POST', credentials:'same-origin',
-                headers:{'Content-Type':'application/json'}, body:JSON.stringify({progress:p/100, location:p})}).catch(function(){});
-        }
-    }catch(_){}
-}
-setInterval(function(){ if(srEmbedFrame() && srEmbedFrame().dataset.embed === 'pdf') srTryPdfProgress(); }, 4000);
 var DEFAULT_MARGIN = 30;
 var currentPageColor = '';
 var currentImageHide = false;

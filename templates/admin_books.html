@@ -113,6 +113,7 @@
             <button class="btn btn-sm btn-outline" onclick="scanSeries('volume')">查找分册（上下册 / 第N部）</button>
             <button class="btn btn-sm btn-outline" onclick="scanSeries('chapter')">查找分章（第N章 / 编号）</button>
             <button class="btn btn-sm btn-outline" onclick="scanAutoTags()">扫描番外与衍生</button>
+            <button class="btn btn-sm btn-outline" onclick="scanAutoTags(true)">扫描番外+系列名标签</button>
         </div>
         <div id="tidyResult"></div>
     </div>
@@ -916,11 +917,12 @@ function mergeGroup(gi) {
     }).catch(function(){ alert('网络错误，未执行'); });
 }
 
-function scanAutoTags() {
-    tidyMsg('正在扫描番外与衍生内容…');
+function scanAutoTags(withSeries) {
+    tidyMsg(withSeries ? '正在扫描番外 / 质量标记 / 系列名…' : '正在扫描番外与衍生内容…');
     var items = [];
     function step(off) {
-        fetch('/api/admin/books/auto-tags?limit=800&offset=' + off)
+        fetch('/api/admin/books/auto-tags?limit=800&offset=' + off
+                + (withSeries ? '&include_series=1' : ''))
             .then(function(r){ return r.json(); })
             .then(function(d){
                 if (!d.success) { tidyMsg(d.message || '扫描失败'); return; }
@@ -949,31 +951,30 @@ function renderAutoTags(items, scanned) {
         + '<button class="btn btn-sm btn-primary" style="margin-top:10px;" onclick="applyAutoTags()">为选中项打标签</button>';
 }
 function applyAutoTags() {
-    var picks = {};
-    document.querySelectorAll('#tidyResult .tidy-ck:checked').forEach(function(c){
-        var id = parseInt(c.getAttribute('data-id'), 10);
-        (c.getAttribute('data-tags') || '').split(',').forEach(function(t){
-            if (!t) return;
-            if (!picks[t]) picks[t] = [];
-            picks[t].push(id);
-        });
+    var picks = document.querySelectorAll('#tidyResult .tidy-ck:checked');
+    if (!picks.length) { alert('请先勾选条目'); return; }
+    var items = [];
+    var tagCount = {};
+    picks.forEach(function(c){
+        var tags = (c.getAttribute('data-tags') || '').split(',').filter(Boolean);
+        if (!tags.length) return;
+        items.push({ id: parseInt(c.getAttribute('data-id'), 10), tags: tags });
+        tags.forEach(function(t){ tagCount[t] = (tagCount[t] || 0) + 1; });
     });
-    var tags = Object.keys(picks);
-    if (!tags.length) { alert('请先勾选条目'); return; }
-    var plan = tags.map(function(t){ return t + '：' + picks[t].length + ' 本'; }).join('\n');
+    if (!items.length) { alert('请先勾选条目'); return; }
+    var plan = Object.keys(tagCount).map(function(t){ return t + '：' + tagCount[t] + ' 本'; }).join('\n');
     if (!confirm('将按建议打标签（只写标签，不动文件）：\n\n' + plan + '\n\n继续？')) return;
-    var done = 0;
-    function next(i) {
-        if (i >= tags.length) { alert('已处理 ' + done + ' 本次打标签'); location.reload(); return; }
-        fetch('/api/admin/books/batch', {
-            method: 'POST', headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({ ids: picks[tags[i]], action: 'tag', op: 'add', tag: tags[i] })
-        }).then(function(r){ return r.json(); }).then(function(d){
-            done += (d && d.affected) || 0;
-            next(i + 1);
-        }).catch(function(){ next(i + 1); });
-    }
-    next(0);
+    fetch('/api/admin/books/auto-tags/apply', {
+        method: 'POST', headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ items: items })
+    }).then(function(r){ return r.json(); }).then(function(d){
+        if (d && d.success) {
+            alert('已为 ' + (d.affected || 0) + ' 本打标签' + ((d.failed && d.failed.length) ? ('，失败 ' + d.failed.length + ' 本') : ''));
+            location.reload();
+        } else {
+            alert((d && d.message) || '应用失败');
+        }
+    }).catch(function(){ alert('网络错误，未执行'); });
 }
 
 // ===== 拆分书籍 =====
