@@ -927,6 +927,11 @@ def delete_user(user_id):
         admin_count = User.query.filter_by(is_admin=True).count()
         if admin_count <= 1:
             return jsonify({'success': False, 'message': '不能删除最后一位管理员'}), 400
+    # 清理该用户的从属数据，避免留下悬空记录（阅读进度 / 书签 / 登录历史 / 主题设置）
+    ReadingProgress.query.filter_by(user_id=user.id).delete(synchronize_session=False)
+    Bookmark.query.filter_by(user_id=user.id).delete(synchronize_session=False)
+    LoginEvent.query.filter_by(user_id=user.id).delete(synchronize_session=False)
+    UserTheme.query.filter_by(user_id=user.id).delete(synchronize_session=False)
     db.session.delete(user)
     db.session.commit()
     log_action(current_user, '用户管理', f'删除账号 {user.username}')
@@ -953,7 +958,7 @@ def reset_user_password(user_id):
 def create_user():
     if not current_user.is_admin:
         return jsonify({'success': False, 'error': '需要管理员权限'}), 403
-    data = request.json
+    data = request.get_json(silent=True) or {}
     username = (data.get('username') or '').strip()
     email = (data.get('email') or '').strip()
     password = data.get('password') or ''
@@ -1291,17 +1296,23 @@ def get_progress(book_id):
 @bp.route('/api/progress/<int:book_id>', methods=['POST'])
 @login_required
 def save_progress(book_id):
-    data = request.json
-    progress_value = data.get('progress', 0)
+    data = request.get_json(silent=True) or {}
+    try:
+        progress_value = float(data.get('progress') or 0)
+    except (TypeError, ValueError):
+        progress_value = 0.0
+    progress_value = max(0.0, min(1.0, progress_value))
     location = data.get('location', '')
-    
+    if location is not None and not isinstance(location, str):
+        location = str(location)
+
     progress = ReadingProgress.query.filter_by(
-        user_id=current_user.id, 
+        user_id=current_user.id,
         book_id=book_id
     ).first()
-    
+
     #  阅读状态自动更新：读到 98% 以上自动标记「已读」
-    auto_status = 'finished' if (progress_value or 0) >= 0.98 else 'reading'
+    auto_status = 'finished' if progress_value >= 0.98 else 'reading'
 
     if not progress:
         progress = ReadingProgress(
@@ -3881,7 +3892,10 @@ def admin_category_move(cat_id):
         new_parent = None
         new_parent_id = None
     else:
-        new_parent_id = int(raw)
+        try:
+            new_parent_id = int(raw)
+        except (TypeError, ValueError):
+            return jsonify({'success': False, 'message': 'parent_id 非法'}), 400
         if new_parent_id == cat.id:
             return jsonify({'success': False, 'message': '不能移动到自身'}), 400
         new_parent = Category.query.get(new_parent_id)
@@ -3925,7 +3939,10 @@ def admin_category_batch_move():
         new_parent = None
         new_parent_id = None
     else:
-        new_parent_id = int(raw)
+        try:
+            new_parent_id = int(raw)
+        except (TypeError, ValueError):
+            return jsonify({'success': False, 'message': 'parent_id 非法'}), 400
         new_parent = Category.query.get(new_parent_id)
         if not new_parent:
             return jsonify({'success': False, 'message': '目标分类不存在'}), 404
@@ -4110,6 +4127,8 @@ def api_books_page():
     """分页获取书籍列表"""
     page = request.args.get('page', 1, type=int)
     per_page = request.args.get('per_page', 50, type=int)
+    page = max(1, int(page))
+    per_page = max(1, min(200, int(per_page)))
     category = request.args.get('category', 'all')
     letter = request.args.get('letter', 'all')
     format_filter = request.args.get('format', 'all')
