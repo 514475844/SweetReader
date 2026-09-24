@@ -88,14 +88,48 @@
 /* ===== 右侧内容区 ===== */
 .content-area {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) 300px;
+    grid-template-columns: minmax(0, 1fr) 280px;
     gap: 16px;
     align-items: start;
     min-width: 0;
 }
 .content-main { display: flex; flex-direction: column; min-width: 0; }
+/* 两列必须显式定位：DOM 里扩展面板排在前面，靠自动放置它会占掉 1fr 的宽列，
+   把书架挤成 300px 窄条（2026-09-25 用户实测踩到）。 */
+.content-area > .content-main { grid-column: 1; grid-row: 1; }
+.content-area > .extension-panel { grid-column: 2; grid-row: 1; }
+/* 用户可一键收起扩展边栏（状态记忆在 localStorage） */
+.content-area.ext-hidden { grid-template-columns: minmax(0, 1fr); }
+.content-area.ext-hidden > .extension-panel { display: none; }
+.content-area.ext-hidden > .content-main { grid-column: 1; grid-row: 1; }
+.ext-rail-btn {
+    display: none;
+    position: fixed;
+    right: 0;
+    top: 42%;
+    z-index: 60;
+    padding: 10px 5px;
+    border: 1px solid rgba(0,0,0,.08);
+    border-right: none;
+    border-radius: 10px 0 0 10px;
+    background: #fff;
+    color: var(--text-light, #888);
+    font-size: 12px;
+    line-height: 1;
+    writing-mode: vertical-rl;
+    letter-spacing: 2px;
+    cursor: pointer;
+    box-shadow: -2px 0 10px rgba(0,0,0,.06);
+    transition: color .18s ease-out, background .18s ease-out;
+}
+.ext-rail-btn:hover { color: var(--primary); background: #fff8f4; }
+body.dark-theme .ext-rail-btn { background: #23252b; border-color: #3a3d44; color: #c9c9c9; }
+.content-area.ext-hidden .ext-rail-btn { display: block; }
 @media (max-width: 1200px) {
     .content-area { grid-template-columns: minmax(0, 1fr); }
+    .content-area > .content-main,
+    .content-area > .extension-panel { grid-column: 1; grid-row: auto; }
+    .ext-rail-btn { display: none !important; }
 }
 
 /* ===== 继续阅读 ===== */
@@ -890,6 +924,7 @@ body.dark-theme .hero-dot.active { background: var(--primary) !important; }
                 <span class="ext-head-actions">
                     <button type="button" class="ext-mini" onclick="focusSearch()" title="跳到搜索框">搜索</button>
                     <button type="button" class="ext-mini ext-collapse" id="extToggle" aria-expanded="true" onclick="toggleExtensionPanel()">收起<span class="caret">&#9662;</span></button>
+                    <button type="button" class="ext-mini" id="extHideBtn" onclick="toggleExtSidebar()" title="隐藏右侧扩展边栏，让书架占满">隐藏 &#8250;</button>
                 </span>
             </div>
             <div class="extension-grid">
@@ -913,6 +948,27 @@ body.dark-theme .hero-dot.active { background: var(--primary) !important; }
                     </div>
                 </div>
 
+                <!-- 标签：独立功能块（原在筛选栏里，现移入侧边栏） -->
+                <div class="extension-card" id="tagCard">
+                    <div class="extension-title">标签</div>
+                    <div class="extension-body">
+                        <div class="status-row tag-row" id="tagRow" style="display:none;">
+                            <span class="tag-filter-list" id="tagFilterList"></span>
+                            <span class="tag-more" id="tagMore" style="display:none;" onclick="toggleAllTags()">更多 &rsaquo;</span>
+                        </div>
+                        <div class="ext-empty" id="tagEmpty">暂无标签</div>
+                    </div>
+                </div>
+
+                <!-- 书库总览：数据来自 /api/library-overview 的聚合查询 -->
+                <div class="extension-card" id="overviewCard">
+                    <div class="extension-title">书库总览</div>
+                    <div class="extension-body ext-overview" id="extOverview">
+                        <div class="ext-empty">统计中…</div>
+                    </div>
+                </div>
+
+
                 {% for p in plugins %}
                 {% if p.widget != 'random' %}
                 <div class="extension-card" data-plugin="{{ p.plugin_id }}">
@@ -933,29 +989,12 @@ body.dark-theme .hero-dot.active { background: var(--primary) !important; }
                 {% endif %}
                 {% endfor %}
 
-                <!-- 标签：独立功能块（原在筛选栏里，现移入侧边栏） -->
-                <div class="extension-card" id="tagCard">
-                    <div class="extension-title">标签</div>
-                    <div class="extension-body">
-                        <div class="status-row tag-row" id="tagRow" style="display:none;">
-                            <span class="tag-filter-list" id="tagFilterList"></span>
-                            <span class="tag-more" id="tagMore" style="display:none;" onclick="toggleAllTags()">更多 &rsaquo;</span>
-                        </div>
-                        <div class="ext-empty" id="tagEmpty">暂无标签</div>
-                    </div>
-                </div>
-
-                <!-- 书库总览：数据来自 /api/library-overview 的聚合查询 -->
-                <div class="extension-card" id="overviewCard">
-                    <div class="extension-title">书库总览</div>
-                    <div class="extension-body ext-overview" id="extOverview">
-                        <div class="ext-empty">统计中…</div>
-                    </div>
-                </div>
             </div>
         </div>
 
         <div class="content-main">
+
+        <button type="button" class="ext-rail-btn" id="extRailBtn" onclick="toggleExtSidebar()" title="显示扩展边栏">扩展</button>
 
         <!-- ===== 筛选栏 ===== -->
                 <div class="filter-bar" id="filterBar">
@@ -1046,6 +1085,28 @@ var currentSort = 'default';
 var currentStatus = '';
 var currentOrder = 'asc';
 var loadedBooks = [];
+// ===== 右侧扩展边栏：隐藏 / 展开（记忆在 localStorage） =====
+var EXT_SIDEBAR_KEY = 'sr_ext_sidebar_hidden';
+
+function applyExtSidebar(hidden) {
+    var area = document.querySelector('.content-area');
+    if (!area) return;
+    area.classList.toggle('ext-hidden', !!hidden);
+    try { localStorage.setItem(EXT_SIDEBAR_KEY, hidden ? '1' : '0'); } catch (e) {}
+}
+
+function toggleExtSidebar() {
+    var area = document.querySelector('.content-area');
+    if (!area) return;
+    applyExtSidebar(!area.classList.contains('ext-hidden'));
+}
+
+function restoreExtSidebar() {
+    var hidden = false;
+    try { hidden = localStorage.getItem(EXT_SIDEBAR_KEY) === '1'; } catch (e) {}
+    applyExtSidebar(hidden);
+}
+
 function changeSort(v) {
     currentSort = v;
     updateOrderBtn();
@@ -1794,6 +1855,7 @@ loadLibraryOverview();
 loadTagFilters();
 initExtensionPanelState();
 restoreBookView();
+restoreExtSidebar();
 restoreHomeState();
 
 // ===== 扩展功能面板（插件入口） =====

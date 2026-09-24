@@ -23,9 +23,14 @@
 .login-box .links a:hover { text-decoration: underline; }
 .login-box .hint { text-align: center; margin-top: 24px; padding-top: 18px; border-top: 1px solid #f0f0f0; font-size: 13px; color: #bbb; }
     .login-box .hint strong { color: #8a7a7a; }
-    .login-logo { height: 64px; width: auto; margin-bottom: 10px; }
+    .login-logo { height: 88px; width: auto; margin-bottom: 6px; }
     .remember { display: flex; align-items: center; gap: 8px; font-weight: 500; margin-bottom: 18px; color: #4a3a3a; font-size: 14px; cursor: pointer; }
     .remember input { width: 16px; height: 16px; accent-color: #e8848a; cursor: pointer; }
+    /* base.html 顶部那份 flash 与卡片内重复，登录页只保留卡片里的 */
+    .flash-messages { display: none !important; }
+    .forget-link { display: none; text-align: center; margin: -8px 0 16px; font-size: 13px; }
+    .forget-link a { color: #b9a9a9; text-decoration: none; }
+    .forget-link a:hover { color: #e8848a; text-decoration: underline; }
 
     /* 登录按钮增强 */
     .login-btn {
@@ -68,38 +73,79 @@
 {% endblock %}
 {% block content %}
 <div class="login-box">
-    <div class="logo-text"><img src="{{ url_for('static', filename='logo.png') }}" alt="SweetReader" class="login-logo"><span class="sweet">Sweet</span><span class="reader">Reader</span></div>
-    <div class="sub">🍭 登录以管理你的书籍</div>
+    <div class="logo-text"><img src="{{ url_for('static', filename='logo.png') }}" alt="SweetReader" class="login-logo"></div>
+    <div class="sub">登录以管理你的书籍</div>
     {% with messages = get_flashed_messages(with_categories=true) %}
         {% for category, message in messages %}
             <div class="flash {{ category }}">{{ message }}</div>
         {% endfor %}
     {% endwith %}
     <form method="POST">
-        <label>👤 用户名 / 邮箱</label>
+        <label>用户名 / 邮箱</label>
         <input type="text" name="username" placeholder="请输入用户名或邮箱" required>
-        <label>🔒 密码</label>
+        <label>密码</label>
         <input type="password" name="password" placeholder="请输入密码" required>
-        <label class="remember"><input type="checkbox" name="remember" id="rememberMe"> 记住账号</label>
-        <button type="submit" class="btn login-btn">🍭 登录</button>
+        <label class="remember"><input type="checkbox" name="remember" id="rememberMe"> 记住账号和密码（仅本机）</label>
+        <div class="forget-link" id="forgetLink"><a href="javascript:void(0)" onclick="forgetSaved()">清除已记住的账号密码</a></div>
+        <button type="submit" class="btn login-btn">登录</button>
     </form>
     <div class="links">还没有账号？<a href="{{ url_for('main.register') }}">使用邀请码注册</a></div>
 </div>
 <script>
-(function(){
+// 备注：内网自用场景，按用户要求在浏览器本地记住账号与密码（仅存本机 localStorage，
+// 做了 base64 编码以免被随手看到；换设备/清缓存即失效）。
+function encPwd(p) { try { return btoa(unescape(encodeURIComponent(p))); } catch (e) { return ''; } }
+function decPwd(v) { try { return decodeURIComponent(escape(atob(v))); } catch (e) { return ''; } }
+
+function forgetSaved() {
+  try {
+    localStorage.removeItem('sr_remember_user');
+    localStorage.removeItem('sr_remember_pass');
+  } catch (e) {}
+  var u = document.querySelector('input[name=username]');
+  var p = document.querySelector('input[name=password]');
+  if (u) u.value = '';
+  if (p) p.value = '';
+  var box = document.getElementById('rememberMe');
+  if (box) box.checked = false;
+  var fl = document.getElementById('forgetLink');
+  if (fl) fl.style.display = 'none';
+}
+
+(function () {
+  var box = document.getElementById('rememberMe');
+  var uEl = document.querySelector('input[name=username]');
+  var pEl = document.querySelector('input[name=password]');
+  var fl = document.getElementById('forgetLink');
   try {
     var un = localStorage.getItem('sr_remember_user');
-    var box = document.getElementById('rememberMe');
-    if (un) { var i = document.querySelector('input[name=username]'); if (i) i.value = un; if (box) box.checked = true; }
-  } catch(e){}
+    var pw = localStorage.getItem('sr_remember_pass');
+    if (un) {
+      if (uEl) uEl.value = un;
+      if (box) box.checked = true;
+      if (fl) fl.style.display = 'block';
+    }
+    if (pw && pEl) pEl.value = decPwd(pw);
+    // 账号密码都记着：直接把焦点放到登录按钮，按一下回车就进
+    if (un && pw && uEl && pEl) {
+      var btn = document.querySelector('.login-btn');
+      if (btn) setTimeout(function () { try { btn.focus(); } catch (e) {} }, 60);
+    }
+  } catch (e) {}
+
   var form = document.querySelector('.login-box form');
-  if (form) form.addEventListener('submit', function(){
+  if (form) form.addEventListener('submit', function () {
     try {
-      var u = document.querySelector('input[name=username]').value.trim();
-      var chk = document.getElementById('rememberMe');
-      if (chk && chk.checked && u) localStorage.setItem('sr_remember_user', u);
-      else localStorage.removeItem('sr_remember_user');
-    } catch(e){}
+      var u = uEl ? uEl.value.trim() : '';
+      var p = pEl ? pEl.value : '';
+      if (box && box.checked && u) {
+        localStorage.setItem('sr_remember_user', u);
+        localStorage.setItem('sr_remember_pass', p ? encPwd(p) : '');
+      } else {
+        localStorage.removeItem('sr_remember_user');
+        localStorage.removeItem('sr_remember_pass');
+      }
+    } catch (e) {}
   });
 })();
 </script>
