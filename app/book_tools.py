@@ -190,6 +190,16 @@ PAT_PLAIN_NUM = re.compile(
     r'(?:[（(\[【]\s*(?P<n1>\d{1,3})\s*[）)\]】]'
     r'|[\s\-_—·]+(?P<n2>\d{1,3}))$')
 
+# D) 「书名之N」系列（如「斗破苍穹之二」「XXX之3」）
+PAT_ZHI = re.compile(
+    r'^(?P<base>.+?)\s*之\s*(?:第\s*)?(?P<num>' + _NUM + r')\s*[部卷册集篇]?\s*$')
+
+# E) 「第N卷 书名」「卷N 书名」「第N册 书名」前缀编号（如「第2卷 史记」「卷一 世界史」）
+PAT_PREFIX_VOL = re.compile(
+    r'^(?:第\s*)?'
+    r'(?:(?P<num>' + _NUM + r')\s*(?P<unit>卷|册)|(?P<unit2>卷|册)\s*(?P<num2>' + _NUM + r'))'
+    r'\s*(?:[：:·\-—_\s]\s*)?(?P<base>.+)$')
+
 _DIR_ORD = {'上': 1, '上上': 1, '中': 2, '下': 3, '下下': 3,
             '上卷': 1, '中卷': 2, '下卷': 3,
             '上部': 1, '中部': 2, '下部': 3,
@@ -229,6 +239,23 @@ def series_of(title):
                     'kind': 'chapter' if unit in ('章', '回', '节') else 'volume',
                     'label': unit + m.group('num')}
 
+    m = PAT_ZHI.match(t)
+    if m:
+        base = m.group('base').strip(LEAD_TRAIL)
+        n = cn_to_int(m.group('num'))
+        if len(base) >= 2 and n:
+            return {'base': base, 'order': n, 'kind': 'volume',
+                    'label': '之' + m.group('num')}
+
+    m = PAT_PREFIX_VOL.match(t)
+    if m:
+        base = m.group('base').strip(LEAD_TRAIL)
+        n = cn_to_int(m.group('num') or m.group('num2') or '')
+        unit = m.group('unit') or m.group('unit2') or ''
+        if len(base) >= 2 and n:
+            return {'base': base, 'order': n, 'kind': 'volume',
+                    'label': unit + (m.group('num') or m.group('num2') or '')}
+
     m = PAT_PLAIN_NUM.match(t)
     if m:
         base = m.group('base').strip(LEAD_TRAIL)
@@ -237,6 +264,21 @@ def series_of(title):
             # 纯数字结尾误判率相对高（「人类简史 2」也可能真是续作），
             # 因此只归到 chapter 类且必须成组（>=2 本）才会出现在预览里，交由人工确认
             return {'base': base, 'order': int(raw), 'kind': 'chapter', 'label': raw}
+
+    return None
+
+
+def normalize_series_key(base):
+    """把系列基名归一化，用于跨书名精确匹配同一系列。
+
+    去掉所有非汉字/字母/数字字符与空白，并转小写（如 '【某】斗破苍穹' 与
+    '斗破苍穹'、'斗破 苍穹' 都会归一为 '斗破苍穹'）。返回 '' 表示无法归一。
+    """
+    if not base:
+        return ''
+    s = re.sub(r'[^0-9A-Za-z\u4e00-\u9fff]', '', base)
+    return s.lower()
+
 
     return None
 
@@ -267,11 +309,18 @@ def group_series(rows, min_size=2, max_groups=80, max_books_per_group=40):
         if len(members) < min_size:
             continue
         members.sort(key=lambda m: (m['order'], m['id'] or 0))
+        orders = [m['order'] for m in members]
+        missing = []
+        if kind == 'volume' and len(set(orders)) == len(orders):
+            lo, hi = min(orders), max(orders)
+            if 1 <= lo and hi <= 20 and hi > lo:
+                missing = sorted(set(range(lo, hi + 1)) - set(orders))[:5]
         groups.append({
             'base': members[0]['base'],
             'kind': kind,
             'count': len(members),
-            'orders': [m['order'] for m in members],
+            'orders': orders,
+            'missing': missing,
             'labels': [m['label'] for m in members],
             'books': members[:max_books_per_group],
         })
@@ -381,6 +430,10 @@ QUALITY_RULES = (
     ('插图版', re.compile(r'插图|插画|图文版')),
     ('注释版', re.compile(r'注释|评注|批注|笺注')),
     ('双语', re.compile(r'双语|中英对照')),
+    ('修订', re.compile(r'修订')),
+    ('增订', re.compile(r'增订|增补')),
+    ('全译', re.compile(r'全译|完整译本')),
+    ('文白对照', re.compile(r'文白对照|白话对照')),
 )
 
 

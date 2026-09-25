@@ -82,6 +82,18 @@
             margin-left: 8px;
         }
 
+        /* 阅读偏好（与阅读页面板同源） */
+        .read-pref-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0 28px; }
+        @media (max-width: 768px) { .read-pref-grid { grid-template-columns: 1fr; } }
+        .read-pref-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 0; border-bottom: 1px dashed #eee; min-width: 0; }
+        .read-pref-row .rp-label { font-size: 14px; color: var(--text-dark); flex-shrink: 0; overflow-wrap: anywhere; }
+        .read-pref-row .rp-value { font-weight: 600; color: var(--primary); margin-left: 6px; }
+        .read-pref-row select { padding: 8px 12px; border: 2px solid var(--primary-light); border-radius: 10px; font-size: 14px; background: white; cursor: pointer; outline: none; max-width: 55%; min-width: 0; }
+        .read-pref-row input[type="range"] { max-width: 55%; min-width: 0; }
+        .read-pref-full { grid-column: 1 / -1; border-bottom: none; flex-direction: column; align-items: stretch; }
+        .read-pref-full textarea { width: 100%; box-sizing: border-box; min-height: 64px; padding: 8px 12px; border: 2px solid var(--primary-light); border-radius: 10px; font-size: 13px; font-family: monospace; outline: none; resize: vertical; }
+        .read-pref-full textarea:focus { border-color: var(--primary); }
+
 </style>
 {% endblock %}
 {% block content %}
@@ -135,6 +147,24 @@
         <h3>🧩 首页扩展</h3>
         <p style="color:var(--text-light);font-size:13px;margin-bottom:4px;">勾选要在首页「扩展功能」里显示的卡片</p>
         <div id="extPrefList"><p class="ext-pref-empty">加载中…</p></div>
+    </div>
+    <div class="settings-card" style="grid-column: 1 / -1;">
+        <h3>📖 阅读偏好 <span style="font-size:12px;font-weight:400;color:var(--text-light);">与阅读页面板实时同源，改完点「保存全部」生效</span></h3>
+        <div class="read-pref-grid">
+            <div class="read-pref-row"><span class="rp-label">边距<span class="rp-value" id="rpMarginVal">30</span></span><input type="range" id="rpMargin" min="10" max="80" step="5" value="30" aria-label="边距" oninput="rpSet('page_margin', parseInt(this.value), this.value + 'px', 'rpMarginVal')"></div>
+            <div class="read-pref-row"><span class="rp-label">亮度<span class="rp-value" id="rpBrightnessVal">100</span></span><input type="range" id="rpBrightness" min="30" max="150" step="5" value="100" aria-label="亮度" oninput="rpSet('brightness', parseInt(this.value), this.value + '%', 'rpBrightnessVal')"></div>
+            <div class="read-pref-row"><span class="rp-label">正文字体</span><select id="rpFontFamily" aria-label="正文字体" onchange="rpSet('font_family', this.value)"><option value="">系统默认</option><option value="serif">宋体/衬线</option><option value="sans">黑体/无衬线</option><option value="kai">楷体</option></select></div>
+            <div class="read-pref-row"><span class="rp-label">对齐方式</span><select id="rpTextAlign" aria-label="对齐方式" onchange="rpSet('text_align', this.value)"><option value="left">左对齐</option><option value="justify">两端对齐</option><option value="center">居中</option></select></div>
+            <div class="read-pref-row"><span class="rp-label">页面底色</span><select id="rpPageColor" aria-label="页面底色" onchange="rpSet('page_color', this.value)"><option value="">跟随主题</option><option value="#f5f0eb">米白</option><option value="#ffffff">纯白</option><option value="#1a1a2e">深色</option><option value="#d4edda">护眼绿</option><option value="#f5e6c8">羊皮纸</option></select></div>
+            <div class="read-pref-row"><span class="rp-label">背景纹理</span><select id="rpBgTexture" aria-label="背景纹理" onchange="rpSet('bg_texture', this.value)"><option value="">无</option><option value="grid">格子</option><option value="dots">点阵</option><option value="lines">横线</option><option value="paper">羊皮纸</option></select></div>
+            <div class="read-pref-row"><span class="rp-label">文字颜色</span><select id="rpTextColor" aria-label="文字颜色" onchange="rpSet('text_color', this.value)"><option value="">跟随主题</option><option value="#2a2a2a">暖黑</option><option value="#1a1a1a">墨黑</option><option value="#1f3a5f">墨蓝</option><option value="#4a3728">深棕</option><option value="#2d5016">护眼绿</option></select></div>
+            <div class="read-pref-row"><span class="rp-label">强调色</span><select id="rpAccentColor" aria-label="强调色" onchange="rpSet('accent_color', this.value)"><option value="">默认</option><option value="#e8848a">樱粉</option><option value="#5b8def">雾蓝</option><option value="#3fa27a">青绿</option><option value="#9b6bd6">藕紫</option><option value="#e0932f">琥珀</option></select></div>
+            <div class="read-pref-row"><span class="rp-label">阅读页隐藏插图</span><label class="switch"><input type="checkbox" id="rpImageHide" aria-label="阅读页隐藏插图" onchange="rpSet('image_hide', this.checked)"><span class="slider"></span></label></div>
+            <div class="read-pref-row read-pref-full"><span class="rp-label">自定义 CSS<span style="font-size:12px;color:var(--text-light);margin-left:8px;">作用于阅读页正文，与阅读页面板同步</span></span><textarea id="rpCustomCss" spellcheck="false" placeholder=".txt-content { letter-spacing: .02em; }" oninput="rpSet('custom_css', this.value)"></textarea></div>
+        </div>
+        <div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap;">
+            <button type="button" class="btn btn-outline" style="width:auto;padding:8px 20px;font-size:14px;" onclick="rpResetDefaults()">↺ 恢复阅读默认</button>
+        </div>
     </div>
 </div>
 <script>
@@ -197,6 +227,7 @@ function saveAllSettings() {
         line_spacing: currentSettings.line_spacing || parseFloat(document.getElementById('lineSpacingRange').value),
         language: currentSettings.language || 'zh'
     };
+    for (var rpK in rpState) { data[rpK] = rpState[rpK]; }
     fetch('/api/user/theme', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
@@ -324,9 +355,70 @@ fetch('/api/user/theme').then(function(r) { return r.json(); }).then(function(da
                 .catch(function() { renderExtPrefs(); });
         }
 
+        // ===== 阅读偏好：与阅读页面板同源（/api/user/theme 全键）=====
+        var rpState = {};
+
+        function rpSet(key, value, display, valId) {
+            rpState[key] = value;
+            if (valId) {
+                var el = document.getElementById(valId);
+                if (el) el.textContent = display;
+            }
+        }
+
+        function rpApply(data) {
+            var set = function(id, v) { var el = document.getElementById(id); if (el) el.value = v; };
+            var m = data.page_margin || 30;
+            var b = (data.brightness != null) ? data.brightness : 100;
+            set('rpMargin', m); set('rpBrightness', b);
+            set('rpFontFamily', data.font_family || '');
+            set('rpTextAlign', data.text_align || 'left');
+            set('rpPageColor', data.page_color || '');
+            set('rpBgTexture', data.bg_texture || '');
+            set('rpTextColor', data.text_color || '');
+            set('rpAccentColor', data.accent_color || '');
+            set('rpImageHide', !!data.image_hide);
+            set('rpCustomCss', data.custom_css || '');
+            var mv = document.getElementById('rpMarginVal');
+            var bv = document.getElementById('rpBrightnessVal');
+            if (mv) mv.textContent = m;
+            if (bv) bv.textContent = b;
+            rpState = {
+                page_margin: m, brightness: b,
+                font_family: data.font_family || '',
+                text_align: data.text_align || 'left',
+                page_color: data.page_color || '',
+                bg_texture: data.bg_texture || '',
+                text_color: data.text_color || '',
+                accent_color: data.accent_color || '',
+                image_hide: !!data.image_hide,
+                custom_css: data.custom_css || ''
+            };
+        }
+
+        function loadReadPrefs() {
+            fetch('/api/user/theme').then(function(r) { return r.json(); })
+                .then(rpApply).catch(function() {});
+        }
+
+        function rpResetDefaults() {
+            var d = { page_margin: 30, brightness: 100, font_family: '',
+                      text_align: 'left', page_color: '', bg_texture: '',
+                      text_color: '', accent_color: '', image_hide: false, custom_css: '' };
+            fetch('/api/user/theme', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify(d)
+            }).then(function(r) { return r.json(); }).then(function(res) {
+                if (res.success) { rpApply(d); showToast('✅ 阅读偏好已恢复默认', 'success'); }
+                else { showToast('❌ 恢复失败，请重试', 'error'); }
+            }).catch(function() { showToast('❌ 恢复失败，请重试', 'error'); });
+        }
+
         // 初始化推荐开关状态
         loadRecommendSetting();
         loadExtPrefs();
+        loadReadPrefs();
 
 </script>
 {% endblock %}

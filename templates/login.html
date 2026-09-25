@@ -14,9 +14,10 @@
 .login-brand {
     background: linear-gradient(160deg, #fff3f3 0%, #fdeef0 55%, #f9e2e4 100%);
     padding: 44px 40px; display: flex; flex-direction: column; justify-content: center; gap: 14px;
+    align-items: center; text-align: center;
     border-right: 1px solid #f7e6e8;
 }
-.login-brand img { height: 96px; width: auto; align-self: flex-start; }
+.login-brand img { height: 116px; width: auto; align-self: center; margin: 0 auto 12px; }
 .login-brand .b-t { font-size: 22px; font-weight: 700; color: #4a3a3a; }
 .login-brand .b-d { font-size: 14px; color: #9a8a8a; line-height: 1.9; }
 .brand-item { display: flex; align-items: flex-start; gap: 10px; margin-top: 6px; }
@@ -84,7 +85,6 @@
     <div class="login-brand">
         <img src="{{ url_for('static', filename='logo.png') }}" alt="我的书库">
         <div class="b-t">你的私人书库</div>
-        <div class="b-d">把本地的书整理得干干净净，随时接着上次读的地方继续。</div>
         <div class="brand-item"><span class="dot">1</span><span class="tx">EPUB / PDF / TXT / MOBI / DOCX 全格式在线阅读</span></div>
         <div class="brand-item"><span class="dot">2</span><span class="tx">阅读进度、书签与阅读偏好自动同步到账号</span></div>
         <div class="brand-item"><span class="dot">3</span><span class="tx">支持手机、平板、电脑，同一账号随处续读</span></div>
@@ -104,7 +104,6 @@
             <label>密码</label>
             <input type="password" name="password" placeholder="请输入密码" required autocomplete="current-password">
             <label class="remember"><input type="checkbox" name="remember" id="rememberMe"> 记住账号和密码（仅本机）</label>
-            <div class="forget-link" id="forgetLink"><a href="javascript:void(0)" onclick="forgetSaved()">清除已记住的账号密码</a></div>
             <button type="submit" class="btn login-btn">登录</button>
         </form>
         <div class="links">还没有账号？<a href="{{ url_for('main.register') }}">使用邀请码注册</a></div>
@@ -117,33 +116,16 @@
 function encPwd(p) { try { return btoa(unescape(encodeURIComponent(p))); } catch (e) { return ''; } }
 function decPwd(v) { try { return decodeURIComponent(escape(atob(v))); } catch (e) { return ''; } }
 
-function forgetSaved() {
-  try {
-    localStorage.removeItem('sr_remember_user');
-    localStorage.removeItem('sr_remember_pass');
-  } catch (e) {}
-  var u = document.querySelector('input[name=username]');
-  var p = document.querySelector('input[name=password]');
-  if (u) u.value = '';
-  if (p) p.value = '';
-  var box = document.getElementById('rememberMe');
-  if (box) box.checked = false;
-  var fl = document.getElementById('forgetLink');
-  if (fl) fl.style.display = 'none';
-}
-
 (function () {
   var box = document.getElementById('rememberMe');
   var uEl = document.querySelector('input[name=username]');
   var pEl = document.querySelector('input[name=password]');
-  var fl = document.getElementById('forgetLink');
   try {
     var un = localStorage.getItem('sr_remember_user');
     var pw = localStorage.getItem('sr_remember_pass');
     if (un) {
       if (uEl) uEl.value = un;
       if (box) box.checked = true;
-      if (fl) fl.style.display = 'block';
     }
     if (pw && pEl) pEl.value = decPwd(pw);
     if (un && pw && uEl && pEl) {

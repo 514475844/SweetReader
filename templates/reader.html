@@ -764,8 +764,8 @@ body.immersive .reader-guide, body.immersive .auto-pill { display: none !importa
     </div>
 
     <!-- ===== 翻页按钮 ===== -->
-    <button class="page-nav page-prev" id="pagePrev" onclick="pageUp()" title="上一页（←）">‹</button>
-    <button class="page-nav page-next" id="pageNext" onclick="pageDown()" title="下一页（→）">›</button>
+    <button class="page-nav page-prev" id="pagePrev" onclick="pageUp()" title="上一页（←）" aria-label="上一页">‹</button>
+    <button class="page-nav page-next" id="pageNext" onclick="pageDown()" title="下一页（→）" aria-label="下一页">›</button>
 
     <!-- ===== 选中文字菜单 ===== -->
     <div class="sel-popup" id="selPopup">
@@ -1106,6 +1106,8 @@ var DEFAULT_MARGIN = 30;
 var currentPageColor = '';
 var currentImageHide = false;
 var fullText = '';
+var srBaseText = '';      // 去除空白行前的原始清洗文本（双页模式切换时据此重渲）
+var srStripBlank = false; // 是否处于「去除空白行」状态（与双页模式联动）
 var chapters = [];
 var searchHits = [];
 var currentHit = -1;
@@ -1178,6 +1180,11 @@ function cleanText(text) {
     return result.join('\n');
 }
 
+// 去除空白行：删掉所有空行/纯空白行（双页模式下用于压缩段落间距，保留首行缩进）
+function stripBlankLines(text) {
+    return text.split('\n').filter(function(l) { return l.trim() !== ''; }).join('\n');
+}
+
 // ===== 大文件渐进渲染 =====
 // 实测最大的 txt 接近 30MB：一次性 textContent 写入会把主线程锁死好几秒
 // （而且原来写完一次后 applyReflow 又整本写了一遍）。
@@ -1232,7 +1239,9 @@ function loadContent() {
     fetch('/api/read/' + currentBookId)
         .then(function(res) { return res.text(); })
         .then(function(text) {
-            fullText = cleanText(text);
+            srBaseText = cleanText(text);
+            try { srStripBlank = localStorage.getItem('sr_dual_page') === '1'; } catch (e) { srStripBlank = false; }
+            fullText = srStripBlank ? stripBlankLines(srBaseText) : srBaseText;
             var _srBad = (text.split('\uFFFD').length - 1);
             if (!fullText || fullText.trim() === '') {
                 content.innerHTML = '<div style="padding:48px 20px;text-align:center;color:#888;line-height:2;">'
@@ -1872,6 +1881,7 @@ function srApplyPaginateLayout(keepPage) {
 
 var srLayoutTimer = null;
 function srLayoutSoon() {
+    srInvalidateTopCache(); // 字号/行距/边距变化都会走到这里，顶距缓存必须作废
     if (!srPaginate()) return;
     clearTimeout(srLayoutTimer);
     srLayoutTimer = setTimeout(function () { srApplyPaginateLayout(); }, 120);
@@ -1883,7 +1893,18 @@ function setDualPage(on) {
     window.__srDual = !!on;
     try { localStorage.setItem('sr_dual_page', on ? '1' : '0'); } catch (e) {}
     var tg = document.getElementById('dualPageToggle'); if (tg) tg.checked = !!on;
-    if (srPaginate()) { srApplyPaginateLayout(); updatePositionDisplay(); }
+    srApplyStripToDual();
+}
+// 双页模式联动「去除空白行」：切换时重算去空行后的正文，按当前阅读比例恢复位置
+function srApplyStripToDual() {
+    if (!srPaginate()) return;
+    var ratio = progressRatio();
+    srStripBlank = !!window.__srDual;
+    fullText = srStripBlank ? stripBlankLines(srBaseText) : srBaseText;
+    applyReflow();
+    var pages = srPageCount();
+    srGoPage(Math.round(ratio * Math.max(0, pages - 1)), true);
+    updatePositionDisplay();
 }
 
 // #135 菜单自定义：显隐工具栏按钮，localStorage 记忆
@@ -1934,10 +1955,14 @@ function applyReflow() {
     var rc = document.getElementById('readerContent');
     var keepTop = rc ? rc.scrollTop : 0;
     c.textContent = '';
+    srInvalidateTopCache();
     srRenderedChars = 0;
     srRenderDone = false;
+    // 翻页模式横向滚动不触发 srMaybeLoadMore，必须一次渲染全文（进翻页的门槛就是 <=SR_PAGINATE_MAX），
+    // 否则 80万~150万字的书翻页只能看到前半本、总页数也错（B31 修）
+    if (srPaginate()) srRenderUpToChars(fullText.length);
     // 先铺够一屏半，剩下的滚动时再补
-    srRenderUpToChars(Math.min(fullText.length, SR_CHUNK_CHARS * 2));
+    else srRenderUpToChars(Math.min(fullText.length, SR_CHUNK_CHARS * 2));
     if (rc && keepTop) rc.scrollTop = keepTop;
     if (srPaginate()) srApplyPaginateLayout();
 }
@@ -1996,6 +2021,7 @@ function applyReadMode(mode) {
     var prev = document.getElementById('pagePrev');
     var next = document.getElementById('pageNext');
     if (!c) return;
+    var wasPaginate = c.classList.contains('paginate');
     var enable = (mode === 'paginate') && !!document.getElementById('txtContent')
                  && (!fullText || fullText.length <= SR_PAGINATE_MAX);
     if (enable) {
@@ -2003,10 +2029,16 @@ function applyReadMode(mode) {
         c.classList.add('paginate');
         if (prev) prev.style.display = 'flex';
         if (next) next.style.display = 'flex';
-        srApplyPaginateLayout(Math.round(keep * Math.max(0, srPageCount() - 1)));
+        srApplyStripToDual();
     } else {
         var ratio = progressRatio();
-        if (mode === 'paginate') showToast('该格式暂不支持翻页，保持滚动模式', 'info');
+        if (mode === 'paginate') {
+            var rms = document.getElementById('readModeSelect');
+            if (rms) rms.value = 'scroll'; // 下拉与实际生效模式同步（B31）
+            showToast(fullText && fullText.length > SR_PAGINATE_MAX
+                ? '本书超过翻页支持体量（约 ' + Math.round(fullText.length / 10000) + ' 万字），已保持滚动模式'
+                : '该格式暂不支持翻页，保持滚动模式', 'info');
+        }
         c.classList.remove('paginate');
         var t = document.getElementById('txtContent');
         if (t) {
@@ -2016,21 +2048,28 @@ function applyReadMode(mode) {
         chapterPages = null;
         if (prev) prev.style.display = 'none';
         if (next) next.style.display = 'none';
-        jumpToProgress(ratio, true);
+        // 只有真的从翻页切回滚动才需要按比例回位；首次加载（本来就在滚动模式）
+        // 也会走到这里，ratio 恒为 0，会把 URL ?progress= 的直跳压回 0（B31 修）
+        if (wasPaginate) {
+            srStripBlank = false;
+            fullText = srBaseText;
+            applyReflow();
+            jumpToProgress(ratio, true);
+        }
     }
-    try { localStorage.setItem('sr_read_mode', mode); } catch (e) {}
+    try { localStorage.setItem('sr_read_mode', enable ? 'paginate' : 'scroll'); } catch (e) {}
     updatePositionDisplay();
 }
 
 function pageUp() {
     if (srPaginate()) { srGoPage(srCurrentPage() - 1); return; }
     var c = document.getElementById('readerContent');
-    if (c) c.scrollBy({ top: -c.clientHeight, behavior: 'smooth' });
+    if (c) c.scrollBy({ top: -c.clientHeight, behavior: srMotionReduced() ? 'auto' : 'smooth' });
 }
 function pageDown() {
     if (srPaginate()) { srGoPage(srCurrentPage() + 1); return; }
     var c = document.getElementById('readerContent');
-    if (c) c.scrollBy({ top: c.clientHeight, behavior: 'smooth' });
+    if (c) c.scrollBy({ top: c.clientHeight, behavior: srMotionReduced() ? 'auto' : 'smooth' });
 }
 
 function changeFontSize(delta) {
@@ -2245,27 +2284,11 @@ loadImmersive();
         // 等待内容加载完成
         function doScroll() {
             var container = document.getElementById('readerContent');
-            if (!container) {
-                setTimeout(doScroll, 200);
-                return;
-            }
-            // 等待内容渲染
-            setTimeout(function() {
-                var scrollHeight = container.scrollHeight - container.clientHeight;
-                if (scrollHeight > 0) {
-                    container.scrollTop = scrollHeight * targetProgress;
-                    console.log("✅ 已跳转到 " + (targetProgress * 100).toFixed(1) + "% 位置");
-                } else {
-                    // 如果内容还没加载完，再试一次
-                    setTimeout(function() {
-                        var scrollHeight2 = container.scrollHeight - container.clientHeight;
-                        if (scrollHeight2 > 0) {
-                            container.scrollTop = scrollHeight2 * targetProgress;
-                            console.log("✅ 延迟跳转到 " + (targetProgress * 100).toFixed(1) + "% 位置");
-                        }
-                    }, 1000);
-                }
-            }, 500);
+            // 统一走 jumpToProgress：它会把目标进度附近的分块先渲染出来再定位，
+            // 大书带 ?progress= 直跳不再被钳到已渲染末尾（B31 修）；fullText 未就绪则重试
+            if (!container || !fullText) { setTimeout(doScroll, 200); return; }
+            jumpToProgress(targetProgress, true);
+            console.log("✅ 已跳转到 " + (targetProgress * 100).toFixed(1) + "% 位置");
         }
         doScroll();
     }
@@ -2303,6 +2326,7 @@ function headingLevel(t) {
 
 function buildToc() {
     chapters = [];
+    srInvalidateTopCache();
     var src = srBookText();
     if (!src) return;
     var re = new RegExp(CHAPTER_RE.source, 'gm');
@@ -2391,11 +2415,24 @@ function offsetToTop(offset) {
     return h;
 }
 
+// 滚动模式章节顶距缓存：隐藏容器量高度是 O(全书) 渲染，二分一次 13 个调用；
+// 缓存后全书只需量一次，字号/行距/边距/重排/窗口变化时整体作废（B31）
+var srTopCache = {};
+function srTopOf(i) {
+    if (!(i in srTopCache)) srTopCache[i] = offsetToTop(chapters[i].offset);
+    return srTopCache[i];
+}
+function srInvalidateTopCache() { srTopCache = {}; }
+
 function jumpToChapter(i) {
     if (i < 0 || i >= chapters.length) return;
     var container = document.getElementById('readerContent');
-    if (srPaginate()) srGoPage(srOffsetToPage(chapters[i].offset), true);
-    else container.scrollTop = offsetToTop(chapters[i].offset);
+    if (srPaginate()) { srGoPage(srOffsetToPage(chapters[i].offset), true); }
+    else {
+        // 目标章节可能还没渲染出来（渐进渲染），先铺到位再定位，否则会被钳到已渲染末尾（B31 修）
+        if (fullText) srRenderUpToChars(chapters[i].offset + SR_CHUNK_CHARS);
+        container.scrollTop = srTopOf(i);
+    }
     currentChapter = i;
     markActiveToc();
     updatePositionDisplay();
@@ -2422,7 +2459,7 @@ function currentChapterIndex() {
     var lo = 0, hi = chapters.length - 1, ans = 0;
     while (lo <= hi) {
         var mid = (lo + hi) >> 1;
-        if (offsetToTop(chapters[mid].offset) <= y) { ans = mid; lo = mid + 1; }
+        if (srTopOf(mid) <= y) { ans = mid; lo = mid + 1; }
         else hi = mid - 1;
     }
     return ans;
@@ -2939,6 +2976,7 @@ function toggleZen(force, opts) {
 });
 
 window.addEventListener('resize', function() {
+    srInvalidateTopCache();
     if (srPaginate()) srLayoutSoon();
     updateProgressUI();
 });
@@ -3149,6 +3187,10 @@ function initPageNavPos() {
 // ---- M 键：滚动 / 翻页模式互切 ----
 function cycleReadMode() {
     if (!document.getElementById('txtContent')) { showToast('该格式暂不支持切换阅读模式', 'info'); return; }
+    if (!srPaginate() && fullText && fullText.length > SR_PAGINATE_MAX) {
+        showToast('本书超过翻页支持体量，保持滚动模式', 'info');
+        return;
+    }
     var next = srPaginate() ? 'scroll' : 'paginate';
     var sel = document.getElementById('readModeSelect');
     if (sel) sel.value = next;

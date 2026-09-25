@@ -8,6 +8,7 @@
 .register-box .logo-text { text-align: center; font-size: 28px; font-weight: 700; color: #4a3a3a; margin-bottom: 4px; }
 .register-box .logo-text .sweet { color: #e8848a; }
 .register-box .logo-text .reader { color: #4a3a3a; }
+.register-box .logo-text img { height: 48px; width: auto; vertical-align: middle; margin-right: 10px; border-radius: 12px; box-shadow: 0 6px 18px rgba(232,132,138,0.25); }
 .register-box .sub { text-align: center; color: #8a7a7a; font-size: 15px; margin-bottom: 24px; }
 .register-box label { display: block; font-weight: 600; margin-bottom: 5px; color: #4a3a3a; font-size: 14px; }
 .register-box input { width: 100%; padding: 13px 16px; border: 2px solid #f0e0e0; border-radius: 12px; font-size: 15px; margin-bottom: 14px; background: #faf8f8; box-sizing: border-box; }
@@ -33,7 +34,7 @@
 {% endblock %}
 {% block content %}
 <div class="register-box">
-    <div class="logo-text">📚 <span class="sweet">Sweet</span><span class="reader">Reader</span></div>
+    <div class="logo-text"><img src="{{ url_for('static', filename='logo.png') }}" alt="SweetReader"><span class="sweet">Sweet</span><span class="reader">Reader</span></div>
     <div class="sub">🍭 使用邀请码注册</div>
     {% with messages = get_flashed_messages(with_categories=true) %}
         {% for category, message in messages %}

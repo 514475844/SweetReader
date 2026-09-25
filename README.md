@@ -1,4 +1,4 @@
-# 📚 SweetReader · 私人电子书库
+# ![SweetReader](static/logo.png) SweetReader · 私人电子书库
 
 **SweetReader** 是一个轻量级的自托管电子书阅读器，支持 EPUB、PDF、TXT、DOCX、MOBI 等
 多种格式。你可以把它部署在 NAS、软路由或任何 Linux 设备上，随时随地阅读自己的书库。

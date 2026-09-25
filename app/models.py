@@ -32,7 +32,7 @@ class User(UserMixin, db.Model):
 
     # ===== 用户扩展（B14）：个人资料 / 签到积分 =====
     nickname = db.Column(db.String(80), default='')       # 显示名，空则回退用户名
-    avatar = db.Column(db.String(16), default='📚')  # emoji 头像
+    avatar = db.Column(db.String(255), default='📚')  # 头像：空/emoji 走 Gravatar；上传后存 'av:<文件名>'
     signature = db.Column(db.Text, default='')            # 个性签名
     points = db.Column(db.Integer, default=0)             # 积分（签到等获得）
     last_checkin = db.Column(db.Date, nullable=True)      # 最近签到日期
@@ -239,6 +239,9 @@ def ensure_schema():
     add_index('ix_book_category_id', 'book', 'category_id')  # 分类页列表
     add_index('ix_book_last_read', 'book', 'last_read')      # 最近阅读
     add_index('ix_book_upload_date', 'book', 'upload_date')  # 书库首页排序
+    add_index('ix_book_author', 'book', 'author')            # 作者排序（免全表 temp b-tree）
+    add_index('ix_book_file_size', 'book', 'file_size')      # 大小排序
+    add_index('ix_book_read_count', 'book', 'read_count')    # 热门榜
     add_index('ix_progress_user_id', 'reading_progress', 'user_id')
     add_index('ix_progress_book_id', 'reading_progress', 'book_id')
     add_index('ix_bookmark_user_book', 'bookmark', 'user_id, book_id')

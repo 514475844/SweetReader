@@ -436,6 +436,9 @@ pre, code, .sr-anywhere { overflow-wrap: anywhere; word-break: break-word; }
 
 /* 触屏：去掉双击缩放延迟 */
 a, button, .btn, input, select, textarea, label { touch-action: manipulation; }
+        :focus-visible { outline: 2px solid var(--primary, #e8848a); outline-offset: 2px; }
+        .skip-link { position: absolute; left: -9999px; top: 8px; z-index: 9999; background: var(--primary, #e8848a); color: #fff; padding: 8px 16px; border-radius: 8px; font-size: 13px; text-decoration: none; }
+        .skip-link:focus { left: 8px; }
 
 /* 按钮过渡统一进 150-250ms 区间（原 transition:all .3s 偏慢） */
 .btn {
@@ -478,6 +481,16 @@ a, button, .btn, input, select, textarea, label { touch-action: manipulation; }
 </style>
 
 {% block extra_css %}{% endblock %}
+<style>
+.avatar-img { width: 28px; height: 28px; border-radius: 50%; object-fit: cover; flex: 0 0 auto; margin-right: 5px; background: #eee; display: block; }
+body.dark-theme .avatar-img { background: #333; }
+/* 管理后台 embed 模式：作为右栏详情面板时，隐藏自身导航/页脚，铺满 */
+.embed .navbar { display: none !important; }
+.embed .site-footer { display: none !important; }
+.embed .container { padding: 0 !important; margin: 0 !important; max-width: 100% !important; }
+.embed .content { padding: 0 !important; }
+.embed #compatNotice { display: none !important; }
+</style>
 </head>
 <style>
 .online-dot{width:8px;height:8px;border-radius:50%;background:#4caf50;box-shadow:0 0 0 2px rgba(76,175,80,.22);flex:0 0 auto;display:inline-block;}
@@ -486,7 +499,7 @@ a, button, .btn, input, select, textarea, label { touch-action: manipulation; }
 body.dark-theme .admin-entry{background:rgba(255,255,255,.08);color:#e0e0e0;}
 </style>
 
-<body>
+<body class="{{ 'embed' if request.args.get('embed') else '' }}">
     <!-- 旧内核（IE / 早期 Chromium）能力探测：不支持 Promise/fetch/CSS 变量时给出明确提示，
          而不是让页面白屏或按钮点了没反应。现代浏览器不会看到这块。 -->
     <div id="compatNotice" style="display:none;position:relative;z-index:9998;background:#fff4e5;color:#8a5a20;border-bottom:1px solid #f0d9b5;font-size:13px;line-height:1.6;padding:10px 16px;text-align:center;">
@@ -514,7 +527,8 @@ body.dark-theme .admin-entry{background:rgba(255,255,255,.08);color:#e0e0e0;}
         } catch (e) { /* 探测失败不影响主流程 */ }
     })();
     </script>
-    <div class="container">
+    <a class="skip-link" href="#main-content">跳到主要内容</a>
+    <div class="container" id="main-content">
         <nav class="navbar">
             <a href="/library" class="logo" title="我的书库">
                 <img src="/static/logo.png" alt="我的书库">
@@ -533,8 +547,8 @@ body.dark-theme .admin-entry{background:rgba(255,255,255,.08);color:#e0e0e0;}
                     <a href="/admin" class="admin-entry" title="管理后台">⚙ 管理</a>
                     {% endif %}
                     <div class="dropdown">
-                        <div class="user-menu" onclick="toggleDropdown()">
-                            <span class="avatar" style="margin-right:5px;font-size:16px;">{{ current_user.avatar or '📚' }}</span>
+                        <div class="user-menu" role="button" tabindex="0" aria-haspopup="true" aria-expanded="false" aria-label="账号菜单" onclick="toggleDropdown()" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();toggleDropdown();}">
+                            <img class="avatar-img" src="/avatar/{{ current_user.id }}" alt="头像" referrerpolicy="no-referrer">
                             <span class="online-dot" title="在线"></span>
                             <span class="username">{{ current_user.nickname or current_user.username }}</span>
                             <span class="dropdown-btn">▼</span>
@@ -579,11 +593,16 @@ body.dark-theme .admin-entry{background:rgba(255,255,255,.08);color:#e0e0e0;}
             return false;
         }
         function toggleDropdown() {
-            document.getElementById('dropdownMenu').classList.toggle('show');
+            var m = document.getElementById('dropdownMenu');
+            var open = m.classList.toggle('show');
+            var t = document.querySelector('.user-menu');
+            if (t) t.setAttribute('aria-expanded', open ? 'true' : 'false');
         }
         document.addEventListener('click', function(e) {
             if (!e.target.closest('.dropdown')) {
                 document.getElementById('dropdownMenu').classList.remove('show');
+                var t = document.querySelector('.user-menu');
+                if (t) t.setAttribute('aria-expanded', 'false');
             }
         });
 
@@ -836,7 +855,6 @@ function copyQQText(num) {
     <div class="site-footer-inner">
         <a href="/library" class="site-footer-logo" title="我的书库">
             <img src="/static/logo.png" alt="我的书库">
-            <span class="site-footer-name">我的书库</span>
         </a>
         <span class="site-footer-sep"></span>
         <nav class="site-footer-links">

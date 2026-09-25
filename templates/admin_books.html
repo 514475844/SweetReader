@@ -115,6 +115,9 @@
             <button class="btn btn-sm btn-outline" onclick="scanSeries('chapter')">查找分章（第N章 / 编号）</button>
             <button class="btn btn-sm btn-outline" onclick="scanAutoTags()">扫描番外与衍生</button>
             <button class="btn btn-sm btn-outline" onclick="scanAutoTags(true)">扫描番外+系列名标签</button>
+            <label style="display:inline-flex;align-items:center;gap:5px;font-size:13px;margin-left:6px;">
+                <input type="checkbox" id="onlyMissingCk"> 只看还没打这些标签的书
+            </label>
         </div>
         <div id="tidyResult"></div>
     </div>
@@ -184,6 +187,13 @@ body.dark-theme .admin-books #convertResult pre { background: #2c2f36; }
 .admin-books .fmt-list { font-size: 12px; color: var(--text-light); margin: 0 0 10px; }
 .admin-books .fmt-chip { display: inline-block; background: rgba(0,0,0,.05); border-radius: 4px; padding: 1px 6px; margin: 0 4px 4px 0; font-family: monospace; }
 body.dark-theme .admin-books .fmt-chip { background: rgba(255,255,255,.08); }
+.admin-books .tag-badge { display: inline-block; border-radius: 10px; padding: 1px 8px; font-size: 12px; margin: 0 4px 4px 0; }
+.admin-books .tb-extra { background: rgba(124,58,237,.12); color: #6d28d9; }
+.admin-books .tb-quality { background: rgba(37,99,235,.12); color: #1d4ed8; }
+.admin-books .tb-series { background: rgba(5,150,105,.12); color: #047857; }
+body.dark-theme .admin-books .tb-extra { background: rgba(139,92,246,.25); color: #c4b5fd; }
+body.dark-theme .admin-books .tb-quality { background: rgba(59,130,246,.25); color: #93c5fd; }
+body.dark-theme .admin-books .tb-series { background: rgba(16,185,129,.25); color: #6ee7b7; }
 .admin-books .modal-mask { position: fixed; inset: 0; background: rgba(0,0,0,.4); display: flex; align-items: center; justify-content: center; z-index: 50; }
 .admin-books .modal-box { background: #fff; border-radius: 10px; padding: 18px 20px; width: 360px; max-width: 92vw; box-shadow: 0 8px 30px rgba(0,0,0,.25); }
 body.dark-theme .admin-books .modal-box { background: #23252b; }
@@ -896,9 +906,13 @@ function scanSeries(kind) {
                   + ' 组' + word + '（合并默认<b>保留原件</b>，只额外生成一本合并本）：</p>';
             d.groups.forEach(function(g, gi){
                 var names = g.books.map(function(x){ return escapeHtml(x.title); }).join(' → ');
+                var miss = (g.missing && g.missing.length)
+                    ? '<div style="font-size:12px;color:#b45309;margin-top:4px;">缺编号：'
+                      + escapeHtml(g.missing.join('、')) + '</div>' : '';
                 h += '<div class="dup-group tidy-fade"><h4>' + escapeHtml(g.base)
                    + '（' + g.count + ' 本）</h4>'
                    + '<div style="font-size:12px;color:var(--text-light);">' + names + '</div>'
+                   + miss
                    + '<button class="btn btn-sm btn-outline" style="margin-top:8px;" onclick="mergeGroup(' + gi + ')">合并本组</button></div>';
             });
             b.innerHTML = h;
@@ -929,8 +943,10 @@ function scanAutoTags(withSeries) {
     tidyMsg(withSeries ? '正在扫描番外 / 质量标记 / 系列名…' : '正在扫描番外与衍生内容…');
     var items = [];
     function step(off) {
+        var om = document.getElementById('onlyMissingCk');
         fetch('/api/admin/books/auto-tags?limit=800&offset=' + off
-                + (withSeries ? '&include_series=1' : ''))
+                + (withSeries ? '&include_series=1' : '')
+                + (om && om.checked ? '&only_missing=1' : ''))
             .then(function(r){ return r.json(); })
             .then(function(d){
                 if (!d.success) { tidyMsg(d.message || '扫描失败'); return; }
@@ -943,17 +959,23 @@ function scanAutoTags(withSeries) {
 }
 function renderAutoTags(items, scanned) {
     var b = tidyBox();
-    if (!items.length) { tidyMsg('没有识别到番外/衍生类书名 ✅'); return; }
+    if (!items.length) { tidyMsg('没有识别到可建议的标签 ✅'); return; }
     var h = '<p class="hint">扫描 ' + scanned + ' 本，识别到 ' + items.length
           + ' 本（勾选后按建议打标签，只写标签、不动文件）：</p>'
           + '<div class="tidy-scroll"><table class="book-table"><thead><tr>'
           + '<th><input type="checkbox" checked onchange="tidyAll(this)"></th>'
           + '<th>书名</th><th>建议标签</th></tr></thead><tbody>';
+    var KIND_CLS = { extra: 'tb-extra', quality: 'tb-quality', series: 'tb-series' };
     items.forEach(function(it){
+        var kd = it.kinds || {};
+        var badges = (it.tags || []).map(function(t){
+            return '<span class="tag-badge ' + (KIND_CLS[kd[t]] || '') + '">'
+                 + escapeHtml(t) + '</span>';
+        }).join('');
         h += '<tr><td><input type="checkbox" class="tidy-ck" data-id="' + it.id
            + '" data-tags="' + escapeHtml((it.tags || []).join(',')) + '" checked></td>'
            + '<td>' + escapeHtml(it.title) + '</td>'
-           + '<td>' + escapeHtml((it.tags || []).join('、')) + '</td></tr>';
+           + '<td>' + badges + '</td></tr>';
     });
     b.innerHTML = h + '</tbody></table></div>'
         + '<button class="btn btn-sm btn-primary" style="margin-top:10px;" onclick="applyAutoTags()">为选中项打标签</button>';
@@ -977,7 +999,9 @@ function applyAutoTags() {
         body: JSON.stringify({ items: items })
     }).then(function(r){ return r.json(); }).then(function(d){
         if (d && d.success) {
-            alert('已为 ' + (d.affected || 0) + ' 本打标签' + ((d.failed && d.failed.length) ? ('，失败 ' + d.failed.length + ' 本') : ''));
+            alert('已为 ' + (d.affected || 0) + ' 本打标签'
+                + (d.unchanged ? ('，' + d.unchanged + ' 本已有标签未变动') : '')
+                + ((d.failed && d.failed.length) ? ('，失败 ' + d.failed.length + ' 本') : ''));
             location.reload();
         } else {
             alert((d && d.message) || '应用失败');

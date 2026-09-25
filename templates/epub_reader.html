@@ -223,6 +223,11 @@
             if (!rendition) return;
             try { rendition.spread(on ? 'always' : 'none'); } catch (e) {}
         };
+        // 窗口跨过宽窄边界时重估双页（B31：桌面拉窄自动回落单页，与 TXT 双页守门一致）
+        window.addEventListener('resize', function() {
+            if (!rendition) return;
+            try { rendition.spread(srEpubDual() ? 'always' : 'none'); } catch (e) {}
+        });
 
         function savePrefsSoon() {
             prefsDirty = true;

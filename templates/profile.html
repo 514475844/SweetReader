@@ -47,6 +47,11 @@ body.dark-theme .login-log li { border-color: #34373e; }
 .ach-list .todo { color: #bbb; }
 .switch-row { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
 .switch-row input { width: 18px; height: 18px; }
+.avatar-upload { display: flex; flex-direction: column; gap: 10px; margin-bottom: 14px; }
+.avatar-upload .avatar-prev { width: 72px; height: 72px; border-radius: 16px; object-fit: cover; border: 2px solid #f0e0e0; background: #faf8f8; }
+body.dark-theme .avatar-upload .avatar-prev { border-color: #3a3d44; background: #2c2f36; }
+.avatar-actions { display: flex; gap: 8px; align-items: center; }
+.avatar-actions .btn { width: auto; padding: 8px 18px; font-size: 14px; border-radius: 20px; }
 </style>
 {% endblock %}
 {% block content %}
@@ -70,10 +75,15 @@ body.dark-theme .login-log li { border-color: #34373e; }
             <label>昵称（显示名）</label>
             <input type="text" name="nickname" value="{{ current_user.nickname or '' }}" placeholder="不填则显示用户名" maxlength="80">
             <label>头像</label>
-            <select name="avatar" class="sr-select">
-                {% set avs = ['📚','😀','🐱','🌟','🌈','🔥','🍀','📖','🎧','🌸','🚀','🐼'] %}
-                {% for a in avs %}<option value="{{ a }}" {% if current_user.avatar == a %}selected{% endif %}>{{ a }} 选择</option>{% endfor %}
-            </select>
+            <div class="avatar-upload">
+                <img class="avatar-prev" id="avatarPrev" src="/avatar/{{ current_user.id }}" alt="头像" referrerpolicy="no-referrer">
+                <div class="avatar-actions">
+                    <input type="file" id="avatarFile" accept="image/png,image/jpeg,image/gif,image/webp" hidden>
+                    <button type="button" class="btn btn-outline" id="avatarPick">选择图片</button>
+                    <button type="button" class="btn btn-primary" id="avatarUp" disabled>上传</button>
+                </div>
+                <p class="hint">支持 PNG/JPG/GIF/WebP，≤2MB。未上传时使用邮箱对应的 Gravatar 头像。</p>
+            </div>
             <label>个性签名</label>
             <textarea name="signature" maxlength="300" placeholder="一句话介绍自己（可选）">{{ current_user.signature or '' }}</textarea>
             <label>用户名</label>
@@ -102,16 +112,11 @@ body.dark-theme .login-log li { border-color: #34373e; }
 
     <!-- 账户与安全 -->
     <div class="profile-card">
-        <h3>🪙 积分与签到</h3>
+        <h3>🪙 积分</h3>
         <div class="stat-row">
             <div class="stat"><div class="num">{{ current_user.points or 0 }}</div><div class="lbl">积分</div></div>
-            <div class="stat"><div class="num">{{ current_user.checkin_streak or 0 }}</div><div class="lbl">连续签到</div></div>
             <div class="stat"><div class="num">{{ (current_user.points or 0)//100 + 1 }}</div><div class="lbl">等级</div></div>
         </div>
-        <form method="POST" style="margin-bottom:18px;">
-            <input type="hidden" name="action" value="checkin">
-            <button type="submit" class="btn btn-primary">📅 每日签到（+5 积分）</button>
-        </form>
         <h3 style="margin-top:6px;">🛡️ 登录历史</h3>
         {% if login_events %}
         <ul class="login-log">
@@ -141,11 +146,51 @@ body.dark-theme .login-log li { border-color: #34373e; }
         </form>
         <h3 style="margin-top:18px;">🏅 成就</h3>
         <ul class="ach-list">
-            <li><span class="tick {{ 'done' if (current_user.checkin_streak or 0) >= 1 else 'todo' }}">{{ '✓' if (current_user.checkin_streak or 0) >= 1 else '○' }}</span> 初次签到</li>
-            <li><span class="tick {{ 'done' if (current_user.checkin_streak or 0) >= 7 else 'todo' }}">{{ '✓' if (current_user.checkin_streak or 0) >= 7 else '○' }}</span> 连续签到 7 天</li>
             <li><span class="tick {{ 'done' if (current_user.points or 0) >= 100 else 'todo' }}">{{ '✓' if (current_user.points or 0) >= 100 else '○' }}</span> 积分新秀（100）</li>
             <li><span class="tick {{ 'done' if (current_user.points or 0) >= 500 else 'todo' }}">{{ '✓' if (current_user.points or 0) >= 500 else '○' }}</span> 积分达人（500）</li>
         </ul>
     </div>
 </div>
+
+<script>
+(function () {
+    var prev = document.getElementById('avatarPrev');
+    var file = document.getElementById('avatarFile');
+    var pick = document.getElementById('avatarPick');
+    var up = document.getElementById('avatarUp');
+    var selFile = null;
+    if (pick && file) {
+        pick.addEventListener('click', function () { file.click(); });
+        file.addEventListener('change', function () {
+            selFile = file.files && file.files[0];
+            if (!selFile) { up.disabled = true; return; }
+            var ok = ['image/png', 'image/jpeg', 'image/gif', 'image/webp'].indexOf(selFile.type) >= 0;
+            if (!ok) { if (window.showToast) showToast('❌ 仅支持 PNG/JPG/GIF/WebP', 'error'); selFile = null; up.disabled = true; return; }
+            if (selFile.size > 2 * 1024 * 1024) { if (window.showToast) showToast('❌ 图片不能超过 2MB', 'error'); selFile = null; up.disabled = true; return; }
+            up.disabled = false;
+        });
+    }
+    if (up) {
+        up.addEventListener('click', function () {
+            if (!selFile) return;
+            var fd = new FormData();
+            fd.append('file', selFile);
+            up.disabled = true;
+            up.textContent = '上传中…';
+            fetch('/api/user/avatar', { method: 'POST', credentials: 'same-origin', body: fd })
+                .then(function (r) { return r.json(); })
+                .then(function (d) {
+                    if (d && d.success) {
+                        prev.src = d.url + '?t=' + Date.now();
+                        if (window.showToast) showToast('✅ 头像已更新', 'success');
+                    } else if (window.showToast) {
+                        showToast('❌ ' + ((d && d.message) || '上传失败'), 'error');
+                    }
+                })
+                .catch(function () { if (window.showToast) showToast('❌ 网络错误', 'error'); })
+                .finally(function () { up.disabled = false; up.textContent = '上传'; });
+        });
+    }
+})();
+</script>
 {% endblock %}

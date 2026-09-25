@@ -2,7 +2,7 @@
 {% block title %}我的书架{% endblock %}
 {% block extra_css %}
 <style>
-.shelf-wrap { max-width: 1400px; margin: 0 auto; padding: 8px 4px 40px; }
+.shelf-wrap { max-width: 1640px; margin: 0 auto; padding: 16px 8px 48px; }
 .shelf-head { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; margin-bottom: 4px; }
 .shelf-head h2 { font-size: 22px; color: var(--text-dark); font-weight: 600; margin: 0; }
 .shelf-head .owner { color: var(--text-light); font-size: 14px; }
@@ -20,24 +20,25 @@
 .shelf-toolbar select { height: 34px; border-radius: 18px; border: 1px solid rgba(0,0,0,.14); padding: 0 14px; font-size: 13px; background: #fff; color: var(--text-dark); outline: none; }
 .shelf-toolbar select:focus { border-color: var(--primary); }
 .shelf-toolbar .count { color: var(--text-light); font-size: 13px; }
-.shelf-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 16px; }
+.shelf-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(234px, 1fr)); gap: 18px; }
 .shelf-card {
-    background: #fff; border-radius: 14px; padding: 16px; box-shadow: var(--shadow);
-    cursor: pointer; position: relative;
-    transition: transform .18s ease-out, box-shadow .18s ease-out;
+    background: #fff; border-radius: 16px; padding: 14px; box-shadow: var(--shadow);
+    cursor: pointer; position: relative; overflow: hidden; border: 1px solid rgba(0,0,0,.04);
+    transition: transform .18s ease-out, box-shadow .18s ease-out, border-color .18s ease-out;
 }
 .shelf-card:hover { transform: translateY(-3px); box-shadow: 0 8px 30px rgba(232,132,138,.18); }
 .shelf-card .cover {
-    width: 46px; height: 60px; border-radius: 8px; background: linear-gradient(160deg,#f7d9e3,#e9c8d8);
-    display: flex; align-items: center; justify-content: center; font-size: 24px; color: #a86f88;
-    flex: 0 0 46px; margin-bottom: 10px;
+    width: 100%; height: 128px; border-radius: 12px;
+    display: flex; align-items: center; justify-content: center; font-size: 54px; font-weight: 700;
+    margin-bottom: 12px; box-shadow: inset 0 0 0 1px rgba(255,255,255,.4);
 }
-.shelf-card .t { font-weight: 600; font-size: 14px; color: var(--text-dark); line-height: 1.4;
-    display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; min-height: 40px; }
+.shelf-card .t { font-weight: 600; font-size: 15px; color: var(--text-dark); line-height: 1.4;
+    display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; min-height: 42px; }
 .shelf-card .a { font-size: 13px; color: var(--text-light); margin-top: 4px; }
-.shelf-card .fmt { font-size: 12px; color: #bbb; margin-top: 4px; }
-.shelf-card .pbar { margin-top: 10px; background: rgba(0,0,0,.08); border-radius: 6px; height: 6px; overflow: hidden; }
-.shelf-card .pbar .bar { height: 100%; background: #d48aa8; }
+.shelf-card .fmt { display: inline-block; font-size: 11px; font-weight: 700; letter-spacing: .5px; color: #8a7a8a; background: rgba(0,0,0,.05); padding: 2px 8px; border-radius: 8px; margin-top: 6px; }
+body.dark-theme .shelf-card .fmt { background: rgba(255,255,255,.1); color: #b9b0b0; }
+.shelf-card .pbar { margin-top: 10px; background: rgba(0,0,0,.08); border-radius: 6px; height: 7px; overflow: hidden; }
+.shelf-card .pbar .bar { height: 100%; background: linear-gradient(90deg,#e8848a,#f2a9ad); }
 .shelf-card .meta { font-size: 12px; color: var(--text-light); margin-top: 8px; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
 .shelf-card .fav {
     position: absolute; top: 10px; right: 10px; width: 34px; height: 34px; border-radius: 50%;
@@ -54,6 +55,13 @@ body.dark-theme .shelf-card, body.dark-theme .shelf-tab, body.dark-theme .shelf-
 body.dark-theme .shelf-tab { border-color: rgba(255,255,255,.16); }
 body.dark-theme .shelf-card .cover { background: linear-gradient(160deg,#3a3358,#2a2748); color: #c9a; }
 body.dark-theme .shelf-card .pbar { background: rgba(255,255,255,.1); }
+.st-badge { font-size: 11px; padding: 2px 8px; border-radius: 8px; font-weight: 600; }
+.st-unread { background: #eef0f3; color: #8a93a6; }
+.st-reading { background: #fff3e0; color: #d98a2b; }
+.st-finished { background: #e7f7ee; color: #27ae60; }
+body.dark-theme .st-unread { background: #2c2f36; color: #aab2c0; }
+body.dark-theme .st-reading { background: #3a3128; color: #e0a55a; }
+body.dark-theme .st-finished { background: #21332a; color: #5fd0a0; }
 .locked { text-align: center; padding: 80px 20px; color: var(--text-light); }
 .locked .bi { font-size: 60px; display: block; margin-bottom: 14px; }
 @media (max-width: 520px) {
@@ -161,8 +169,21 @@ function renderGrid() {
     items.forEach(function(b) {
         var card = document.createElement('div');
         card.className = 'shelf-card';
+        card.tabIndex = 0;
+        card.setAttribute('role', 'link');
+        card.setAttribute('aria-label', '\u67e5\u770b\u300a' + (b.title || '?') + '\u300b');
+        card.onkeydown = function(e) {
+            if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                window.location.href = '/book/' + b.book_id;
+            }
+        };
         var pct = Math.round((b.progress || 0) * 100);
-        var html = '<div class="cover">' + escapeHtml((b.title || '?')[0] || '?') + '</div>'
+        var hue = 0;
+        var tstr = b.title || '';
+        for (var i = 0; i < tstr.length; i++) hue = (hue * 31 + tstr.charCodeAt(i)) % 360;
+        var cov = 'background:linear-gradient(135deg,hsl(' + hue + ',72%,90%),hsl(' + ((hue + 24) % 360) + ',72%,82%));color:hsl(' + hue + ',45%,42%)';
+        var html = '<div class="cover" style="' + cov + '">' + escapeHtml((tstr || '?')[0] || '?') + '</div>'
             + '<div class="t">' + escapeHtml(b.title) + '</div>'
             + '<div class="a">' + escapeHtml(b.author) + '</div>'
             + '<div class="fmt">' + escapeHtml(b.file_type || '') + '</div>'

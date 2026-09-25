@@ -11,6 +11,9 @@ import re
 import shutil
 import tempfile
 import threading
+import time
+import hashlib
+import mimetypes
 import zipfile
 
 from app.models import (db, User, InviteCode, Book, Category, ReadingProgress,
@@ -144,6 +147,16 @@ def fix_bom(raw_bytes):
     return raw_bytes
 
 
+# 系统保留用户名：注册/建号/改名时禁用（含子串匹配，覆盖 admin/root/管理员 等）
+_FORBIDDEN_USERNAME_TOKENS = ['admin', 'root', '管理员', '超级管理员', '系统管理员',
+                              'superuser', 'moderator', 'support', 'official', 'bot',
+                              'guest', 'test', 'system', 'sudo', 'owner', '官方']
+def is_forbidden_username(name):
+    n = (name or '').strip().lower()
+    if not n:
+        return False
+    return any(tok in n for tok in _FORBIDDEN_USERNAME_TOKENS)
+
 def password_error(password):
     """密码强度校验：至少7位，含大小写字母、数字与特殊符号。合法返回 None，否则返回错误文案。"""
     if not password or len(password) < 7:
@@ -258,7 +271,8 @@ def library():
                          books=books, categories=categories, cat_top=cat_top,
                          total_books=total_books, total_categories=total_categories,
                          plugins=home_entries,
-                         is_admin=current_user.is_admin)
+                         is_admin=current_user.is_admin,
+                         can_manage_books=_require_cap('manage_books'))
 
 # ============ 登录/注册 ============
 @bp.route('/login', methods=['GET', 'POST'])
@@ -322,6 +336,9 @@ def register():
             return render_template('register.html')
         if invite.target_email != email:
             flash('邀请码绑定的邮箱不匹配', 'error')
+            return render_template('register.html')
+        if is_forbidden_username(username):
+            flash('该用户名不可用，请换一个', 'error')
             return render_template('register.html')
         if User.query.filter_by(username=username).first():
             flash('用户名已被使用', 'error')
@@ -1009,6 +1026,8 @@ def create_user():
     password = data.get('password') or ''
     if not username:
         return jsonify({'success': False, 'message': '用户名不能为空'}), 400
+    if is_forbidden_username(username):
+        return jsonify({'success': False, 'message': '该用户名不可用（系统保留名）'}), 400
     if not email:
         return jsonify({'success': False, 'message': '邮箱不能为空'}), 400
     err = password_error(password)
@@ -1138,28 +1157,19 @@ def profile():
             if User.query.filter(User.email == email, User.id != current_user.id).first():
                 flash('该邮箱已被注册', 'error')
                 return render_template('profile.html')
+            if username != current_user.username and is_forbidden_username(username):
+                flash('该用户名不可用（系统保留名）', 'error')
+                return render_template('profile.html')
             current_user.username = username
             current_user.email = email
             current_user.nickname = request.form.get('nickname', '').strip()
-            current_user.avatar = (request.form.get('avatar', '') or '📚')[:16]
+            # 头像仅通过 /api/user/avatar 上传修改，这里不再覆盖
             current_user.signature = request.form.get('signature', '').strip()[:300]
             db.session.commit()
             log_action(current_user, '更新个人资料', f'{username} / {email}')
             flash('✅ 个人信息已更新', 'success')
         elif action == 'checkin':
-            today = date.today()
-            last = current_user.last_checkin
-            if last == today:
-                flash('今天已经签到啦', 'error')
-            else:
-                if last == (today - timedelta(days=1)):
-                    current_user.checkin_streak = (current_user.checkin_streak or 0) + 1
-                else:
-                    current_user.checkin_streak = 1
-                current_user.last_checkin = today
-                current_user.points = (current_user.points or 0) + 5
-                db.session.commit()
-                flash('✅ 签到成功，+5 积分', 'success')
+            flash('签到功能暂未开放', 'error')
         elif action == 'update_privacy':
             public = request.form.get('bookshelf_public') == 'on'
             theme = UserTheme.query.filter_by(user_id=current_user.id).first()
@@ -1171,6 +1181,61 @@ def profile():
             flash('✅ 隐私设置已保存', 'success')
     login_events = LoginEvent.query.filter_by(user_id=current_user.id).order_by(LoginEvent.ts.desc()).limit(15).all()
     return render_template('profile.html', login_events=login_events)
+
+# ============ 头像：上传 + Gravatar 兜底 ============
+@bp.route('/api/user/avatar', methods=['POST'])
+@login_required
+def upload_avatar():
+    """上传用户头像（PNG/JPG/GIF/WEBP，≤2MB），存于 instance/avatars，仅本人可改。"""
+    f = request.files.get('avatar')
+    if not f or not f.filename:
+        return jsonify(success=False, message='未选择文件'), 400
+    data = f.read()
+    if len(data) > 2 * 1024 * 1024:
+        return jsonify(success=False, message='图片不能超过 2MB'), 400
+    if data[:8] == b'\x89PNG\r\n\x1a\n':
+        ext, mt = 'png', 'image/png'
+    elif data[:3] == b'\xff\xd8\xff':
+        ext, mt = 'jpg', 'image/jpeg'
+    elif data[:6] in (b'GIF87a', b'GIF89a'):
+        ext, mt = 'gif', 'image/gif'
+    elif data[:4] == b'RIFF' and data[8:12] == b'WEBP':
+        ext, mt = 'webp', 'image/webp'
+    else:
+        return jsonify(success=False, message='仅支持 PNG / JPG / GIF / WEBP'), 400
+    d = os.path.join(current_app.instance_path, 'avatars')
+    os.makedirs(d, exist_ok=True)
+    fn = 'u%d.%s' % (current_user.id, ext)
+    with open(os.path.join(d, fn), 'wb') as fh:
+        fh.write(data)
+    # 清理同用户的旧头像文件
+    for old in os.listdir(d):
+        if old.startswith('u%d.' % current_user.id) and old != fn:
+            try:
+                os.remove(os.path.join(d, old))
+            except OSError:
+                pass
+    current_user.avatar = 'av:' + fn
+    db.session.commit()
+    return jsonify(success=True, url='/avatar/%d' % current_user.id)
+
+
+@bp.route('/avatar/<int:uid>')
+def serve_avatar(uid):
+    """返回用户头像：已上传则发文件；否则按邮箱 md5 跳转 Gravatar（identicon 兜底）。"""
+    user = User.query.get_or_404(uid)
+    av = user.avatar or ''
+    if av.startswith('av:'):
+        fn = av[3:]
+        d = os.path.join(current_app.instance_path, 'avatars')
+        p = os.path.join(d, fn)
+        if os.path.exists(p):
+            return send_file(p, max_age=86400, conditional=True)
+    em = (user.email or '').strip().lower()
+    h = hashlib.md5(em.encode('utf-8')).hexdigest() if em else '0' * 32
+    return redirect('https://www.gravatar.com/avatar/%s?d=identicon&s=200' % h)
+
+
 
 
 def _sanitize_user_css(raw):
@@ -1286,18 +1351,27 @@ def api_library_overview():
     全部走 SQL 聚合（count / group by），**不把书行拉进 Python** —— 大库上
     7 万行级别一旦 query.all() 就是秒级，这里三条聚合查询在 10ms 量级。
     """
-    total = db.session.query(db.func.count(Book.id)).scalar() or 0
-    cat_total = db.session.query(db.func.count(Category.id)).scalar() or 0
+    now = time.time()
+    glob = _overview_cache['data']
+    if glob is None or now - _overview_cache['ts'] >= _OVERVIEW_CACHE_TTL:
+        total = db.session.query(db.func.count(Book.id)).scalar() or 0
+        cat_total = db.session.query(db.func.count(Category.id)).scalar() or 0
 
-    fmt_rows = (db.session.query(Book.file_type, db.func.count(Book.id))
-                .group_by(Book.file_type)
-                .order_by(db.func.count(Book.id).desc()).all())
-    formats = [{'type': (r[0] or '未知').upper(), 'count': int(r[1])}
-               for r in fmt_rows if r[1]]
-    other_formats = sum(f['count'] for f in formats[5:])
-    formats = formats[:5]
-    if other_formats:
-        formats.append({'type': '其它', 'count': other_formats})
+        fmt_rows = (db.session.query(Book.file_type, db.func.count(Book.id))
+                    .group_by(Book.file_type)
+                    .order_by(db.func.count(Book.id).desc()).all())
+        formats = [{'type': (r[0] or '未知').upper(), 'count': int(r[1])}
+                   for r in fmt_rows if r[1]]
+        other_formats = sum(f['count'] for f in formats[5:])
+        formats = formats[:5]
+        if other_formats:
+            formats.append({'type': '其它', 'count': other_formats})
+        glob = {'total': int(total), 'categories': int(cat_total), 'formats': formats}
+        _overview_cache['ts'] = now
+        _overview_cache['data'] = glob
+    total = glob['total']
+    cat_total = glob['categories']
+    formats = glob['formats']
 
     # 阅读状态：只查当前用户的进度记录（数量级远小于书库），未记录的归为「未读」
     st_rows = (db.session.query(ReadingProgress.status,
@@ -3264,6 +3338,7 @@ def _purge_book(book):
 
     # 4) 数据库记录
     db.session.delete(book)
+    _invalidate_tags_cache()  # 删书会改变标签计数
     return report
 
 
@@ -3624,6 +3699,7 @@ def admin_books_batch():
     except Exception as e:
         db.session.rollback()
         return jsonify({'success': False, 'message': '操作失败：' + str(e)}), 500
+    _invalidate_tags_cache()  # 批量操作可能改了标签
     # 重算受影响分类的书本数
     for cid in touched:
         c = Category.query.get(cid)
@@ -3648,7 +3724,7 @@ MAX_SPLIT_PARTS = 50
 def _tidy_rows(offset=0, limit=800):
     """按 id 顺序分段取整理所需的轻量字段（只读）。"""
     return (db.session.query(Book.id, Book.title, Book.filename,
-                             Book.file_type, Book.category_id)
+                             Book.file_type, Book.category_id, Book.tags)
             .order_by(Book.id.asc()).offset(offset).limit(limit).all())
 
 
@@ -3665,7 +3741,7 @@ def admin_books_rename_plan():
     limit = min(max(request.args.get('limit', 800, type=int), 1), 2000)
     rows = _tidy_rows(offset, limit)
     items = []
-    for bid, title, fn, ft, cid in rows:
+    for bid, title, fn, ft, cid, _tg in rows:
         sug = book_tools.suggest_filename(title, fn, ft)
         if not sug:
             continue
@@ -3760,6 +3836,7 @@ def admin_books_auto_tags():
     offset = max(0, request.args.get('offset', 0, type=int))
     limit = min(max(request.args.get('limit', 800, type=int), 1), 2000)
     include_series = request.args.get('include_series') == '1'
+    only_missing = request.args.get('only_missing') == '1'
     # 系列名标签：按 group_series 全库扫一遍（与 /api/admin/books/series 同成本），
     # 只给「同系列 >= 2 本」的组员建议系列名标签——比逐本判断误标率低得多。
     series_map = {}
@@ -3774,16 +3851,28 @@ def admin_books_auto_tags():
                 series_map[m['id']] = base
     rows = _tidy_rows(offset, limit)
     items = []
-    for bid, title, fn, ft, cid in rows:
-        tags = book_tools.extra_tags(title, fn) + book_tools.quality_tags(title, fn)
+    for bid, title, fn, ft, cid, tags_str in rows:
+        ex = book_tools.extra_tags(title, fn)
+        qt = book_tools.quality_tags(title, fn)
+        tags = list(ex) + list(qt)
+        kinds = {}
+        for t in ex:
+            kinds[t] = 'extra'
+        for t in qt:
+            kinds[t] = 'quality'
         if bid in series_map:
             tags = tags + [series_map[bid]]
+            kinds[series_map[bid]] = 'series'
         seen = set()
         tags = [t for t in tags if not (t in seen or seen.add(t))]
         if not tags:
             continue
+        if only_missing:
+            existing = set(_parse_tags(tags_str))
+            if set(tags) <= existing:
+                continue
         items.append({'id': bid, 'title': title or fn or '', 'filename': fn or '',
-                      'file_type': ft or '', 'tags': tags})
+                      'file_type': ft or '', 'tags': tags, 'kinds': kinds})
     scanned = len(rows)
     return jsonify({'success': True, 'items': items, 'scanned': scanned,
                     'offset': offset, 'next_offset': offset + scanned,
@@ -3804,6 +3893,7 @@ def admin_books_auto_tags_apply():
     if not items or len(items) > 1000:
         return jsonify({'success': False, 'message': 'items 需在 1~1000 条之间'}), 400
     ok = 0
+    unchanged = 0
     failed = []
     for it in items:
         bid = it.get('id')
@@ -3825,13 +3915,17 @@ def admin_books_auto_tags_apply():
         if changed:
             b.tags = TAG_SEP.join(cur)[:MAX_TAGS_STR]
             ok += 1
+        else:
+            unchanged += 1
     try:
         db.session.commit()
     except Exception as e:
         db.session.rollback()
         return jsonify({'success': False, 'message': '写入失败：' + str(e)}), 500
+    _invalidate_tags_cache()
     log_action(current_user, '书籍批量操作', '自动标签应用 %d 本' % ok)
-    return jsonify({'success': True, 'affected': ok, 'failed': failed})
+    return jsonify({'success': True, 'affected': ok, 'unchanged': unchanged,
+                    'failed': failed})
 
 
 @bp.route('/api/admin/book/<int:book_id>/split', methods=['POST'])
@@ -4338,13 +4432,31 @@ def api_set_tags(book_id):
 
     book.tags = _serialize_tags(tags)
     db.session.commit()
+    _invalidate_tags_cache()
     return jsonify({'success': True, 'tags': tags})
+
+
+# ---- 读多写少的聚合结果缓存：/api/tags（300s TTL + 写操作即时失效）与
+# /api/library-overview 的全局聚合部分（60s TTL，阅读状态始终按用户实时算）。
+_TAGS_CACHE_TTL = 300.0
+_OVERVIEW_CACHE_TTL = 60.0
+_tags_cache = {'ts': 0.0, 'data': None}
+_overview_cache = {'ts': 0.0, 'data': None}
+
+
+def _invalidate_tags_cache():
+    """任何会改变 book.tags / 删书的写操作后调用，下次请求即时重算。"""
+    _tags_cache['ts'] = 0.0
+    _tags_cache['data'] = None
 
 
 @bp.route('/api/tags', methods=['GET'])
 @login_required
 def api_tags():
-    """常用标签及计数（只扫有标签的书）。"""
+    """常用标签及计数（只扫有标签的书；结果缓存，写操作即时失效）。"""
+    now = time.time()
+    if _tags_cache['data'] is not None and now - _tags_cache['ts'] < _TAGS_CACHE_TTL:
+        return jsonify({'success': True, 'tags': _tags_cache['data'], 'cached': True})
     rows = db.session.execute(db.text(
         "SELECT tags FROM book WHERE tags IS NOT NULL AND tags != ''"
     )).fetchall()
@@ -4353,7 +4465,10 @@ def api_tags():
         for x in _parse_tags(t):
             counter[x] = counter.get(x, 0) + 1
     top = sorted(counter.items(), key=lambda kv: -kv[1])[:30]
-    return jsonify({'success': True, 'tags': [{'name': k, 'count': v} for k, v in top]})
+    data = [{'name': k, 'count': v} for k, v in top]
+    _tags_cache['ts'] = now
+    _tags_cache['data'] = data
+    return jsonify({'success': True, 'tags': data})
 
 
 # ============ 健康检查 ============
@@ -4389,13 +4504,14 @@ def api_books_page():
     if format_filter and format_filter != 'all':
         query = query.filter(Book.file_type.in_(_file_type_variants(format_filter)))
     
-    # 搜索
+    # 搜索（书名/作者/文件名/标签；搜索框占位文案承诺了标签，实际命中才不撒谎）
     if search:
         query = query.filter(
             db.or_(
                 Book.title.ilike(f'%{search}%'),
                 Book.author.ilike(f'%{search}%'),
-                Book.filename.ilike(f'%{search}%')
+                Book.filename.ilike(f'%{search}%'),
+                Book.tags.ilike(f'%{search}%')
             )
         )
     
@@ -4432,8 +4548,8 @@ def api_books_page():
         elif len(letter) == 1 and letter.isalpha():
             query = query.filter(Book.initial == letter.upper())
     
-    # 总数
-    total = query.count()
+    # 总数（直接 count 主键，避免 Query.count() 的子查询包装在 6 万行上多一跳）
+    total = query.with_entities(db.func.count(Book.id)).scalar() or 0
 
     # 搜索统计：命中书的格式分布 + 分类分布，供前端展示
     search_stats = None
@@ -4494,19 +4610,19 @@ def api_books_page():
     book_ids = [b.id for b in books]
     prog_map = {}
     if book_ids:
-        rows = ReadingProgress.query.filter(
-            ReadingProgress.user_id == current_user.id,
-            ReadingProgress.book_id.in_(book_ids)
-        ).all()
-        prog_map = dict((r.book_id, r) for r in rows)
+        rows = (db.session.query(ReadingProgress.book_id, ReadingProgress.progress,
+                                 ReadingProgress.status, ReadingProgress.favorite)
+                .filter(ReadingProgress.user_id == current_user.id,
+                        ReadingProgress.book_id.in_(book_ids)).all())
+        prog_map = dict((r[0], r) for r in rows)
 
     def _status_of(b):
         rec = prog_map.get(b.id)
         if not rec:
             return 'unread'
-        if rec.status:
-            return rec.status
-        return 'finished' if (rec.progress or 0) >= 0.98 else 'reading'
+        if rec[2]:
+            return rec[2]
+        return 'finished' if (rec[1] or 0) >= 0.98 else 'reading'
 
     return jsonify({
         'success': True,
@@ -4519,9 +4635,9 @@ def api_books_page():
             'file_size': b.file_size or 0,
             'path': b.relative_path or b.filename,
             'read_count': b.read_count or 0,
-            'progress': round(prog_map[b.id].progress or 0, 4) if b.id in prog_map else 0,
+            'progress': round(prog_map[b.id][1] or 0, 4) if b.id in prog_map else 0,
             'status': _status_of(b),
-            'favorite': bool(prog_map[b.id].favorite) if b.id in prog_map else False,
+            'favorite': bool(prog_map[b.id][3]) if b.id in prog_map else False,
             'tags': _parse_tags(b.tags)[:3],
             'created_at': b.upload_date.strftime('%Y-%m-%d %H:%M') if b.upload_date else ''
         } for b in books],
@@ -4554,36 +4670,46 @@ def get_recommendations(book_id):
             'reason': reason,
         })
 
-    # 1) 同系列下一部/集（优先）：解析书名系列，取同系列且序号更大的，按序排列
+    # 1) 同系列：下一部（order 更大）优先并升序（cur+1 最前），前作（order 更小）其次降序。
+    #    不再限制「同分类 + 仅取 400 本」——那是续集（如第三集）被漏掉、列表被无关项填满的根因。
+    #    改为按归一化系列名在全书名/文件名中 LIKE 收窄候选后精确匹配，跨分类也能命中。
     s = book_tools.series_of(book.title or book.filename or '')
     if s and s.get('base'):
         base = s['base']
+        key = book_tools.normalize_series_key(base)
         cur_order = s.get('order') or 0
-        pool = Book.query.filter(Book.id != book_id)
-        if book.category_id:
-            pool = pool.filter(Book.category_id == book.category_id)
-        pool = pool.limit(400).all()
-        nxt = []
-        for b in pool:
-            sb = book_tools.series_of(b.title or b.filename or '')
-            if sb and sb.get('base') == base and (sb.get('order') or 0) > cur_order:
-                nxt.append(((sb.get('order') or 0), b))
-        nxt.sort(key=lambda x: x[0])
-        for _, b in nxt:
-            if len(recommendations) >= 6:
-                break
-            add(b, '同系列·下一部')
+        if key:
+            pat_pfx = base + '%'
+            pat_sub = '%' + base + '%'
+            cands = Book.query.filter(
+                Book.id != book_id,
+                db.or_(Book.title.like(pat_pfx), Book.title.like(pat_sub),
+                       Book.filename.like(pat_pfx), Book.filename.like(pat_sub))
+            ).limit(250).all()
+            nxt, prev = [], []
+            for b in cands:
+                sb = book_tools.series_of(b.title or b.filename or '')
+                if not sb or not sb.get('base'):
+                    continue
+                if book_tools.normalize_series_key(sb['base']) != key:
+                    continue
+                o = sb.get('order') or 0
+                if o > cur_order:
+                    nxt.append((o, b))
+                elif o < cur_order:
+                    prev.append((o, b))
+            nxt.sort(key=lambda x: x[0])       # 升序：下一部（cur+1）排最前
+            prev.sort(key=lambda x: -x[0])     # 降序：前作（cur-1）排最前
+            for _, b in nxt:
+                if len(recommendations) >= 6:
+                    break
+                add(b, '同系列·下一部')
+            for _, b in prev:
+                if len(recommendations) >= 6:
+                    break
+                add(b, '同系列·前作')
 
-    # 2) 同分类
-    if len(recommendations) < 6 and book.category_id:
-        for b in Book.query.filter(
-                Book.category_id == book.category_id,
-                Book.id != book_id).limit(6).all():
-            if len(recommendations) >= 6:
-                break
-            add(b, '同分类')
-
-    # 3) 同作者
+    # 2) 同作者
     if len(recommendations) < 6 and book.author:
         for b in Book.query.filter(
                 Book.author == book.author,
@@ -4593,7 +4719,17 @@ def get_recommendations(book_id):
                 break
             add(b, '同作者')
 
-    # 4) 随机兜底
+    # 3) 同分类
+    if len(recommendations) < 6 and book.category_id:
+        for b in Book.query.filter(
+                Book.category_id == book.category_id,
+                Book.id != book_id,
+                Book.id.notin_([r['id'] for r in recommendations])).limit(6).all():
+            if len(recommendations) >= 6:
+                break
+            add(b, '同分类')
+
+    # 4) 随机兜底（仅在同系列/同作者/同分类都很少时补缺，最多补到 6 本）
     if len(recommendations) < 6:
         for b in Book.query.filter(
                 Book.id != book_id,

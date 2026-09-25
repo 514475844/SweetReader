@@ -100,10 +100,66 @@
         body.dual #pages { max-width: 1400px; margin: 0 auto; }
         body.dual .pg { width: calc(50% - 6px) !important; }
 
+        /* ===== 页内查找 ===== */
+        .find-wrap { position: relative; }
+        .find-panel { position: absolute; left: 0; top: calc(100% + 8px); z-index: 45;
+                      width: min(340px, 92vw); padding: 10px 12px; border-radius: 10px;
+                      background: #fff; border: 1px solid #eee; box-shadow: 0 6px 22px rgba(0,0,0,.14);
+                      opacity: 0; visibility: hidden; transform: translateY(-6px);
+                      transition: opacity .18s ease-out, transform .18s ease-out, visibility .18s; }
+        .find-panel.show { opacity: 1; visibility: visible; transform: translateY(0); }
+        .find-row { display: flex; gap: 6px; }
+        #findInput { flex: 1; min-width: 0; padding: 5px 8px; border: 1px solid #e0e0e0; border-radius: 6px;
+                     font-size: 13px; font-family: inherit; }
+        .find-meta { padding: 6px 2px 0; color: #999; font-size: 12px; min-height: 18px; }
+        .find-list { max-height: 46vh; overflow-y: auto; margin-top: 4px; }
+        .find-list button { display: block; width: 100%; text-align: left; margin: 3px 0; padding: 6px 8px;
+                            border: none; border-radius: 6px; background: #f7f2ef; color: #444; cursor: pointer;
+                            font-size: 12.5px; line-height: 1.5; font-family: inherit; }
+        .find-list button:hover, .find-list button.on { background: #f1e4df; }
+        .find-list .fp { color: #c9566a; font-weight: 600; margin-right: 6px; }
+        .hlrect { position: absolute; background: rgba(255, 196, 0, .38); border: 1px solid rgba(230,150,0,.55);
+                  border-radius: 1px; }
+        .hlrect.cur { background: rgba(255, 140, 0, .55); }
+
+        /* ===== 缩略图侧栏 ===== */
+        #thumbRail { position: fixed; left: 0; top: 0; bottom: 0; width: 158px; z-index: 50;
+                     background: #fff; border-right: 1px solid #eee; box-shadow: 4px 0 16px rgba(0,0,0,.08);
+                     transform: translateX(-100%); visibility: hidden;
+                     transition: transform .2s ease-out, visibility .2s;
+                     display: flex; flex-direction: column; }
+        #thumbRail.open { transform: translateX(0); visibility: visible; }
+        .thumbs { flex: 1; overflow-y: auto; padding: 10px 8px; display: flex; flex-direction: column; gap: 10px; }
+        .thumb { flex: 0 0 auto; cursor: pointer; border: 2px solid transparent; border-radius: 4px;
+                 background: #fafafa; position: relative; transition: border-color .15s ease-out; }
+        .thumb.cur { border-color: #e8848a; }
+        .thumb canvas { display: block; width: 100%; height: auto; }
+        .thumb .tn { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+                     color: #bbb; font-size: 11px; }
+        .thumb canvas + .tn { display: none; }
+        body.rail-open .controls, body.rail-open #viewer { margin-left: 158px; }
+
+        body.sr-dark .find-panel { background: #262640; border-color: rgba(255,255,255,.14); }
+        body.sr-dark #findInput { background: #1e1e34; border-color: rgba(255,255,255,.2); color: #e0e0e0; }
+        body.sr-dark .find-meta { color: #9a9ab0; }
+        body.sr-dark .find-list button { background: #33334f; color: #ddd; }
+        body.sr-dark .find-list button:hover, body.sr-dark .find-list button.on { background: #3d3d5c; }
+        body.sr-dark .find-list .fp { color: #f0a7b4; }
+        body.sr-dark #thumbRail { background: #22223a; border-right-color: rgba(255,255,255,.14); }
+        body.sr-dark .thumb { background: #1a1a2e; }
+        body.sr-dark .thumb.cur { border-color: #f0a7b4; }
+        body.sr-dark .thumb .tn { color: #77778f; }
+
         @media (max-width: 520px) {
             .controls { gap: 6px; padding: 6px 8px; }
             .controls .info { display: none; }
             .tune-panel { min-width: 208px; }
+        }
+        @media (max-width: 640px) {
+            body.rail-open .controls, body.rail-open #viewer { margin-left: 0; }
+            #thumbRail { width: 132px; box-shadow: 6px 0 20px rgba(0,0,0,.2); }
+            .toc-panel, .find-panel, .tune-panel { position: fixed; left: 8px; right: 8px;
+                width: auto; min-width: 0; top: auto; bottom: 8px; max-height: 60vh; }
         }
         @media (prefers-reduced-motion: reduce) {
             * { transition: none !important; }
@@ -118,12 +174,26 @@
                     onclick="window.pdfToggleToc()" title="目录大纲">目录</button>
             <div class="toc-panel" id="tocPanel"><div class="toc-empty">加载中…</div></div>
         </div>
-        <button onclick="window.pdfPrev()">◀</button>
+        <div class="find-wrap">
+            <button class="tune-btn" id="findBtn" aria-expanded="false"
+                    onclick="window.pdfToggleFind()" title="页内查找（Ctrl+F）">查找</button>
+            <div class="find-panel" id="findPanel">
+                <div class="find-row">
+                    <input id="findInput" placeholder="在本文中查找…（回车搜索）">
+                    <button class="tune-btn" onclick="window.pdfStartFind()">搜</button>
+                </div>
+                <div class="find-meta" id="findMeta"></div>
+                <div class="find-list" id="findList"></div>
+            </div>
+        </div>
+        <button aria-label="上一页" onclick="window.pdfPrev()">◀</button>
         <input id="pageInput" inputmode="numeric" placeholder="页"
                onchange="window.pdfJumpInput(this.value)">
-        <button onclick="window.pdfNext()">▶</button>
+        <button aria-label="下一页" onclick="window.pdfNext()">▶</button>
         <div class="progress-bar"><div class="fill" id="progressFill"></div></div>
         <span class="info" id="location">加载中...</span>
+        <button class="tune-btn" id="railBtn" aria-expanded="false"
+                onclick="window.pdfToggleRail()" title="页面缩略图">缩略图</button>
         <div class="tune-wrap">
             <button class="tune-btn" id="tuneBtn" aria-expanded="false"
                     onclick="window.pdfToggleTune()" title="缩放设置">缩放</button>
@@ -144,9 +214,17 @@
                     <span>双页</span>
                     <input type="checkbox" id="tuneDual" onchange="window.pdfSetDual(this.checked)">
                 </div>
+                <div class="tune-row">
+                    <span>适配</span>
+                    <select id="tuneFit" onchange="window.pdfSetFit(this.value)" style="flex:1">
+                        <option value="w">适宽</option>
+                        <option value="p">适页</option>
+                    </select>
+                </div>
             </div>
         </div>
     </div>
+    <aside id="thumbRail" aria-label="页面缩略图"><div class="thumbs" id="thumbs"></div></aside>
     <div id="viewer"><div id="pages"></div></div>
     <script src="/static/js/pdf.min.js?v=20260924"></script>
     <script>
@@ -181,6 +259,7 @@
         var saveTimer = null;
         var restorePage = 0;
         var dual = false;
+        var fitMode = 'w';                      // 缩放适配：w=适宽（默认） p=适页
         var vp1 = null;                         // 第 1 页视口：未渲染页的占位基准
 
         function showError(msg) {
@@ -217,6 +296,7 @@
             if (b) b.value = prefs.brightness;
             if (bv) bv.textContent = prefs.brightness;
             var d = document.getElementById('tuneDual'); if (d) d.checked = !!dual;
+            var f = document.getElementById('tuneFit'); if (f) f.value = fitMode;
         }
         function savePrefsSoon() {
             prefsDirty = true;
@@ -261,11 +341,17 @@
             if (!pgEls.length) return;
             var vw = viewer.clientWidth - 24;
             var target = dual ? Math.max(240, (vw - 12) / 2) : Math.max(240, vw);
+            var vh = viewer.clientHeight - 30;
             for (var i = 0; i < pgEls.length; i++) {
                 var el = pgEls[i];
                 var vp = el._vp || vp1;
                 if (!vp) continue;
-                var w = Math.min(target, vp.width * 3);   // 放大到 3 倍为止，避免失真糊成一片
+                var w;
+                if (fitMode === 'p') {
+                    w = Math.max(200, Math.min(target, vh * (vp.width / vp.height)));
+                } else {
+                    w = Math.min(target, vp.width * 3);   // 放大到 3 倍为止，避免失真糊成一片
+                }
                 el.style.width = Math.round(w) + 'px';
                 el.style.aspectRatio = (vp.width + ' / ' + vp.height);
             }
@@ -310,24 +396,28 @@
                 el.style.aspectRatio = canvas.style.aspectRatio;
                 var old = el.querySelector('canvas');
                 if (old) old.parentNode.replaceChild(canvas, old);
+                else el.insertBefore(canvas, el.firstChild);
                 page.render({ canvasContext: canvas.getContext('2d'), viewport: vp })
                     .promise.then(function() {
                         var ph = el.querySelector('.ph'); if (ph) ph.classList.add('off');
                         rendered[n] = true;
                         delete rendering[n];
+                        drawHighlights(n);
                     }).catch(function() { delete rendering[n]; });
             }).catch(function() { delete rendering[n]; });
         }
 
         function updateCur(n) {
-            if (n === curPage) return;
-            var prev = pgEls[curPage - 1];
-            if (prev) prev.classList.remove('cur');
-            curPage = n;
+            if (n !== curPage) {
+                var prev = pgEls[curPage - 1];
+                if (prev) prev.classList.remove('cur');
+                curPage = n;
+            }
             var el = pgEls[n - 1];
             if (el) el.classList.add('cur');
             statusEl.textContent = curPage + ' / ' + total;
             if (pageInput) pageInput.value = curPage;
+            scrollThumbTo(curPage);
             if (total > 1) fill.style.width = Math.round((curPage - 1) / (total - 1) * 100) + '%';
             // 预渲染邻近页
             scheduleRender(curPage, 0); scheduleRender(curPage + 1, 120); scheduleRender(curPage - 1, 120);
@@ -397,6 +487,12 @@
             relayout();
             scheduleRender(curPage, 60); scheduleRender(curPage + 1, 120);
         };
+        window.pdfSetFit = function(v) {
+            fitMode = (v === 'p') ? 'p' : 'w';
+            try { localStorage.setItem('sr_pdf_fit', fitMode); } catch (e) {}
+            relayout();
+            scheduleRender(curPage, 0); scheduleRender(curPage + 1, 120);
+        };
         window.pdfToggleTune = function() {
             var p = document.getElementById('tunePanel');
             if (!p) return;
@@ -411,11 +507,11 @@
             document.getElementById('tocBtn').setAttribute('aria-expanded', open ? 'true' : 'false');
         };
         document.addEventListener('click', function(e) {
-            ['tunePanel', 'tocPanel'].forEach(function(id) {
+            ['tunePanel', 'tocPanel', 'findPanel'].forEach(function(id) {
                 var p = document.getElementById(id);
                 if (!p || !p.classList.contains('show')) return;
                 if (p.contains(e.target)) return;
-                var btn = document.getElementById(id === 'tunePanel' ? 'tuneBtn' : 'tocBtn');
+                var btn = document.getElementById(id === 'tunePanel' ? 'tuneBtn' : (id === 'findPanel' ? 'findBtn' : 'tocBtn'));
                 if (btn && btn.contains(e.target)) return;
                 p.classList.remove('show');
                 if (btn) btn.setAttribute('aria-expanded', 'false');
@@ -423,6 +519,9 @@
         });
         document.addEventListener('keydown', function(e) {
             if (e.target === pageInput) return;
+            if (e.key === 'Escape') { closePanels(); return; }
+            if ((e.ctrlKey || e.metaKey) && (e.key === 'f' || e.key === 'F')) { window.pdfToggleFind(true); e.preventDefault(); return; }
+            if (e.target === document.getElementById('findInput')) return;
             if (e.key === 'ArrowLeft' || e.key === 'PageUp') { window.pdfPrev(); e.preventDefault(); }
             else if (e.key === 'ArrowRight' || e.key === 'PageDown' || e.key === ' ') { window.pdfNext(); e.preventDefault(); }
             else if (e.key === '+' || e.key === '=') window.pdfSetPref('font_size', prefs.font_size + 1);
@@ -433,6 +532,252 @@
             clearTimeout(rsTimer);
             rsTimer = setTimeout(relayout, 180);
         });
+
+        // ===== 页内查找（跨页 getTextContent + 命中矩形高亮） =====
+        var findState = { runId: 0, matches: [], pos: -1 };
+        var hlRects = {};                       // page -> [ {l,t,w,h,i} ]（比例坐标）
+        function normFind(s) { return String(s).replace(/\s+/g, ''); }
+        function drawHighlights(n) {
+            var el = pgEls[n - 1];
+            if (!el) return;
+            var old = el.querySelector('.hl-layer');
+            if (old) old.parentNode.removeChild(old);
+            var rects = hlRects[n];
+            if (!rects || !rects.length) return;
+            var layer = document.createElement('div');
+            layer.className = 'hl-layer';
+            layer.style.cssText = 'position:absolute;left:0;top:0;width:100%;height:100%;pointer-events:none;';
+            for (var i = 0; i < rects.length; i++) {
+                var r = rects[i];
+                var d = document.createElement('span');
+                d.className = 'hlrect' + (r.i === findState.pos ? ' cur' : '');
+                d.style.left = (r.l * 100) + '%';
+                d.style.top = (r.t * 100) + '%';
+                d.style.width = (r.w * 100) + '%';
+                d.style.height = (r.h * 100) + '%';
+                layer.appendChild(d);
+            }
+            el.appendChild(layer);
+        }
+        function redrawVisibleHighlights() {
+            var layers = document.querySelectorAll('.hl-layer');
+            for (var i = 0; i < layers.length; i++) {
+                var pg = layers[i].parentNode;
+                var idx = pgEls.indexOf(pg);
+                if (idx >= 0) drawHighlights(idx + 1);
+            }
+        }
+        function escHtml(s) {
+            return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+        }
+        function renderFindList() {
+            var list = document.getElementById('findList');
+            if (!list) return;
+            var cap = Math.min(findState.matches.length, 300);
+            var html = '';
+            for (var i = 0; i < cap; i++) {
+                var m = findState.matches[i];
+                html += '<button data-i="' + i + '"' + (i === findState.pos ? ' class="on"' : '') +
+                        '><span class="fp">P' + m.page + '</span>' + escHtml(m.snip) + '</button>';
+            }
+            list.innerHTML = html;
+            var btns = list.querySelectorAll('button[data-i]');
+            for (var j = 0; j < btns.length; j++) {
+                (function (b) {
+                    b.addEventListener('click', function () { jumpMatch(+b.getAttribute('data-i')); });
+                })(btns[j]);
+            }
+        }
+        function jumpMatch(i) {
+            if (!findState.matches.length) return;
+            i = Math.max(0, Math.min(findState.matches.length - 1, i));
+            findState.pos = i;
+            var fmeta = document.getElementById('findMeta');
+            if (fmeta) fmeta.textContent = '共命中 ' + findState.matches.length +
+                ' 处（当前第 ' + (i + 1) + ' 处）';
+            redrawVisibleHighlights();
+            renderFindList();
+            var cur = document.querySelector('#findList button.on');
+            if (cur && cur.scrollIntoView) cur.scrollIntoView({ block: 'nearest' });
+            var m = findState.matches[i];
+            goPage(m.page);
+            scheduleRender(m.page, 0);
+        }
+        window.pdfToggleFind = function(forceOpen) {
+            var p = document.getElementById('findPanel');
+            if (!p) return;
+            var open;
+            if (forceOpen === true) { p.classList.add('show'); open = true; }
+            else open = p.classList.toggle('show');
+            document.getElementById('findBtn').setAttribute('aria-expanded', open ? 'true' : 'false');
+            if (open) {
+                var inp = document.getElementById('findInput');
+                if (inp) inp.focus();
+                var meta = document.getElementById('findMeta');
+                if (meta && !meta.textContent) meta.textContent = findState.matches.length ?
+                    '共命中 ' + findState.matches.length + ' 处' : '输入关键词后回车搜索';
+            }
+        };
+        window.pdfStartFind = function() {
+            if (!pdf) return;
+            var inp = document.getElementById('findInput');
+            if (!inp) return;
+            var q = normFind(inp.value);
+            var meta = document.getElementById('findMeta');
+            var runId = ++findState.runId;
+            findState.matches = []; findState.pos = -1;
+            hlRects = {};
+            redrawVisibleHighlights();
+            renderFindList();
+            if (!q) { if (meta) meta.textContent = ''; return; }
+            if (meta) meta.textContent = '搜索中… 0/' + total;
+            var p = 1;
+            function finish() {
+                if (runId !== findState.runId) return;
+                renderFindList();
+                var n = findState.matches.length;
+                if (meta) meta.textContent = n ?
+                    '共命中 ' + n + ' 处（当前第 ' + (findState.pos + 1) + ' 处）' : '未找到「' + q + '」';
+            }
+            function step() {
+                if (runId !== findState.runId) return;
+                if (p > total) { finish(); return; }
+                var cur = p; p++;
+                pdf.getPage(cur).then(function(page) {
+                    if (runId !== findState.runId) return null;
+                    return page.getTextContent().then(function(tc) {
+                        if (runId !== findState.runId) return;
+                        var items = [];
+                        for (var k = 0; k < tc.items.length; k++) {
+                            if (tc.items[k].str && tc.items[k].str.length) items.push(tc.items[k]);
+                        }
+                        var full = '', starts = [];
+                        for (var a = 0; a < items.length; a++) {
+                            starts.push(normFind(full).length);
+                            full += items[a].str;
+                        }
+                        full = normFind(full);
+                        var low = full.toLowerCase(), ql = q.toLowerCase();
+                        var idx = 0, pageHits = 0, k2, m3;
+                        var vp = page.getViewport({ scale: 1 });
+                        while (findState.matches.length < 500 && idx <= low.length - ql.length) {
+                            var at = low.indexOf(ql, idx);
+                            if (at < 0) break;
+                            idx = at + Math.max(1, ql.length);
+                            var si = 0, ei = 0;
+                            for (k2 = items.length - 1; k2 >= 0; k2--) { if (starts[k2] <= at) { si = k2; break; } }
+                            for (k2 = si; k2 < items.length; k2++) {
+                                if (starts[k2] < at + ql.length) ei = k2; else break;
+                            }
+                            var rects = [];
+                            for (m3 = si; m3 <= ei; m3++) {
+                                var it = items[m3];
+                                if (!it.width || !it.height) continue;
+                                if (it.dir && it.dir.indexOf('ltr') !== 0) continue;
+                                var tx = pdfjsLib.Util.transform(vp.transform, it.transform);
+                                var fh = Math.hypot(tx[2], tx[3]);
+                                if (!fh) continue;
+                                rects.push({ l: tx[4] / vp.width, t: (tx[5] - fh) / vp.height,
+                                             w: Math.min(1, it.width / vp.width), h: fh / vp.height, i: 0 });
+                            }
+                            if (!rects.length) continue;
+                            var gi = findState.matches.length;
+                            for (m3 = 0; m3 < rects.length; m3++) {
+                                rects[m3].i = gi;
+                                if (!hlRects[cur]) hlRects[cur] = [];
+                                hlRects[cur].push(rects[m3]);
+                            }
+                            findState.matches.push({ page: cur, snip: String(items[si].str || '').trim().slice(0, 80) });
+                            pageHits++;
+                        }
+                        if (meta) meta.textContent = '搜索中… ' + cur + '/' + total +
+                            '，命中 ' + findState.matches.length;
+                        if (pageHits) { renderFindList(); drawHighlights(cur); }
+                        if (findState.matches.length >= 500) { finish(); return; }
+                        setTimeout(step, 0);
+                    });
+                }).catch(function() {
+                    if (runId === findState.runId) setTimeout(step, 0);
+                });
+            }
+            setTimeout(step, 0);
+        };
+
+        // ===== 缩略图侧栏（懒渲染 + 当前页高亮） =====
+        var thumbRendered = {};
+        var thumbObserver = null;
+        window.pdfToggleRail = function() {
+            var rail = document.getElementById('thumbRail');
+            if (!rail) return;
+            var open = rail.classList.toggle('open');
+            document.body.classList.toggle('rail-open', open);
+            document.getElementById('railBtn').setAttribute('aria-expanded', open ? 'true' : 'false');
+            if (open) { observeThumbs(); scrollThumbTo(curPage); }
+        };
+        function buildThumbs() {
+            var wrap = document.getElementById('thumbs');
+            if (!wrap) return;
+            var frag = document.createDocumentFragment();
+            for (var i = 1; i <= total; i++) {
+                var d = document.createElement('div');
+                d.className = 'thumb';
+                d.setAttribute('data-page', i);
+                d.innerHTML = '<div class="tn">' + i + '</div>';
+                d.addEventListener('click', (function(n) { return function() { goPage(n); }; })(i));
+                frag.appendChild(d);
+            }
+            wrap.innerHTML = '';
+            wrap.appendChild(frag);
+            thumbRendered = {};
+        }
+        function observeThumbs() {
+            if (!('IntersectionObserver' in window)) return;
+            if (thumbObserver) thumbObserver.disconnect();
+            var rail = document.getElementById('thumbRail');
+            thumbObserver = new IntersectionObserver(function(ents) {
+                for (var i = 0; i < ents.length; i++) {
+                    if (!ents[i].isIntersecting) continue;
+                    var n = +ents[i].target.getAttribute('data-page');
+                    if (!thumbRendered[n]) renderThumb(n, ents[i].target);
+                }
+            }, { root: rail, rootMargin: '300px' });
+            var ts = document.querySelectorAll('.thumb');
+            for (var j = 0; j < ts.length; j++) thumbObserver.observe(ts[j]);
+        }
+        function renderThumb(n, el) {
+            if (!pdf || thumbRendered[n] || n < 1 || n > total) return;
+            thumbRendered[n] = true;
+            pdf.getPage(n).then(function(page) {
+                var v1 = page.getViewport({ scale: 1 });
+                var vp = page.getViewport({ scale: 124 / v1.width });
+                var c = document.createElement('canvas');
+                c.width = Math.floor(vp.width);
+                c.height = Math.floor(vp.height);
+                el.appendChild(c);
+                return page.render({ canvasContext: c.getContext('2d'), viewport: vp }).promise;
+            }).catch(function() { delete thumbRendered[n]; });
+        }
+        function scrollThumbTo(n) {
+            var t = document.querySelector('.thumb[data-page="' + n + '"]');
+            var curs = document.querySelectorAll('.thumb.cur');
+            for (var i = 0; i < curs.length; i++) curs[i].classList.remove('cur');
+            if (!t) return;
+            t.classList.add('cur');
+            if (document.getElementById('thumbRail').classList.contains('open') &&
+                t.scrollIntoView) t.scrollIntoView({ block: 'nearest' });
+        }
+        function closePanels() {
+            ['tunePanel', 'tocPanel', 'findPanel'].forEach(function(id) {
+                var p = document.getElementById(id);
+                if (p) p.classList.remove('show');
+            });
+            ['tuneBtn', 'tocBtn', 'findBtn', 'railBtn'].forEach(function(id) {
+                var b = document.getElementById(id);
+                if (b) b.setAttribute('aria-expanded', 'false');
+            });
+            var rail = document.getElementById('thumbRail');
+            if (rail) { rail.classList.remove('open'); document.body.classList.remove('rail-open'); }
+        }
 
         function buildToc(outline, level) {
             level = level || 1;
@@ -492,6 +837,7 @@
                     pagesEl.innerHTML = '';
                     pagesEl.appendChild(frag);
                     pgEls = Array.prototype.slice.call(pagesEl.querySelectorAll('.pg'));
+                    buildThumbs();
                     doc.getPage(1).then(function(p1) {
                         vp1 = p1.getViewport({ scale: 1 });
                         relayout();
@@ -529,6 +875,11 @@
         try { dual = localStorage.getItem('sr_dual_page') === '1' &&
                          window.matchMedia('(min-width: 769px)').matches; } catch (e) { dual = false; }
         document.body.classList.toggle('dual', dual);
+        try { fitMode = (localStorage.getItem('sr_pdf_fit') === 'p') ? 'p' : 'w'; } catch (e) {}
+        var fi = document.getElementById('findInput');
+        if (fi) fi.addEventListener('keydown', function(e) {
+            if (e.key === 'Enter') { e.preventDefault(); window.pdfStartFind(); }
+        });
         fetch('/api/user/theme', { credentials: 'same-origin' })
             .then(function(r) { return r.json(); })
             .then(function(d) {

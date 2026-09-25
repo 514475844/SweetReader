@@ -458,6 +458,28 @@ body.dark-theme .card-fav.on { color: #e8848a; }
 .books-grid.compact .book-card .meta { margin: 0; flex: 0 0 auto; }
 mark.sr-hl { background: #ffe08a; color: inherit; border-radius: 2px; padding: 0 1px; }
 body.dark-theme mark.sr-hl { background: #b58900; color: #16161f; }
+/* 搜索历史下拉（B25） */
+.filter-bar .search-wrapper { position: relative; }
+.search-history {
+    position: absolute; top: 100%; left: 0; right: 0; margin-top: 6px; z-index: 60;
+    background: #fff; border: 1px solid rgba(128,128,128,.22); border-radius: 10px;
+    box-shadow: 0 8px 24px rgba(0,0,0,.14); overflow: hidden;
+    opacity: 0; transform: translateY(-4px); pointer-events: none;
+    transition: opacity .18s ease-out, transform .18s ease-out;
+}
+.search-history.open { opacity: 1; transform: none; pointer-events: auto; }
+body.dark-theme .search-history { background: #22222e; border-color: rgba(255,255,255,.14); }
+.sh-item { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 8px 12px; cursor: pointer; font-size: 13px; color: inherit; }
+.sh-item:hover { background: rgba(120,140,255,.10); }
+.sh-item .sh-q { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.sh-item .sh-del { flex: 0 0 auto; opacity: .4; cursor: pointer; padding: 2px 4px; font-size: 12px; min-width: 24px; min-height: 24px; line-height: 20px; text-align: center; }
+.sh-item .sh-del:hover { opacity: 1; color: #e8848a; }
+.sh-clear { width: 100%; text-align: center; padding: 7px 0; font-size: 12px; color: #999; cursor: pointer; border-top: 1px solid rgba(128,128,128,.15); min-height: 30px; }
+.sh-clear:hover { color: #e8848a; }
+body.dark-theme .sh-clear { color: #889; }
+.tag-chip.sr-hl { background: #ffe08a; color: #16161f; }
+body.dark-theme .tag-chip.sr-hl { background: #b58900; color: #16161f; }
+@media (prefers-reduced-motion: reduce) { .search-history { transition: none; } }
 .empty-state {
     text-align: center;
     padding: 40px 20px;
@@ -888,6 +910,54 @@ body.dark-theme .hero-dot.active { background: var(--primary) !important; }
     .show-all-btn, .ext-mini, .tag-filter-btn { min-height: 34px; }
     .extension-action { min-height: 34px; display: inline-flex; align-items: center; }
 }
+
+/* ===== B28 批量操作（多选 + 批量改分类/删除） ===== */
+.batch-btn { display: none; }
+body.can-batch .batch-btn { display: inline-block; }
+.book-card .pick-dot {
+    position: absolute; top: 8px; left: 8px; width: 22px; height: 22px;
+    border-radius: 50%; border: 2px solid rgba(150,150,160,.7); background: rgba(255,255,255,.92);
+    color: #fff; font-size: 13px; line-height: 18px; text-align: center; box-sizing: border-box;
+    opacity: 0; transform: scale(.6); pointer-events: none; z-index: 2;
+    transition: opacity .15s ease-out, transform .15s ease-out, background-color .15s ease-out;
+}
+body.batch-mode .book-card .pick-dot { opacity: 1; transform: scale(1); }
+.book-card.picked .pick-dot { background: #4a7dbe; border-color: #4a7dbe; }
+.book-card.picked .pick-dot::after { content: '\2713'; }
+.book-card.picked { outline: 2px solid #4a7dbe; outline-offset: -2px; }
+.batch-bar {
+    position: fixed; left: 50%; bottom: 14px; transform: translate(-50%, 130%);
+    display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 8px;
+    max-width: 94vw; padding: 8px 16px; border-radius: 24px;
+    background: #fff; border: 1px solid rgba(0,0,0,.08); box-shadow: 0 6px 24px rgba(0,0,0,.16);
+    opacity: 0; z-index: 60;
+    transition: transform .18s ease-out, opacity .18s ease-out;
+}
+body.batch-mode .batch-bar { transform: translate(-50%, 0); opacity: 1; }
+.batch-bar.busy { pointer-events: none; opacity: .65; }
+.bb-count { font-size: 13px; font-weight: 600; white-space: nowrap; }
+.batch-modal-mask {
+    position: fixed; top: 0; right: 0; bottom: 0; left: 0; z-index: 70;
+    display: flex; align-items: center; justify-content: center;
+    background: rgba(0,0,0,.45); opacity: 0; visibility: hidden;
+    transition: opacity .18s ease-out, visibility .18s ease-out;
+}
+.batch-modal-mask.open { opacity: 1; visibility: visible; }
+.batch-modal {
+    background: #fff; border-radius: 12px; padding: 18px 20px; width: min(430px, 92vw);
+    transform: translateY(8px); transition: transform .18s ease-out;
+}
+.batch-modal-mask.open .batch-modal { transform: translateY(0); }
+.bm-title { font-size: 15px; font-weight: 600; margin-bottom: 12px; }
+.batch-modal select { width: 100%; padding: 6px 8px; border: 1px solid #ccc; border-radius: 8px; }
+.bm-mf { display: flex; align-items: center; gap: 6px; margin: 12px 0; font-size: 13px; }
+.bm-actions { display: flex; justify-content: flex-end; gap: 8px; }
+body.dark-theme .batch-bar { background: #2a2a35; border-color: rgba(255,255,255,.12); }
+body.dark-theme .batch-modal { background: #2a2a35; color: #e0e0e0; }
+body.dark-theme .batch-modal select { background: #1e1e28; color: #e0e0e0; border-color: #444; }
+@media (prefers-reduced-motion: reduce) {
+    .book-card .pick-dot, .batch-bar, .batch-modal-mask, .batch-modal { transition: none; }
+}
 </style>
 {% endblock %}
 
@@ -898,7 +968,7 @@ body.dark-theme .hero-dot.active { background: var(--primary) !important; }
         <div class="sidebar-header">
             <span>分类导航</span>
             <button class="show-all-btn" id="showAllBtn" onclick="toggleShowAll()" title="显示/隐藏乱码与噪声分类">显示全部</button>
-            <span class="cat-toggle" onclick="toggleCatBar()" title="展开/收起分类">▸</span>
+            <span class="cat-toggle" role="button" tabindex="0" aria-label="展开/收起分类" onclick="toggleCatBar()" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();toggleCatBar();}" title="展开/收起分类">▸</span>
         </div>
         <ul id="categoryTree">
             <li>
@@ -1022,7 +1092,9 @@ body.dark-theme .hero-dot.active { background: var(--primary) !important; }
                 <button class="format-btn" data-format="DOCX" onclick="filterFormat('DOCX')">DOCX</button>
                 <div class="search-wrapper">
                     <span class="search-icon">🔍</span>
-                    <input type="text" class="search-input" id="searchInput" placeholder="搜索书名/作者/文件名/标签..." oninput="searchBooks(this.value)">
+                    <input type="text" class="search-input" id="searchInput" placeholder="搜索书名/作者/文件名/标签..." oninput="searchBooks(this.value)"
+                           autocomplete="off" aria-label="搜索书名、作者、文件名或标签">
+                    <div class="search-history" id="searchHistory" aria-label="搜索历史"></div>
                 </div>
                 <select class="sort-select" id="sortSelect" onchange="changeSort(this.value)" title="书架排序方式">
                     <option value="default">默认排序</option>
@@ -1034,6 +1106,7 @@ body.dark-theme .hero-dot.active { background: var(--primary) !important; }
                 </select>
                 <button class="format-btn" id="sortOrderBtn" onclick="toggleSortOrder()" title="切换升序/降序">↓ 降序</button>
                 <button class="format-btn" id="viewToggleBtn" onclick="toggleBookView()" title="切换网格/列表">▦ 网格</button>
+                <button class="format-btn batch-btn" id="batchBtn" onclick="enterBatchMode()" title="批量管理：多选后改分类或删除" aria-label="进入批量管理模式">☑ 批量</button>
                 <span class="active-tag" id="activeTag" style="display:none;" onclick="filterTag('')"></span>
                 <span class="book-count" id="bookCount">0</span>
             </div>
@@ -1073,6 +1146,28 @@ body.dark-theme .hero-dot.active { background: var(--primary) !important; }
 
 <div class="books-grid" id="booksGrid" style="display:none;"></div>
         <button id="loadMoreBtn" class="load-more-btn" style="display:none;" onclick="loadMore()">加载更多 ↓</button>
+
+        <!-- B28 批量操作栏（多选模式显示） -->
+        <div class="batch-bar" id="batchBar" role="toolbar" aria-label="批量操作工具栏">
+            <span class="bb-count" id="bbCount">已选 0 本</span>
+            <button class="btn btn-sm btn-outline" onclick="batchSelectAll()">全选已加载</button>
+            <button class="btn btn-sm btn-outline" onclick="batchClearSel()">清空</button>
+            <button class="btn btn-sm btn-primary" id="bbMove" onclick="openBatchMove()">改分类</button>
+            <button class="btn btn-sm btn-danger" id="bbDel" onclick="batchDelete()">删除</button>
+            <button class="btn btn-sm btn-outline" onclick="exitBatchMode()">退出批量</button>
+        </div>
+        <div class="batch-modal-mask" id="batchMoveMask" onclick="if(event.target===this)this.classList.remove('open')">
+            <div class="batch-modal" role="dialog" aria-modal="true" aria-label="批量移动到分类">
+                <div class="bm-title">移动 <span id="bmN">0</span> 本书到目标分类</div>
+                <select id="batchMoveSel" aria-label="目标分类"><option value="">选择目标分类…</option></select>
+                <label class="bm-mf"><input type="checkbox" id="batchMoveFiles" checked> 同时移动磁盘文件到目标目录</label>
+                <div class="bm-actions">
+                    <button class="btn btn-sm btn-outline" onclick="closeBatchMove()">取消</button>
+                    <button class="btn btn-sm btn-primary" onclick="doBatchMove()">移动</button>
+                </div>
+            </div>
+        </div>
+
         </div>
     </div>
 </div>
@@ -1317,8 +1412,89 @@ var searchTimer = null;
 function searchBooks(query) {
     searchQuery = query;
     if (searchTimer) clearTimeout(searchTimer);
-    searchTimer = setTimeout(function() { resetAndLoad(); }, 300);
+    searchTimer = setTimeout(function() {
+        if ((query || '').trim()) pushSearchHistory(query);
+        resetAndLoad();
+    }, 300);
 }
+
+// ===== 搜索历史（B25：本地 localStorage，最多 8 条，可单删/一键清空） =====
+var SEARCH_HIST_KEY = 'sr_search_history';
+function getSearchHistory() {
+    try {
+        var a = JSON.parse(localStorage.getItem(SEARCH_HIST_KEY) || '[]');
+        if (!Array.isArray(a)) return [];
+        return a.filter(function(x) { return typeof x === 'string' && x.trim(); }).slice(0, 8);
+    } catch (e) { return []; }
+}
+function saveSearchHistory(arr) {
+    try { localStorage.setItem(SEARCH_HIST_KEY, JSON.stringify(arr.slice(0, 8))); } catch (e) {}
+}
+function pushSearchHistory(q) {
+    q = String(q || '').trim();
+    if (!q) return;
+    var arr = getSearchHistory();
+    var i = arr.indexOf(q);
+    if (i > -1) arr.splice(i, 1);
+    arr.unshift(q);
+    saveSearchHistory(arr);
+}
+function closeSearchHistory() {
+    var box = document.getElementById('searchHistory');
+    if (box) box.classList.remove('open');
+}
+function renderSearchHistory() {
+    var box = document.getElementById('searchHistory');
+    if (!box) return;
+    var arr = getSearchHistory();
+    if (!arr.length) { closeSearchHistory(); box.innerHTML = ''; return; }
+    var html = '';
+    arr.forEach(function(q) {
+        html += '<div class="sh-item" data-q="' + escapeHtml(q) + '"><span class="sh-q">' +
+            escapeHtml(q) + '</span><span class="sh-del" title="删除该条" aria-label="删除该条历史">\u2715</span></div>';
+    });
+    html += '<div class="sh-clear" id="shClear">\u6e05\u7a7a\u641c\u7d22\u5386\u53f2</div>';
+    box.innerHTML = html;
+    box.querySelectorAll('.sh-item').forEach(function(el) {
+        el.addEventListener('click', function(e) {
+            var del = e.target.closest('.sh-del');
+            if (del) {
+                var arr2 = getSearchHistory();
+                var idx = Array.prototype.indexOf.call(box.querySelectorAll('.sh-item'), el);
+                if (idx > -1) { arr2.splice(idx, 1); saveSearchHistory(arr2); }
+                if (arr2.length) renderSearchHistory(); else { box.innerHTML = ''; closeSearchHistory(); }
+                e.stopPropagation();
+                return;
+            }
+            var q = el.dataset.q;
+            var inp = document.getElementById('searchInput');
+            if (inp) inp.value = q;
+            closeSearchHistory();
+            searchBooks(q);
+        });
+    });
+    var clr = document.getElementById('shClear');
+    if (clr) clr.addEventListener('click', function(e) {
+        e.stopPropagation();
+        try { localStorage.removeItem(SEARCH_HIST_KEY); } catch (err) {}
+        box.innerHTML = '';
+        closeSearchHistory();
+    });
+    box.classList.add('open');
+}
+(function initSearchHistory() {
+    var inp = document.getElementById('searchInput');
+    if (!inp) return;
+    inp.addEventListener('focus', function() {
+        if (getSearchHistory().length) renderSearchHistory();
+    });
+    inp.addEventListener('keydown', function(e) {
+        if (e.key === 'Escape') closeSearchHistory();
+    });
+    document.addEventListener('click', function(e) {
+        if (!(e.target && e.target.closest && e.target.closest('.search-wrapper'))) closeSearchHistory();
+    });
+})();
 
 function srHighlight(text, q) {
     var s = (text == null ? '' : String(text));
@@ -1686,12 +1862,25 @@ function buildBookCard(book) {
     var card = document.createElement('div');
     card.className = 'book-card';
     card.dataset.id = book.id;
-    card.onclick = function() { window.location.href = '/read/' + book.id; };
+    if (batchSel[book.id]) card.classList.add('picked');
+    card.tabIndex = 0;
+    card.setAttribute('role', 'link');
+    card.setAttribute('aria-label', '\u9605\u8bfb\u300a' + (book.title || '\u672a\u77e5\u4e66\u540d')
+        + '\u300b' + (book.author ? '\uff0c\u4f5c\u8005 ' + book.author : ''));
+    var openCard = function() {
+        if (batchMode) { toggleCardPick(book.id, card); }
+        else { window.location.href = '/read/' + book.id; }
+    };
+    card.onclick = openCard;
+    card.onkeydown = function(e) {
+        if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openCard(); }
+    };
     var fmt = (book.file_type || '未知').toUpperCase();
     var fmtClass = 'fmt-' + (book.file_type || 'unknown').toLowerCase();
     var st = book.status || 'unread';
     var stText = ({ unread: '未读', reading: '在读', finished: '已读' })[st] || '未读';
     card.innerHTML =
+        '<span class="pick-dot" aria-hidden="true"></span>' +
         '<div class="title">' + srHighlight(book.title, searchQuery) + '</div>' +
         '<div class="author">' + srHighlight(book.author, searchQuery) + '</div>' +
         '<div class="meta"><span class="fmt-badge ' + fmtClass + '">' + fmt + '</span>' +
@@ -1705,10 +1894,19 @@ function buildBookCard(book) {
     var meta = card.querySelector('.meta');
     (book.tags || []).slice(0, 2).forEach(function(t) {
         var chip = document.createElement('span');
-        chip.className = 'tag-chip';
+        var hlTag = searchQuery && String(searchQuery).trim() &&
+            t.toLowerCase().indexOf(String(searchQuery).trim().toLowerCase()) > -1;
+        chip.className = 'tag-chip' + (hlTag ? ' sr-hl' : '');
         chip.textContent = t;
         chip.title = '\u7b5b\u9009\u6807\u7b7e\uff1a' + t;
         chip.onclick = function(e) { e.stopPropagation(); filterTag(t); };
+        chip.setAttribute('role', 'button');
+        chip.tabIndex = 0;
+        chip.onkeydown = function(e) {
+            if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault(); e.stopPropagation(); filterTag(t);
+            }
+        };
         meta.appendChild(chip);
     });
     var favBtn = card.querySelector('.card-fav');
@@ -1738,6 +1936,160 @@ function toggleCardFav(bookId, btn) {
     })
     .catch(function() { if (window.showToast) showToast('\u274c 网络错误', 'error'); })
     .finally(function() { btn.disabled = false; });
+}
+
+
+// ===== B28 批量操作（多选 + 批量改分类 / 批量删除） =====
+var SR_CAN_MANAGE = {{ 'true' if can_manage_books else 'false' }};
+var batchMode = false;
+var batchSel = {};
+var _batchCats = null;
+
+if (SR_CAN_MANAGE) document.body.classList.add('can-batch');
+
+function batchIds() { return Object.keys(batchSel).map(Number); }
+
+function enterBatchMode() {
+    if (!SR_CAN_MANAGE || batchMode) return;
+    batchMode = true;
+    document.body.classList.add('batch-mode');
+    renderGrid();
+    updateBatchBar();
+}
+
+function exitBatchMode() {
+    batchMode = false;
+    batchSel = {};
+    document.body.classList.remove('batch-mode');
+    closeBatchMove();
+    renderGrid();
+    updateBatchBar();
+}
+
+function toggleCardPick(id, card) {
+    if (batchSel[id]) { delete batchSel[id]; card.classList.remove('picked'); }
+    else { batchSel[id] = true; card.classList.add('picked'); }
+    updateBatchBar();
+}
+
+function updateBatchBar() {
+    var n = batchIds().length;
+    var el = document.getElementById('bbCount');
+    if (el) el.textContent = '已选 ' + n + ' 本';
+    ['bbMove', 'bbDel'].forEach(function(bid) {
+        var b = document.getElementById(bid);
+        if (b) b.disabled = (n === 0);
+    });
+}
+
+function batchSelectAll() {
+    var grid = document.getElementById('booksGrid');
+    if (!grid) return;
+    grid.querySelectorAll('.book-card').forEach(function(card) {
+        var id = parseInt(card.dataset.id, 10);
+        if (id) { batchSel[id] = true; card.classList.add('picked'); }
+    });
+    updateBatchBar();
+}
+
+function batchClearSel() {
+    batchSel = {};
+    var grid = document.getElementById('booksGrid');
+    if (grid) grid.querySelectorAll('.book-card.picked').forEach(function(c) { c.classList.remove('picked'); });
+    updateBatchBar();
+}
+
+function fillBatchCats() {
+    var sel = document.getElementById('batchMoveSel');
+    if (!sel) return;
+    var html = '<option value="">选择目标分类…</option>';
+    (_batchCats || []).forEach(function(c) {
+        html += '<option value="' + c.id + '">' + (c.full_path || c.name) + '（' + (c.book_count || 0) + '）</option>';
+    });
+    sel.innerHTML = html;
+}
+
+function openBatchMove() {
+    var ids = batchIds();
+    if (!ids.length) return;
+    var mask = document.getElementById('batchMoveMask');
+    if (!mask) return;
+    var nEl = document.getElementById('bmN');
+    if (nEl) nEl.textContent = ids.length;
+    var sel = document.getElementById('batchMoveSel');
+    if (sel && !_batchCats) {
+        sel.innerHTML = '<option value="">加载中…</option>';
+        fetch('/api/categories?mode=flat', { credentials: 'same-origin' })
+            .then(function(r) { return r.json(); })
+            .then(function(list) { _batchCats = list || []; fillBatchCats(); })
+            .catch(function() { sel.innerHTML = '<option value="">加载失败，请重试</option>'; });
+    } else if (sel) {
+        fillBatchCats();
+    }
+    mask.classList.add('open');
+}
+
+function closeBatchMove() {
+    var mask = document.getElementById('batchMoveMask');
+    if (mask) mask.classList.remove('open');
+}
+
+function doBatchMove() {
+    var sel = document.getElementById('batchMoveSel');
+    var cid = sel ? parseInt(sel.value, 10) : 0;
+    if (!cid) { if (window.showToast) showToast('请先选择目标分类', 'error'); return; }
+    var mf = document.getElementById('batchMoveFiles');
+    batchPost({ ids: batchIds(), action: 'move', category_id: cid, move_files: !!(mf && mf.checked) });
+}
+
+function batchDelete() {
+    var ids = batchIds();
+    if (!ids.length) return;
+    var tip = '将彻底删除选中的 ' + ids.length + ' 本书：\n磁盘文件、封面、阅读进度、书签一并清除，不可恢复。\n\n确定要删除吗？';
+    if (!window.confirm(tip)) return;
+    batchPost({ ids: ids, action: 'delete' });
+}
+
+function batchPost(payload) {
+    var bar = document.getElementById('batchBar');
+    if (bar) bar.classList.add('busy');
+    fetch('/api/admin/books/batch', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'same-origin',
+        body: JSON.stringify(payload)
+    })
+    .then(function(r) { return r.json().catch(function() { return { success: false, message: 'HTTP ' + r.status }; }); })
+    .then(function(d) {
+        if (bar) bar.classList.remove('busy');
+        if (d && d.success) {
+            closeBatchMove();
+            showBatchReport(d);
+            exitBatchMode();
+            currentPage = 1;
+            loadBooks();
+        } else {
+            if (window.showToast) showToast('\u274c ' + ((d && d.message) || '操作失败'), 'error');
+        }
+    })
+    .catch(function() {
+        if (bar) bar.classList.remove('busy');
+        if (window.showToast) showToast('\u274c 网络错误', 'error');
+    });
+}
+
+function showBatchReport(d) {
+    var fail = (d.failed || []).length;
+    var msg = '成功 ' + (d.affected || 0) + ' 本';
+    if (d.files_moved) msg += '，移动文件 ' + d.files_moved + ' 个';
+    if (d.files_skipped) msg += '，跳过 ' + d.files_skipped + ' 个';
+    if (d.files_deleted) msg += '，删除文件 ' + d.files_deleted + ' 个';
+    if (fail) msg += '，失败 ' + fail + ' 本';
+    if (window.showToast) showToast(msg, fail ? 'error' : 'success');
+    if (fail) {
+        var fl = (d.failed || []).slice(0, 20).join(', ');
+        window.alert('以下书籍处理失败（id）：' + fl + ((d.failed || []).length > 20 ? ' …' : ''));
+    }
 }
 
 function loadBooks() {
