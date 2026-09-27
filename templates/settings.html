@@ -17,8 +17,17 @@
 .settings-card .theme-options .theme-btn.default::after { content: '🍭'; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); font-size: 18px; }
 .settings-card .theme-options .theme-btn.dark { background: #1a1a2e; border-color: #333; }
 .settings-card .theme-options .theme-btn.green { background: #d4edda; border-color: #5cb85c; }
+.settings-card .theme-options .theme-btn.auto { background: linear-gradient(135deg, #f5f0eb 0%, #f5f0eb 49%, #1a1a2e 51%, #1a1a2e 100%); border-color: #c0a0e0; }
 .settings-card input[type="range"] { width: 100%; margin: 8px 0 12px; }
 .settings-card .range-value { float: right; font-weight: 600; color: var(--primary); }
+/* 登录设备管理（#542） */
+.settings-card .device-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 10px 12px; border: 1px solid var(--primary-light); border-radius: 10px; margin-bottom: 8px; }
+.settings-card .device-row.device-current { border-color: var(--primary); background: rgba(232,132,138,0.06); }
+.settings-card .device-name { font-size: 14px; font-weight: 600; color: var(--text-dark); }
+.settings-card .device-ua { font-size: 12px; color: var(--text-light); margin: 2px 0; word-break: break-all; }
+.settings-card .device-time { font-size: 12px; color: var(--text-light); }
+.settings-card .device-revoke { flex-shrink: 0; border: 1px solid var(--primary); color: var(--primary); background: transparent; border-radius: 16px; padding: 5px 14px; font-size: 13px; cursor: pointer; transition: all 0.2s; }
+.settings-card .device-revoke:hover { background: var(--primary); color: #fff; }
 .settings-card .btn { width: 100%; padding: 12px; border-radius: 30px; font-size: 16px; font-weight: 600; }
 .lang-selector { display: flex; gap: 8px; margin-top: 4px; }
 .lang-selector button { padding: 6px 16px; border: 2px solid var(--primary-light); border-radius: 8px; background: white; cursor: pointer; font-size: 14px; transition: all 0.2s; }
@@ -119,8 +128,9 @@
             <div class="theme-btn default active" data-theme="default" title="默认" onclick="previewTheme('default')"></div>
             <div class="theme-btn dark" data-theme="dark" title="暗色" onclick="previewTheme('dark')"></div>
             <div class="theme-btn green" data-theme="green" title="护眼" onclick="previewTheme('green')"></div>
+            <div class="theme-btn auto" data-theme="auto" title="跟随系统（夜间自动切换）" onclick="previewTheme('auto')"></div>
         </div>
-        <p style="color:var(--text-light);font-size:13px;margin-top:4px;">点击主题即可预览效果</p>
+        <p style="color:var(--text-light);font-size:13px;margin-top:4px;">点击主题即可预览效果 · 选「跟随系统」后阅读器会随设备深/浅色自动切换（#142）</p>
     </div>
     <div class="settings-card">
         <h3>📏 字体大小</h3>
@@ -147,6 +157,11 @@
         <h3>🧩 首页扩展</h3>
         <p style="color:var(--text-light);font-size:13px;margin-bottom:4px;">勾选要在首页「扩展功能」里显示的卡片</p>
         <div id="extPrefList"><p class="ext-pref-empty">加载中…</p></div>
+    </div>
+    <div class="settings-card">
+        <h3>📱 登录设备</h3>
+        <p style="color:var(--text-light);font-size:13px;margin-bottom:8px;">管理当前账号登录过的设备，移除后该设备将被强制下线</p>
+        <div id="deviceList"><p style="color:var(--text-light);font-size:13px;">加载中…</p></div>
     </div>
     <div class="settings-card" style="grid-column: 1 / -1;">
         <h3>📖 阅读偏好 <span style="font-size:12px;font-weight:400;color:var(--text-light);">与阅读页面板实时同源，改完点「保存全部」生效</span></h3>
@@ -177,9 +192,15 @@ var selectedTheme = 'default';
 
 function previewTheme(theme) {
     selectedTheme = theme;
+    var eff = theme;
+    if (theme === 'auto') {
+        try {
+            eff = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'default';
+        } catch (e) { eff = 'default'; }
+    }
     document.body.className = '';
-    if (theme !== 'default') {
-        document.body.classList.add(theme + '-theme');
+    if (eff !== 'default') {
+        document.body.classList.add(eff + '-theme');
     }
     document.querySelectorAll('.theme-btn').forEach(function(b) {
         b.classList.remove('active');
@@ -190,9 +211,10 @@ function previewTheme(theme) {
     var themes = {
         default: { primary: '#e8848a', dark: '#d46a70', light: '#f5d4d6' },
         dark: { primary: '#8a8ad4', dark: '#6a6ab0', light: '#d4d4f0' },
-        green: { primary: '#7bc8a4', dark: '#5fb88e', light: '#d4f0e4' }
+        green: { primary: '#7bc8a4', dark: '#5fb88e', light: '#d4f0e4' },
+        auto: { primary: '#c0a0e0', dark: '#9b6bd6', light: '#ecd9f7' }
     };
-    var t = themes[theme] || themes.default;
+    var t = themes[theme] || themes[eff] || themes.default;
     document.documentElement.style.setProperty('--primary', t.primary);
     document.documentElement.style.setProperty('--primary-dark', t.dark);
     document.documentElement.style.setProperty('--primary-light', t.light);
@@ -419,6 +441,46 @@ fetch('/api/user/theme').then(function(r) { return r.json(); }).then(function(da
         loadRecommendSetting();
         loadExtPrefs();
         loadReadPrefs();
+        loadDevices();
+
+        // ============ 登录设备管理（#542） ============
+        function _fmtTime(iso) {
+            if (!iso) return '';
+            try { return iso.replace('T', ' ').slice(0, 16); } catch (e) { return iso; }
+        }
+        function loadDevices() {
+            var box = document.getElementById('deviceList');
+            fetch('/api/devices').then(function(r){ return r.json(); }).then(function(d){
+                if (!d.success) { box.innerHTML = '<p style="color:var(--text-light);font-size:13px;">加载失败</p>'; return; }
+                if (!d.devices.length) { box.innerHTML = '<p style="color:var(--text-light);font-size:13px;">暂无设备记录，下次登录后自动登记</p>'; return; }
+                var h = '';
+                d.devices.forEach(function(dev){
+                    h += '<div class="device-row' + (dev.current ? ' device-current' : '') + '">'
+                       + '<div class="device-info">'
+                       + '<div class="device-name">' + (dev.current ? '✅ 本设备' : '💻 设备 #' + dev.id)
+                       + ' <span style="font-weight:400;color:var(--text-light);font-size:12px;">' + (dev.ip || '') + '</span></div>'
+                       + '<div class="device-ua">' + (dev.ua || '未知设备') + '</div>'
+                       + '<div class="device-time">登录于 ' + _fmtTime(dev.created_at)
+                       + ' · 最近活跃 ' + _fmtTime(dev.last_active) + '</div>'
+                       + '</div>'
+                       + '<button type="button" class="device-revoke" onclick="revokeDevice(' + dev.id + ')">移除</button>'
+                       + '</div>';
+                });
+                box.innerHTML = h;
+            }).catch(function(){ box.innerHTML = '<p style="color:var(--text-light);font-size:13px;">加载失败</p>'; });
+        }
+        function revokeDevice(id) {
+            if (!confirm('确认移除该设备？其登录状态将立即失效。')) return;
+            fetch('/api/devices/revoke', {
+                method: 'POST', headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({id: id})
+            }).then(function(r){ return r.json(); }).then(function(d){
+                if (!d.success) { showToast(d.message || '移除失败', 'error'); return; }
+                if (d.self) { window.location.href = '/login'; return; }
+                showToast('✅ 设备已移除', 'success');
+                loadDevices();
+            }).catch(function(){ showToast('移除失败，请重试', 'error'); });
+        }
 
 </script>
 {% endblock %}

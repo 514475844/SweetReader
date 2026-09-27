@@ -1,0 +1,7 @@
+admin uid = 2
+/sponsor                    -> 200 0.1s len=36398 ctype=text/html; charset=utf-8
+/api/admin/export-reading   -> 200 10.0s len=2594134 ctype=text/csv; charset=utf-8
+/settings                  -> 200 0.1s len=58253 ctype=text/html; charset=utf-8
+CSV head: ['book_id,title,author,file_type,read_count,readers,max_progress,last_read', '1,x,y,txt,92,1,1.0,2026-09-24T15:28:07.246081', '2,红颜堕之食寝病栋,,TXT,1,0,0.0,', '3,��Ʒ��� - ������,,TXT,0,0,0.0,']
+sponsor has 赞助: True | has DONATE: True
+RC=0

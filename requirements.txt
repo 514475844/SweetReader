@@ -13,3 +13,5 @@ Pillow==10.0.0
 waitress>=3.0
 # 中文书名按拼音首字母归类
 pypinyin>=0.51
+# RAR 压缩包导入（需系统级解压后端：Debian 装 libarchive-tools/bsdtar，Alpine apk 同名包）
+rarfile>=4.2

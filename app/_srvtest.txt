@@ -1,0 +1,9 @@
+=== anon HTTP smoke test (running server) ===
+/login                           -> 200 0.0s len=43482
+/sponsor                         -> 200 0.0s len=43482
+/api/admin/export-reading        -> 200 0.0s len=43482
+/api/scan-progress               -> 200 0.0s len=43482
+/settings                        -> 200 0.0s len=43482
+/admin                           -> 200 0.0s len=43482
+/admin/hub                       -> HTTP 404 0.0s
+RC=0

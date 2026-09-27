@@ -150,6 +150,44 @@ class Bookmark(db.Model):
     book = db.relationship('Book', backref=db.backref('bookmarks', lazy='dynamic'))
 
 
+class BookPermission(db.Model):
+    """书籍阅读权限（#540，2026-09-26 解除红线）。按用户控制书籍可见性。
+
+    采用「隐藏名单」模型存储：当某 (user_id, book_id) 记录存在且 hidden=True 时，
+    该用户在前端书库 / 搜索 / 书架中看不到这本书，也无法打开阅读。
+    管理员始终可见全部；不在此表中的书对所有用户默认可见（无额外开销）。
+    """
+    id = db.Column(db.Integer, primary_key=True)
+    book_id = db.Column(db.Integer, db.ForeignKey('book.id'), nullable=False, index=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False, index=True)
+    hidden = db.Column(db.Boolean, default=True)        # True=对该用户隐藏
+    granted_by = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    __table_args__ = (db.UniqueConstraint('book_id', 'user_id', name='uniq_book_user_perm'),)
+
+    book = db.relationship('Book', backref=db.backref('permissions', lazy='dynamic'))
+    user = db.relationship('User', foreign_keys=[user_id])
+
+
+class UserDevice(db.Model):
+    """登录设备（#542，2026-09-26 解除红线）。每用户维护已登录设备清单，可撤销（强制下线）。
+
+    device_key 是服务端签发的随机 token，存于客户端 cookie `sr_device`；
+    记录被标记 revoked 后，该 cookie 的后续请求会被强制登出。
+    """
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False, index=True)
+    device_key = db.Column(db.String(64), nullable=False)
+    ua = db.Column(db.Text, default='')                 # 登录时的 User-Agent 摘要
+    ip = db.Column(db.String(64), default='')
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    last_active = db.Column(db.DateTime, default=datetime.utcnow)
+    revoked = db.Column(db.Boolean, default=False)
+
+    __table_args__ = (db.UniqueConstraint('user_id', 'device_key', name='uniq_user_device'),)
+
+
 class UserTheme(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'), unique=True)
@@ -213,7 +251,7 @@ def ensure_schema():
     try:
         from sqlalchemy import inspect as sa_inspect
         insp = sa_inspect(db.engine)
-        for _m in (User, InviteCode, Book, Category, ReadingProgress, Bookmark, UserTheme):
+        for _m in (User, InviteCode, Book, Category, ReadingProgress, Bookmark, BookPermission, UserDevice, UserTheme):
             _table = _m.__tablename__
             if not insp.has_table(_table):
                 continue

@@ -1,0 +1,8 @@
+=== HTTP against running server ===
+/login -> 200 13.4s len=41442
+/sponsor -> 200 6.3s len=41442
+/api/scan-progress -> 200 0.1s len=41442
+/api/books?page=1&per_page=5 -> 200 0.0s len=41442
+=== minimal create_app ===
+CREATE_APP_ERR 0.0s ModuleNotFoundError("No module named 'app'")
+RC=0

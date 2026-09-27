@@ -9,7 +9,10 @@ if __name__ == '__main__':
         from waitress import serve
         # 容器里 stdout 是块缓冲，不加 flush 日志要攒满 4KB 才出现
         print('[run] starting with waitress on 0.0.0.0:5000 (threads=8)', flush=True)
-        serve(app, host='0.0.0.0', port=5000, threads=8)
+        # waitress 默认 max_request_body_size=1GB，超大压缩包（8~14G）会在它那里被
+        # 直接掐断（浏览器只见「网络错误」）——放宽到 18GB，与 Flask 层 16GB 上限配套。
+        serve(app, host='0.0.0.0', port=5000, threads=8,
+              max_request_body_size=18 * 1024 * 1024 * 1024)
     except ImportError:
         print('[run] waitress not available, fallback to Flask dev server', flush=True)
         app.run(host='0.0.0.0', port=5000, debug=False, threaded=True)

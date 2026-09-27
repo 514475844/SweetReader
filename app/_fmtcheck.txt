@@ -1,0 +1,14 @@
+=== MD ===
+<h1>标题</h1><p>这是<strong>粗体</strong>和<em>斜体</em>，还有<a href="https://x.com" target="_blank" rel="noopener">链接</a>。</p><ul><li>项目一</li><li>项目二</li></ul>
+
+=== FB2 ===
+<h3>第一章</h3><p>第一段落。</p><p>第二段落。</p>
+
+=== RTF ===
+'加粗标题\n 普通段落一行。\n 第二行。'
+
+=== ODT ===
+<p>第一段。</p><p>第二段。</p>
+
+ALL_CONVERTERS_OK
+RC=0

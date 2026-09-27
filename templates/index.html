@@ -1024,8 +1024,8 @@ body.dark-theme .batch-modal select { background: #1e1e28; color: #e0e0e0; borde
                     </div>
                 </div>
 
-                <!-- 标签：独立功能块（原在筛选栏里，现移入侧边栏） -->
-                <div class="extension-card" id="tagCard">
+                <!-- 标签：独立功能块（原在筛选栏里，现移入侧边栏）。2026-09-26 用户要求暂时屏蔽 -->
+                <div class="extension-card" id="tagCard" style="display:none;">
                     <div class="extension-title">标签</div>
                     <div class="extension-body">
                         <div class="status-row tag-row" id="tagRow" style="display:none;">
@@ -1108,7 +1108,7 @@ body.dark-theme .batch-modal select { background: #1e1e28; color: #e0e0e0; borde
                 <button class="format-btn" id="viewToggleBtn" onclick="toggleBookView()" title="切换网格/列表">▦ 网格</button>
                 <button class="format-btn batch-btn" id="batchBtn" onclick="enterBatchMode()" title="批量管理：多选后改分类或删除" aria-label="进入批量管理模式">☑ 批量</button>
                 <span class="active-tag" id="activeTag" style="display:none;" onclick="filterTag('')"></span>
-                <span class="book-count" id="bookCount">0</span>
+                <span class="book-count" id="bookCount" style="display:none;">0</span>
             </div>
         </div>
 
@@ -1715,10 +1715,10 @@ function toggleCatBar() {
 
 // ===== 目录树：按文件夹名逐级展开（子节点懒加载） =====
 var SHOW_ALL_CATS = false;
-function catIsValid(name, count, level) {
+function catIsValid(name, count, level, hasChildren) {
     var nm = String(name || '');
     if (!nm.trim() || nm.indexOf('\ufffd') >= 0) return false;
-    if (level <= 1 && (count || 0) < 20) return false;
+    if (level <= 1 && (count || 0) < 20 && !hasChildren) return false;
     return true;
 }
 function applyCatFilter() {
@@ -1767,7 +1767,7 @@ function toggleCatNode(caret, id, ev) {
 }
 function buildCatNode(c, level) {
     var li = document.createElement('li');
-    li.className = 'cat-node' + (catIsValid(c.name, c.book_count, level) ? '' : ' cat-noise');
+    li.className = 'cat-node' + (catIsValid(c.name, c.book_count, level, c.has_children) ? '' : ' cat-noise');
     li.setAttribute('data-id', c.id);
     li.setAttribute('data-level', level);
     var row = document.createElement('div');

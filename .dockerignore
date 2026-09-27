@@ -43,3 +43,17 @@ logs/
 .env
 .venv
 venv/
+
+# 非运行时文档与开发文件（缩小最终镜像）
+docs/
+*.md
+README*
+CHANGELOG*
+LICENSE
+CONTRIBUTING*
+tests/
+test_*.py
+*_test.py
+.tools/
+auto/
+.github/

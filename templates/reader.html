@@ -658,8 +658,8 @@ body.immersive .reader-guide, body.immersive .auto-pill { display: none !importa
         {% set ext = book.filename.split('.')[-1].lower() %}
         {% if ext == 'epub' %}
             <iframe id="srEmbedFrame" data-embed="epub" src="/epub-reader?id={{ book.id }}" title="EPUB 阅读器"></iframe>
-        {% elif ext == 'pdf' %}
-            <iframe id="srEmbedFrame" data-embed="pdf" src="/pdf-reader?id={{ book.id }}" title="PDF 阅读器"></iframe>
+        {% elif ext in ['pdf','md','markdown','fb2','rtf','odt','html','htm','xhtml','mhtml'] %}
+            <iframe id="srEmbedFrame" data-embed="doc" src="/api/read/{{ book.id }}" title="文档阅读器"></iframe>
         {% elif ext == 'doc' or ext == 'docx' %}
             <iframe id="srEmbedFrame" data-embed="doc" src="/api/read/{{ book.id }}" title="文档阅读器"></iframe>
         {% elif ext == 'txt' %}
@@ -668,7 +668,7 @@ body.immersive .reader-guide, body.immersive .auto-pill { display: none !importa
             <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;color:#888;padding:20px;text-align:center;">
                 <span style="font-size:64px;margin-bottom:16px;">📄</span>
                 <h2>此格式暂不支持在线阅读</h2>
-                <p>支持格式: EPUB, PDF, DOC/DOCX, TXT</p>
+                <p>支持格式: EPUB, PDF, DOC/DOCX, TXT, Markdown, FB2, RTF, ODT, HTML</p>
             </div>
         {% endif %}
 

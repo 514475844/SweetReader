@@ -42,11 +42,14 @@ class CategoryScanner:
 
     SUPPORTED_EXTS = {
         '.epub', '.pdf', '.mobi', '.azw3', '.txt',
+        '.md', '.markdown', '.html', '.htm', '.xhtml', '.mhtml',
         '.doc', '.docx', '.rtf', '.odt',
         '.fb2', '.cbz', '.cbr'
     }
     BATCH_SIZE = 500
     _pending = 0
+    # [A7] 根目录文件去重索引：relative_path -> Book（见 scan_and_sync）
+    _root_files = {}
 
     @classmethod
     def scan_and_sync(cls, books_dir=None, force=False, incremental=True,
@@ -79,9 +82,17 @@ class CategoryScanner:
         # 进度预估：首次扫描时用 0，之后用上次分类数
         result['categories_estimate'] = len(existing_categories) or 1
         existing_books = {}
+        # [A7] 根目录文件索引（relative_path 不含 '/' 即在 books_dir 根）。
+        # 旧版本导入的书被丢在书库根目录、却登记在「导入」分类下，扫描器按
+        # (category_id, filename) 命中不到就新建一行 —— 同一本书两行。
+        # 这里记住「根目录已有归属的行」，扫描时只刷新元信息，不再复制。
+        cls._root_files = {}
         for b in Book.query.all():
             key = f"{b.category_id}_{b.filename}"
             existing_books[key] = b
+            _rel = (b.relative_path or '').replace('\\', '/')
+            if _rel and '/' not in _rel:
+                cls._root_files.setdefault(_rel, b)
 
         # [B2] 原先这里再全表遍历一次拼 existing_files（数十万次字符串拼接），
         # 而它只服务于那个 key 写错的增量判断。已移除，增量统一在
@@ -211,6 +222,15 @@ class CategoryScanner:
                 book.modified_time = mtime
                 books_to_update.append(book)
             else:
+                # [A7] 根目录文件：别的分类下已有指向同一物理文件的行
+                # （历史导入遗留），只刷新元信息，绝不复制出第二行。
+                if not relative_path:
+                    _dup = cls._root_files.get(filename)
+                    if _dup is not None:
+                        _dup.file_size = file_path.stat().st_size
+                        _dup.modified_time = mtime
+                        books_to_update.append(_dup)
+                        continue
                 title = Path(filename).stem
                 book = Book(
                     filename=filename,

@@ -59,6 +59,7 @@ body.dark-theme .ah2-frame { background: #23252b; }
     <aside class="ah2-nav" id="ahNav">
         <div class="ah2-brand">⚙️ 管理后台</div>
 
+        <a class="ah2-link active" data-overview="1" href="javascript:void(0)"><span class="ah2-ico ai-0">📊</span><span class="ah2-lbl">总览</span></a>
         <div class="ah2-nav-group">书库与内容</div>
         <a class="ah2-link" data-url="/admin/books"><span class="ah2-ico ai-1">📚</span><span class="ah2-lbl">书籍管理</span></a>
         <a class="ah2-link" data-url="/admin/categories"><span class="ah2-ico ai-2">🗂️</span><span class="ah2-lbl">分类管理</span></a>
@@ -87,6 +88,7 @@ body.dark-theme .ah2-frame { background: #23252b; }
             </div>
             <div class="ah2-tools">
                 <button type="button" class="btn btn-primary" onclick="scanBooks()">重新扫描书库</button>
+                <a class="btn btn-outline" href="/api/admin/export-reading" style="text-decoration:none;" title="导出全部书籍的阅读进度统计（CSV）">⬇️ 导出阅读统计</a>
                 <span class="ah2-scan-msg" id="ahScanMsg">扫描在后台进行，可稍后回来查看。</span>
             </div>
         </div>
@@ -112,6 +114,15 @@ body.dark-theme .ah2-frame { background: #23252b; }
             var link = e.target.closest('.ah2-link');
             if (!link) return;
             e.preventDefault();
+            if (link.hasAttribute('data-overview')) {
+                // 回到总览面板：收起 iframe、重新显示欢迎区
+                document.querySelectorAll('.ah2-link').forEach(function (l) { l.classList.remove('active'); });
+                link.classList.add('active');
+                frame.style.display = 'none';
+                frame.removeAttribute('src');
+                welcome.style.display = 'block';
+                return;
+            }
             openUrl(link.getAttribute('data-url'), link);
         });
     }

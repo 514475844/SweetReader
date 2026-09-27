@@ -15,10 +15,12 @@ with app.app_context():
     print('✅ 表创建完成')
 "
     
+fi
+
 # 注意：这里不再创建固定的默认弱口令账号。
 # 管理员账号由应用在首次启动时生成（引导管理员），凭据打印在容器日志中，
 # 详见下方「获取初始密码」一节。
 
 # 启动应用
-echo "🚀 启动书库..."
+echo "🚀 启动 SweetReader..."
 exec python run.py

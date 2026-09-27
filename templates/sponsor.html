@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% block title %}赞助支持{% endblock %}
+{% block content %}
+<div style="max-width:680px;margin:40px auto;padding:0 16px;">
+    <div style="background:white;border-radius:16px;box-shadow:var(--shadow);padding:32px 28px;text-align:center;">
+        <div style="font-size:44px;margin-bottom:8px;">❤️</div>
+        <h2 style="color:var(--text-dark);margin-bottom:14px;">赞助 SweetReader</h2>
+        <p style="color:var(--text-light);line-height:1.8;font-size:15px;margin-bottom:22px;">
+            {{ donate_text }}
+        </p>
+        {% if donate_url %}
+        <a href="{{ donate_url }}" target="_blank" rel="noopener noreferrer"
+           class="btn btn-primary" style="font-size:16px;padding:10px 32px;border-radius:30px;text-decoration:none;">
+            前往赞助 / 捐赠
+        </a>
+        {% else %}
+        <p style="color:#bbb;font-size:13px;margin-top:6px;">
+            赞助链接可在服务端配置 <code>DONATE_URL</code> 后自动出现。
+        </p>
+        {% endif %}
+        <hr style="border:none;border-top:1px dashed #eee;margin:24px 0;">
+        <p style="color:var(--text-light);font-size:13px;">
+            你的支持会让这个项目持续变好 · SweetReader
+        </p>
+    </div>
+</div>
+{% endblock %}

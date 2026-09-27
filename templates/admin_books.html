@@ -18,7 +18,7 @@
         <div id="impFileList" class="imp-file-list"></div>
         <div class="imp-opts">
             <label><input type="checkbox" id="impAutoCat"> 为压缩包里的新目录自动创建分类</label>
-            <span class="imp-cap">默认归入「导入」分类；单次最多新建 20 个</span>
+            <span class="imp-cap">勾选＝按压缩包内目录结构自动建分类并归类（挂在「导入」下）；不勾＝按压缩包内文件夹匹配已有分类，匹配不上的进「导入」</span>
         </div>
         <div id="importProgressWrap" class="imp-progress" style="display:none;">
             <div class="imp-bar"><div class="imp-fill" id="importProgressFill"></div></div>
@@ -76,6 +76,7 @@
                         {% if current_user.is_admin or current_user.can_manage_books %}<button class="btn btn-sm btn-outline" onclick="doConvert({{ b.id }})">转编码</button>{% endif %}
                         {% if current_user.is_admin or current_user.can_manage_books %}<button class="btn btn-sm btn-outline" onclick="editBook({{ b.id }})">编辑</button>{% endif %}
                         {% if current_user.is_admin or current_user.can_manage_books %}<button class="btn btn-sm btn-outline" data-split-id="{{ b.id }}" data-split-name="{{ (b.title or b.filename) | e }}" onclick="openSplit(this)">拆分</button>{% endif %}
+                        {% if current_user.is_admin or current_user.can_manage_books %}<button class="btn btn-sm btn-outline" onclick="openPerm({{ b.id }}, this)">权限</button>{% endif %}
                         {% if current_user.is_admin or current_user.can_manage_books %}<button class="btn btn-sm btn-outline" onclick="deleteBook({{ b.id }}, this)">删除</button>{% endif %}
                     </td>
                 </tr>
@@ -165,6 +166,20 @@
             </div>
         </div>
     </div>
+
+    <div id="permModal" class="modal-mask" style="display:none;">
+        <div class="modal-box">
+            <h3>书籍阅读权限</h3>
+            <input type="hidden" id="permBookId">
+            <p class="hint" id="permBookName"></p>
+            <p class="hint">勾选的用户将<strong>看不到这本书</strong>（书库/搜索/阅读均不可见），管理员不受限。</p>
+            <div id="permUserList" class="perm-user-list"></div>
+            <div class="modal-actions">
+                <button class="btn btn-primary" onclick="savePerm()">保存</button>
+                <button class="btn btn-outline" onclick="closePerm()">取消</button>
+            </div>
+        </div>
+    </div>
 </div>
 
 <style>
@@ -187,6 +202,12 @@ body.dark-theme .admin-books #convertResult pre { background: #2c2f36; }
 .admin-books .fmt-list { font-size: 12px; color: var(--text-light); margin: 0 0 10px; }
 .admin-books .fmt-chip { display: inline-block; background: rgba(0,0,0,.05); border-radius: 4px; padding: 1px 6px; margin: 0 4px 4px 0; font-family: monospace; }
 body.dark-theme .admin-books .fmt-chip { background: rgba(255,255,255,.08); }
+/* 书籍阅读权限弹窗（#540） */
+.admin-books .perm-user-list { max-height: 260px; overflow-y: auto; border: 1px solid #eee; border-radius: 6px; padding: 8px 10px; margin-bottom: 6px; }
+body.dark-theme .admin-books .perm-user-list { border-color: #34373e; }
+.admin-books .perm-user { display: block; padding: 4px 2px; font-size: 13px; cursor: pointer; }
+.admin-books .perm-user:hover { background: rgba(0,0,0,.04); }
+body.dark-theme .admin-books .perm-user:hover { background: rgba(255,255,255,.06); }
 .admin-books .tag-badge { display: inline-block; border-radius: 10px; padding: 1px 8px; font-size: 12px; margin: 0 4px 4px 0; }
 .admin-books .tb-extra { background: rgba(124,58,237,.12); color: #6d28d9; }
 .admin-books .tb-quality { background: rgba(37,99,235,.12); color: #1d4ed8; }
@@ -332,6 +353,10 @@ function doImport() {
             var p = Math.round(e.loaded / e.total * 100);
             fill.style.width = p + '%';
             pct.textContent = p + '%';
+            if (p >= 100) {
+                document.getElementById('importResult').textContent =
+                    '上传完成，服务器正在解压导入…（大文件可能需要几分钟，请勿关闭页面）';
+            }
         }
     };
     xhr.onload = function() {
@@ -454,7 +479,7 @@ function doImport() {
         setTimeout(function() { location.reload(); }, skippedTotal || warns.length ? 3200 : 1600);
     };
     xhr.onerror = function() {
-        document.getElementById('importResult').textContent = '导入失败（网络错误）';
+        document.getElementById('importResult').textContent = '导入失败（网络错误：多为文件超过服务端大小上限或连接中断，可稍后重试）';
     };
     xhr.send(fd);
 }
@@ -1055,6 +1080,55 @@ function doSplit() {
 }
 function escapeHtml(s) {
     return (s || '').replace(/[&<>]/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;'}[c]; });
+}
+/* ============ 书籍阅读权限（#540） ============ */
+function openPerm(bookId, btn) {
+    var tr = btn.closest('tr');
+    var name = tr ? (tr.querySelector('td:nth-child(3)') || {}).textContent : '';
+    document.getElementById('permBookId').value = bookId;
+    document.getElementById('permBookName').textContent = '书籍：' + (name || ('#' + bookId));
+    var listEl = document.getElementById('permUserList');
+    listEl.innerHTML = '<span class="hint">加载中…</span>';
+    document.getElementById('permModal').style.display = 'flex';
+    fetch('/api/admin/permissions?book_id=' + bookId).then(function(r){ return r.json(); })
+        .then(function(d){
+            if (!d.success) { listEl.innerHTML = '<span class="hint">' + escapeHtml(d.message || '加载失败') + '</span>'; return; }
+            if (!d.users.length) { listEl.innerHTML = '<span class="hint">暂无普通用户</span>'; return; }
+            var h = '';
+            d.users.forEach(function(u){
+                h += '<label class="perm-user"><input type="checkbox" data-uid="' + u.id + '"'
+                   + (u.hidden ? ' checked' : '') + '> ' + escapeHtml(u.username) + '</label>';
+            });
+            listEl.innerHTML = h;
+        }).catch(function(){ listEl.innerHTML = '<span class="hint">加载失败</span>'; });
+}
+function closePerm() { document.getElementById('permModal').style.display = 'none'; }
+function savePerm() {
+    var bookId = document.getElementById('permBookId').value;
+    var boxes = document.querySelectorAll('#permUserList input[type=checkbox]');
+    var toHide = [], toShow = [];
+    boxes.forEach(function(b){ (b.checked ? toHide : toShow).push(parseInt(b.getAttribute('data-uid'), 10)); });
+    var jobs = [];
+    if (toHide.length) jobs.push({user_ids: toHide, hidden: true});
+    if (toShow.length) jobs.push({user_ids: toShow, hidden: false});
+    if (!jobs.length) { closePerm(); return; }
+    // 后端按单用户提交，这里逐个用户合并其勾选状态
+    var uidSet = {};
+    jobs.forEach(function(j){ j.user_ids.forEach(function(uid){ uidSet[uid] = j.hidden; }); });
+    var pending = Object.keys(uidSet).length, failed = 0;
+    Object.keys(uidSet).forEach(function(uid){
+        fetch('/api/admin/permissions', {
+            method: 'POST', headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({user_id: parseInt(uid, 10), book_ids: [parseInt(bookId, 10)], hidden: uidSet[uid]})
+        }).then(function(r){ return r.json(); }).then(function(d){
+            if (!d.success) failed++;
+            pending--;
+            if (pending === 0) {
+                if (failed) { alert('有 ' + failed + ' 项保存失败'); }
+                closePerm();
+            }
+        }).catch(function(){ failed++; pending--; if (pending === 0) closePerm(); });
+    });
 }
 </script>
 {% endblock %}

@@ -53,7 +53,12 @@ def create_app():
         f"sqlite:///{os.path.join(instance_path, 'sweetreader.db')}"
     )
     app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
-    app.config['MAX_CONTENT_LENGTH'] = 200 * 1024 * 1024
+    # 请求体上限：16GB。原 200MB 会在 Werkzeug 层直接掐断连接（浏览器表现为
+    # 「网络错误」而非可读报错），大压缩包批量导入根本到不了业务层；
+    # 配套：run.py 的 waitress max_request_body_size 放宽到 18GB；
+    # 单文件 512MB 的业务上限由导入逻辑自行把控，超大包建议用 RAR 分卷上传
+    # （服务端已支持分卷暂存、凑齐自动合并导入）。
+    app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024 * 1024
     # 会话与“记住我”时长：避免 cookie 总失效（用户诉求 #8）
     app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(days=30)
     app.config['SESSION_COOKIE_NAME'] = 'sweetreader_session'

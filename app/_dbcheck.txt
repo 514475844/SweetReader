@@ -1,0 +1,2 @@
+LOCK_FREE book_count=59282 elapsed=7.5s
+RC=0
