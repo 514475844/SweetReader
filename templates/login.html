@@ -74,7 +74,9 @@
     .login-form .logo-text { display: block; }
 }
 @media (max-width: 480px) {
-    .login-shell { margin: 12px; border-radius: 18px; }
+    /* width:100% 与 margin 相加会顶破窄屏（375px 下右边界 366 > 360）。
+       改 width:auto，让盒宽由「可用宽 - 左右 margin」自己算，两种 box-sizing 下都不溢出。 */
+    .login-shell { width: auto; margin: 12px; border-radius: 18px; }
     .login-form { padding: 28px 20px 26px; }
     .login-form input { padding: 12px 14px; font-size: 15px; }
 }
