@@ -31,6 +31,67 @@ from app import file_types
 
 bp = Blueprint('main', __name__)
 
+# ============ 路径安全（2026-11-08 第 1 批修复）============
+# 背景：删除插件时把 '..' 当成插件名，可拼出整个数据目录并递归删除；
+#       分类名 / 书籍相对路径同样缺少越界校验。以下助手集中收口。
+
+def _like_prefix(value):
+    """把字面前缀转成 LIKE 模式：转义 % _ \，避免分类名里的通配符误伤无辜记录。"""
+    return str(value or '').replace('\\', '\\\\').replace('%', '\\%').replace('_', '\\_') + '%'
+
+
+def _safe_join(base, rel):
+    """把相对路径安全拼到 base 下；越界、绝对路径、盘符、'..' 一律返回 None。
+
+    这里用 abspath+normpath 而非 realpath：书库内可能存在符号链接书籍，
+    realpath 会把它们解析到库外，导致合法书籍被误判为越界。
+    """
+    try:
+        base_abs = os.path.abspath(os.path.normpath(str(base)))
+        if not isinstance(rel, str):
+            rel = str(rel or '')
+        rel = rel.replace('\\', '/').strip()
+        if not rel or '\x00' in rel:
+            return None
+        if rel.startswith('/') or re.match(r'^[A-Za-z]:', rel):
+            return None
+        if '..' in rel.split('/'):
+            return None
+        target = os.path.abspath(os.path.normpath(os.path.join(base_abs, rel)))
+        if os.path.commonpath([base_abs, target]) != base_abs:
+            return None
+        return target
+    except (ValueError, OSError, TypeError):
+        return None
+
+
+def _valid_cat_name(name):
+    """分类 / 插件名合法性：拒绝空、. / ..、路径分隔符、盘符与控制字符。"""
+    if not isinstance(name, str):
+        return False
+    n = name.strip()
+    if not n or n in ('.', '..'):
+        return False
+    if '/' in n or '\\' in n or '\x00' in n:
+        return False
+    if re.match(r'^[A-Za-z]:', n):
+        return False
+    if any(ord(c) < 32 for c in n):
+        return False
+    return True
+
+
+def _valid_cat_path(path):
+    """分类 path（相对书库）合法性，用于历史父分类脏数据兜底。"""
+    p = (path or '').replace('\\', '/')
+    if not p or p.startswith('/') or '\x00' in p:
+        return False
+    if '..' in p.split('/') or re.match(r'^[A-Za-z]:', p):
+        return False
+    return True
+
+
+
 
 ONLINE_WINDOW_MINUTES = 10   # 10 分钟内有活动即视为在线
 
@@ -149,6 +210,19 @@ def _ensure_device_cookie(resp):
 DETECT_SAMPLE_BYTES = 262144        # 256KB 取样
 DECODE_CACHE_MAX_ITEMS = 12         # 缓存条目上限
 DECODE_CACHE_MAX_CHARS = 6_000_000  # 单条缓存最大字符数（约 12MB 内存）
+# [FIX] 已删除插件的旧蓝图无法从 Flask url_map 中安全卸载，
+# 用请求前钩子拦掉这些幽灵端点，返回 404 而不是继续执行旧代码。
+# 这里是「明确的被删端点名单」，不碰主应用任何路由。
+_ghost_plugin_endpoints = set()
+_seen_plugin_endpoints = set()
+
+
+@bp.before_request
+def _block_ghost_plugin_routes():
+    if request.endpoint in _ghost_plugin_endpoints:
+        abort(404)
+
+
 _decode_cache = {}                  # key -> (text)
 _decode_cache_order = []
 
@@ -497,6 +571,17 @@ def register():
         if not invite:
             flash('无效的邀请码', 'error')
             return render_template('register.html')
+        # [FIX] 过期邀请码必须拒绝；expires_at 为 None 视为永不过期（兼容旧数据）
+        if getattr(invite, 'expires_at', None):
+            try:
+                _exp = invite.expires_at
+                if isinstance(_exp, str):
+                    _exp = datetime.fromisoformat(_exp)
+                if _exp < datetime.utcnow():
+                    flash('邀请码已过期，请联系管理员重新获取', 'error')
+                    return render_template('register.html')
+            except (ValueError, TypeError):
+                pass  # 无法解析的过期时间不阻断注册
         if invite.target_email != email:
             flash('邀请码绑定的邮箱不匹配', 'error')
             return render_template('register.html')
@@ -534,6 +619,29 @@ def logout():
     return redirect(url_for('main.login'))
 
 # ============ API ============
+# [PERF] 全量扫描结果缓存：系列归组 / 自动标签系列建议都基于同一份全库快照。
+# 书库书本数一变（导入 / 删书 / 扫描）即失效，避免翻页时对 6 万本反复全量遍历。
+_SCAN_CACHE_TTL = 600.0
+_fullscan_cache = {'ts': 0.0, 'count': -1, 'data': None}
+_dup_snapshot = {'ts': 0.0, 'count': -1, 'data': None}
+
+
+def _get_fullscan_rows():
+    """返回全库轻量行 (id,title,filename,file_type)，最多缓存 10 分钟。"""
+    now = time.time()
+    cnt = db.session.query(db.func.count(Book.id)).scalar() or 0
+    if (_fullscan_cache['data'] is not None
+            and _fullscan_cache['count'] == cnt
+            and now - _fullscan_cache['ts'] < _SCAN_CACHE_TTL):
+        return _fullscan_cache['data']
+    rows = (db.session.query(Book.id, Book.title, Book.filename, Book.file_type)
+            .order_by(Book.id.asc()).all())
+    data = [{'id': r[0], 'title': r[1], 'filename': r[2], 'file_type': r[3]}
+            for r in rows]
+    _fullscan_cache.update({'ts': now, 'count': cnt, 'data': data})
+    return data
+
+
 def _file_type_variants(value):
     """格式筛选的大小写变体。
 
@@ -579,12 +687,13 @@ def api_books():
     返回结构仍是数组（旧调用方不受影响），总数与分页信息放在响应头。
     """
     try:
-        page = max(1, int(request.args.get('page', 1)))
-    except (TypeError, ValueError):
+        # [FIX] 上限夹逼：超页码会让 OFFSET 超 SQLite 整数范围抛 OverflowError → 500
+        page = min(max(1, int(request.args.get('page', 1))), 1000000)
+    except (TypeError, ValueError, OverflowError):
         page = 1
     try:
         per_page = int(request.args.get('per_page', 50))
-    except (TypeError, ValueError):
+    except (TypeError, ValueError, OverflowError):
         per_page = 50
     per_page = max(1, min(200, per_page))
 
@@ -727,6 +836,8 @@ def epub_reader():
     if not book_id:
         return redirect(url_for('main.library'))
     book = Book.query.get_or_404(book_id)
+    if not _book_visible_or_404(book, current_user):
+        abort(404)
     if not (book.filename or '').lower().endswith('.epub'):
         flash('该文件不是 EPUB 格式', 'error')
         return redirect(url_for('main.library'))
@@ -745,6 +856,8 @@ def pdf_reader():
     if not book_id:
         return redirect(url_for('main.library'))
     book = Book.query.get_or_404(book_id)
+    if not _book_visible_or_404(book, current_user):
+        abort(404)
     ft = (book.file_type or '').lower()
     if ft != 'pdf' and not (book.filename or '').lower().endswith('.pdf'):
         flash('该文件不是 PDF 格式', 'error')
@@ -1034,11 +1147,12 @@ def get_book_content(book_id):
     book = Book.query.get_or_404(book_id)
     if not _book_visible_or_404(book, current_user):
         abort(404)
-    file_path = Path(current_app.config['BOOKS_DIR']) / book.relative_path
-    if not file_path.exists():
-        file_path = Path(current_app.config['BOOKS_DIR']) / book.filename
-    if not file_path.exists():
+    _p = _safe_join(current_app.config['BOOKS_DIR'], book.relative_path)
+    if not _p or not os.path.exists(_p):
+        _p = _safe_join(current_app.config['BOOKS_DIR'], book.filename)
+    if not _p or not os.path.exists(_p):
         return jsonify({'error': '文件不存在'}), 404
+    file_path = Path(_p)
     ext = file_path.suffix.lower()
     # 二进制格式：直接返回原始文件，交给专用阅读器 / 下载
     BINARY_EXTS = {'.epub', '.pdf', '.mobi', '.azw', '.azw3', '.doc', '.docx',
@@ -1521,7 +1635,10 @@ def settings_page():
                for e in registry.homepage_entries()
                if e.get('widget') != 'random']
     return render_template('settings.html',
-                           plugins_json=json.dumps(entries, ensure_ascii=False))
+                           # [FIX] 转义 < > & 再交给模板 |safe，杜绝 </script> 逃逸
+                           plugins_json=json.dumps(entries, ensure_ascii=False)
+                           .replace('<', '\\u003c').replace('>', '\\u003e')
+                           .replace('&', '\\u0026'))
 
 @bp.route('/profile', methods=['GET', 'POST'])
 @login_required
@@ -1773,6 +1890,14 @@ def api_library_overview():
         _overview_cache['data'] = glob
     total = glob['total']
     cat_total = glob['categories']
+    # [FIX] 非管理员的「未读」按可见书重算；原实现用全库总数减个人阅读数导致虚高
+    visible_total = total
+    if not current_user.is_admin:
+        try:
+            _vq = db.session.query(db.func.count(Book.id))
+            visible_total = _visibility_filter(_vq, current_user).scalar() or 0
+        except Exception:
+            visible_total = total
     formats = glob['formats']
 
     # 阅读状态：只查当前用户的进度记录（数量级远小于书库），未记录的归为「未读」
@@ -1786,7 +1911,7 @@ def api_library_overview():
             reading += int(n)
         elif st == 'finished':
             finished += int(n)
-    unread = max(0, total - reading - finished)
+    unread = max(0, visible_total - reading - finished)
 
     return jsonify({
         'success': True,
@@ -1817,6 +1942,9 @@ def get_progress(book_id):
 @bp.route('/api/progress/<int:book_id>', methods=['POST'])
 @login_required
 def save_progress(book_id):
+    # [FIX] 不存在的书不给写进度，避免留下悬空 reading_progress
+    if Book.query.get(book_id) is None:
+        return jsonify({'success': False, 'message': '书籍不存在'}), 404
     data = request.get_json(silent=True) or {}
     try:
         progress_value = float(data.get('progress') or 0)
@@ -1861,7 +1989,8 @@ def save_progress(book_id):
 def set_book_status(book_id):
     """ 阅读状态手动更新：未读 / 在读 / 已读"""
     data = request.get_json(silent=True) or {}
-    status = (data.get('status') or '').strip()
+    _raw_status = data.get('status')
+    status = _raw_status.strip() if isinstance(_raw_status, str) else ''
     if status not in ('unread', 'reading', 'finished'):
         return jsonify({'success': False, 'message': '状态不合法'}), 400
     book = Book.query.get_or_404(book_id)
@@ -2052,12 +2181,19 @@ def api_add_bookmark():
     if not Book.query.get(book_id):
         return jsonify({'success': False, 'message': '书籍不存在'}), 404
 
+    try:
+        _mark_progress = float(data.get('progress') or 0)
+    except (TypeError, ValueError):
+        _mark_progress = 0.0
+    _mark_progress = max(0.0, min(1.0, _mark_progress))
+    def _as_text(v):
+        return v if isinstance(v, str) else ('' if v is None else str(v))
     m = Bookmark(
         user_id=current_user.id,
         book_id=book_id,
-        progress=float(data.get('progress') or 0),
-        excerpt=(data.get('excerpt') or '')[:200],
-        note=(data.get('note') or '')[:200],
+        progress=_mark_progress,
+        excerpt=_as_text(data.get('excerpt'))[:200],
+        note=_as_text(data.get('note'))[:200],
     )
     db.session.add(m)
     db.session.commit()
@@ -2147,7 +2283,7 @@ def _bad_text_clause():
 def _book_abs_path(book):
     base = str(current_app.config['BOOKS_DIR'])
     rel = (book.relative_path or book.filename or '').strip()
-    return os.path.join(base, rel) if rel else ''
+    return _safe_join(base, rel) or ''
 
 
 def _rename_book_file(book, new_title):
@@ -2195,12 +2331,15 @@ def _move_book_file_to_category(book, tgt):
     old_rel = (book.relative_path or book.filename or '').strip()
     if not old_rel:
         return False, '没有记录文件路径', True
-    src = os.path.join(books_dir, old_rel)
-    if not os.path.exists(src):
+    src = _safe_join(books_dir, old_rel)
+    if not src or not os.path.exists(src):
         return False, '磁盘上找不到原文件', True
     fname = os.path.basename(old_rel)
     tgt_sub = (tgt.path if tgt else '') or ''
-    tgt_dir = os.path.join(books_dir, tgt_sub) if tgt_sub else books_dir
+    tgt_dir = (_safe_join(books_dir, tgt_sub) if tgt_sub
+               else os.path.abspath(os.path.normpath(str(books_dir))))
+    if tgt_dir is None:
+        return False, '目标分类路径不合法', False
     if os.path.normcase(os.path.dirname(os.path.abspath(src))) == \
             os.path.normcase(os.path.abspath(tgt_dir)):
         return True, '文件已在目标目录', True
@@ -2477,11 +2616,13 @@ def api_admin_broken_fix_cats():
         cat.path = new_path
         # 子孙分类的 path 前缀同步
         prefix_old = old_path + '/'
-        for child in Category.query.filter(Category.path.like(prefix_old + '%')).all():
+        for child in Category.query.filter(
+                Category.path.like(_like_prefix(prefix_old), escape='\\')).all():
             child.path = new_path + child.path[len(old_path):]
         # 书籍 relative_path 同步（否则改名后整目录的书都变「文件丢失」）
         moved_books = 0
-        for b in Book.query.filter(Book.relative_path.like(prefix_old + '%')).all():
+        for b in Book.query.filter(
+                Book.relative_path.like(_like_prefix(prefix_old), escape='\\')).all():
             b.relative_path = new_path + b.relative_path[len(old_path):]
             moved_books += 1
         if moved_books:
@@ -2535,6 +2676,16 @@ def reregister_plugins():
                 registered.add(_bp.name)
             except Exception as e:
                 print('[plugins] 运行时注册蓝图失败 %s: %s' % (_bp.name, e), flush=True)
+    # [FIX] 记录当前存活的插件端点，配合 before_request 拦掉已删除插件的幽灵路由。
+    # 修改已有插件的视图无法在运行时安全替换（Flask 蓝图不可热卸载），
+    # 这里如实标记，由接口返回提示用户重启，不再虚假宣称「即时生效」。
+    global _ghost_plugin_endpoints, _seen_plugin_endpoints
+    _alive = {b.name for b in registry.blueprints() + registry.settings_blueprints()}
+    _current = {k for k in current_app.view_functions
+                if '.' in k and k.split('.', 1)[0] in _alive}
+    # 上一轮见过、这一轮已消失的端点 = 被删插件留下的幽灵路由
+    _ghost_plugin_endpoints |= (_seen_plugin_endpoints - _current)
+    _seen_plugin_endpoints |= _current
 
 
 def validate_plugin_source(src):
@@ -2774,12 +2925,22 @@ def api_plugin_delete(plugin_id):
     stem = plugin_id
     if stem.startswith('broken_'):
         stem = stem[len('broken_'):]
+    # [P0 修复] slugify 会把 '..' / '.' 洗成空串；旧代码此时保留原值，
+    # 于是 os.path.join(target, '..') 指向整个数据目录并被 rmtree 删光。
+    if not _valid_cat_name(stem):
+        return jsonify({'success': False, 'message': '插件名不合法'}), 400
     cleaned = slugify_plugin_name(stem)
-    if cleaned:
-        stem = cleaned
+    if not cleaned:
+        return jsonify({'success': False, 'message': '插件名不合法'}), 400
+    stem = cleaned
 
-    pyf = os.path.join(target, stem + '.py')
-    pkgd = os.path.join(target, stem)
+    pyf = _safe_join(target, stem + '.py')
+    pkgd = _safe_join(target, stem)
+    if pyf is None or pkgd is None:
+        return jsonify({'success': False, 'message': '插件路径越界，已拒绝删除'}), 400
+    target_abs = os.path.abspath(os.path.normpath(target))
+    if os.path.abspath(pkgd) == target_abs:
+        return jsonify({'success': False, 'message': '插件路径越界，已拒绝删除'}), 400
     if os.path.isfile(pyf):
         os.remove(pyf)
         removed.append(os.path.basename(pyf))
@@ -2886,6 +3047,8 @@ def _import_rel_dir(cat_id, books_dir):
     """
     cat = Category.query.get(cat_id)
     rel = ((cat.path or '') if cat else '').replace('\\', '/').strip('/')
+    if rel and _safe_join(str(books_dir), rel) is None:
+        return IMPORT_CATEGORY_NAME
     if rel:
         if (books_dir / rel).is_dir():
             return rel
@@ -3441,11 +3604,12 @@ def admin_export_book(book_id):
     if not _require_cap('export'):
         return jsonify({'success': False, 'message': '无导出权限'}), 403
     book = Book.query.get_or_404(book_id)
-    file_path = Path(current_app.config['BOOKS_DIR']) / book.relative_path
-    if not file_path.exists():
-        file_path = Path(current_app.config['BOOKS_DIR']) / book.filename
-    if not file_path.exists():
+    _p = _safe_join(current_app.config['BOOKS_DIR'], book.relative_path)
+    if not _p or not os.path.exists(_p):
+        _p = _safe_join(current_app.config['BOOKS_DIR'], book.filename)
+    if not _p or not os.path.exists(_p):
         return jsonify({'success': False, 'message': '文件不存在'}), 404
+    file_path = Path(_p)
     log_action(current_user, '导出书籍', '《%s》(%s)' % (book.title or book.filename,
                                                      book.file_type or ''))
     return send_file(file_path, as_attachment=True)
@@ -3618,11 +3782,12 @@ def admin_convert_encoding():
     if not book_id:
         return jsonify({'success': False, 'message': '缺少 book_id'}), 400
     book = Book.query.get_or_404(book_id)
-    file_path = Path(current_app.config['BOOKS_DIR']) / book.relative_path
-    if not file_path.exists():
-        file_path = Path(current_app.config['BOOKS_DIR']) / book.filename
-    if not file_path.exists():
+    _p = _safe_join(current_app.config['BOOKS_DIR'], book.relative_path)
+    if not _p or not os.path.exists(_p):
+        _p = _safe_join(current_app.config['BOOKS_DIR'], book.filename)
+    if not _p or not os.path.exists(_p):
         return jsonify({'success': False, 'message': '文件不存在'}), 404
+    file_path = Path(_p)
     try:
         with open(file_path, 'rb') as fh:
             raw = fh.read()
@@ -3635,13 +3800,28 @@ def admin_convert_encoding():
     except Exception:
         text = raw.decode(encoding, errors='replace')
     before = text[:200]
+    changed = encoding.lower() not in ('utf-8', 'utf8', 'ascii')
+    if not changed:
+        # [FIX] 本来就是 utf-8，别再无意义地重写（重写失败会毁书）
+        return jsonify({'success': True, 'encoding': encoding, 'changed': False,
+                        'before': before, 'after': text[:200]})
+    # [FIX] 原子替换：先写同目录临时文件并刷盘，os.replace 成功后原书才被替换。
+    # 中途失败（磁盘满 / 进程被杀）原书完好。
+    tmp_path = file_path + '.wbconv.tmp'
     try:
-        with open(file_path, 'wb') as fh:
+        with open(tmp_path, 'wb') as fh:
             fh.write(text.encode('utf-8'))
-        changed = encoding.lower() not in ('utf-8', 'utf8', 'ascii')
-        return jsonify({'success': True, 'encoding': encoding, 'changed': changed,
+            fh.flush()
+            os.fsync(fh.fileno())
+        os.replace(tmp_path, file_path)
+        return jsonify({'success': True, 'encoding': encoding, 'changed': True,
                         'before': before, 'after': text[:200]})
     except Exception as e:
+        try:
+            if os.path.exists(tmp_path):
+                os.remove(tmp_path)
+        except Exception:
+            pass
         return jsonify({'success': False, 'message': '写入失败: %s' % e}), 500
 
 
@@ -3770,6 +3950,9 @@ def admin_permissions_set():
             bid = int(bid)
         except (TypeError, ValueError):
             continue
+        # [FIX] 只接受真实存在的书 id，杜绝指向不存在书的权限孤儿
+        if Book.query.get(bid) is None:
+            continue
         rec = BookPermission.query.filter_by(book_id=bid, user_id=uid).first()
         if hidden:
             if rec is None:
@@ -3855,10 +4038,10 @@ def admin_book_duplicates():
     def _book_text(book):
         try:
             base = _BK_BASE
-            p = os.path.join(base, book.relative_path or book.filename)
-            if not os.path.exists(p):
-                p = os.path.join(base, book.filename)
-            if not os.path.exists(p):
+            p = _safe_join(base, book.relative_path or book.filename)
+            if not p or not os.path.exists(p):
+                p = _safe_join(base, book.filename)
+            if not p or not os.path.exists(p):
                 return ''
             ext = (book.file_type or '').lower() or os.path.splitext(p)[1].lower().lstrip('.')
             # 相似度判定取正文前 50KB 已足够（重复书的正文开头必然高度一致）；
@@ -3928,16 +4111,23 @@ def admin_book_duplicates():
 
     # 性能优化：原生 SQL 直接取，避免 ORM 行包装 + 全量字典复制（原 ~5.6s）
     from sqlalchemy import text as _sa_text
-    _raw = db.session.execute(_sa_text(
-        "SELECT id, title, author, filename, relative_path, file_type, "
-        "COALESCE(file_size,0), category_id FROM book"
-    )).fetchall()
-    book_by_id = {}
-    for _r in _raw:
-        _rec = {'id': _r[0], 'title': _r[1], 'author': _r[2], 'filename': _r[3],
-                'relative_path': _r[4], 'file_type': _r[5], 'file_size': _r[6],
-                'category_id': _r[7]}
-        book_by_id[_rec['id']] = _rec
+    # [PERF] 这份全量快照单独缓存（字段比系列快照多），书库数量变化即失效
+    global _dup_snapshot
+    _dcnt = db.session.query(db.func.count(Book.id)).scalar() or 0
+    if (_dup_snapshot['data'] is None or _dup_snapshot['count'] != _dcnt
+            or time.time() - _dup_snapshot['ts'] >= _SCAN_CACHE_TTL):
+        _raw = db.session.execute(_sa_text(
+            "SELECT id, title, author, filename, relative_path, file_type, "
+            "COALESCE(file_size,0), category_id FROM book"
+        )).fetchall()
+        _snap = {}
+        for _r in _raw:
+            _rec = {'id': _r[0], 'title': _r[1], 'author': _r[2], 'filename': _r[3],
+                    'relative_path': _r[4], 'file_type': _r[5], 'file_size': _r[6],
+                    'category_id': _r[7]}
+            _snap[_rec['id']] = _rec
+        _dup_snapshot.update({'ts': time.time(), 'count': _dcnt, 'data': _snap})
+    book_by_id = _dup_snapshot['data']
     books = list(book_by_id.values())
 
     groups = []
@@ -4068,28 +4258,35 @@ def admin_book_duplicates():
 
 
 
-def _purge_book(book):
-    """彻底删除一本书：磁盘正文文件 + 封面 + 阅读器数据（阅读进度 / 书签）+ 数据库记录。
+def _purge_book(book, defer_files=False):
+    """彻底删除一本书：磁盘正文文件 + 封面 + 阅读器数据 + 数据库记录。
 
-    返回执行报告，前端据此提示用户「文件到底删掉了没有」，避免静默留下孤儿文件。
+    defer_files=True 时只把待删磁盘路径记入 report['_pending_files']，不立即删除；
+    调用方必须在 db.session.commit() 成功后调用 _flush_pending_deletes()，
+    避免「文件已删但数据库回滚」造成书没了、记录还在的不一致。
     """
     report = {'file_path': '', 'file_deleted': False, 'file_missing': False,
               'cover_deleted': False, 'progress_removed': 0, 'bookmarks_removed': 0,
-              'errors': []}
+              'permissions_removed': 0, 'errors': [], '_pending_files': []}
     books_dir = str(current_app.config['BOOKS_DIR'])
 
     # 1) 正文文件
     try:
         rel = (book.relative_path or book.filename or '').strip()
-        path = rel if os.path.isabs(rel) else os.path.join(books_dir, rel)
-        report['file_path'] = path
-        if os.path.exists(path):
-            os.remove(path)
-            report['file_deleted'] = not os.path.exists(path)
-            if not report['file_deleted']:
-                report['errors'].append('磁盘文件删除失败：%s' % path)
+        path = _safe_join(books_dir, rel)
+        if path is None:
+            report['errors'].append('路径越界，已拒绝删除：%r' % rel)
         else:
-            report['file_missing'] = True
+            report['file_path'] = path
+            if defer_files:
+                report['_pending_files'].append(path)
+            elif os.path.exists(path):
+                os.remove(path)
+                report['file_deleted'] = not os.path.exists(path)
+                if not report['file_deleted']:
+                    report['errors'].append('磁盘文件删除失败：%s' % path)
+            else:
+                report['file_missing'] = True
     except Exception as e:
         report['errors'].append('磁盘文件删除异常：%s' % e)
 
@@ -4098,10 +4295,13 @@ def _purge_book(book):
         cp = (book.cover_path or '').strip()
         if cp:
             base = str(current_app.static_folder or 'static')
-            cand = cp if os.path.isabs(cp) else os.path.join(base, cp)
-            if os.path.exists(cand):
-                os.remove(cand)
-                report['cover_deleted'] = True
+            cand = _safe_join(base, cp)
+            if cand and os.path.exists(cand):
+                if defer_files:
+                    report['_pending_files'].append(cand)
+                else:
+                    os.remove(cand)
+                    report['cover_deleted'] = True
     except Exception as e:
         report['errors'].append('封面删除异常：%s' % e)
 
@@ -4111,6 +4311,10 @@ def _purge_book(book):
             book_id=book.id).delete(synchronize_session=False)
         report['bookmarks_removed'] = Bookmark.query.filter_by(
             book_id=book.id).delete(synchronize_session=False)
+        # [FIX] 隐藏权限必须与书一起删；否则残留孤儿，且 book.id 无 AUTOINCREMENT
+        # 会被新书复用，导致新书意外继承旧书的隐藏名单。
+        report['permissions_removed'] = BookPermission.query.filter_by(
+            book_id=book.id).delete(synchronize_session=False)
     except Exception as e:
         report['errors'].append('阅读数据清理异常：%s' % e)
 
@@ -4118,6 +4322,22 @@ def _purge_book(book):
     db.session.delete(book)
     _invalidate_tags_cache()  # 删书会改变标签计数
     return report
+
+
+def _flush_pending_deletes(reports):
+    """数据库提交成功后，统一删除延后的磁盘文件并回填报告。"""
+    for rep in reports:
+        for path in rep.get('_pending_files', []):
+            try:
+                if os.path.exists(path):
+                    os.remove(path)
+                    if path == rep.get('file_path'):
+                        rep['file_deleted'] = not os.path.exists(path)
+                    elif 'cover' in path:
+                        rep['cover_deleted'] = True
+            except Exception as e:
+                rep['errors'].append('磁盘文件删除异常：%s' % e)
+        rep['_pending_files'] = []
 
 
 def _refresh_category_count(cat_id):
@@ -4308,15 +4528,16 @@ def admin_category_create():
         return jsonify({'success': False, 'message': '无权限'}), 403
     data = request.get_json(silent=True) or {}
     name = (data.get('name') or '').strip()
-    if not name:
-        return jsonify({'success': False, 'message': '分类名不能为空'}), 400
-    if '/' in name or '\\' in name:
-        return jsonify({'success': False, 'message': '分类名不能包含斜杠'}), 400
+    if not _valid_cat_name(name):
+        return jsonify({'success': False,
+                        'message': '分类名不能为空，且不能包含斜杠、. 或 .. 等路径片段'}), 400
     parent_id = data.get('parent_id')
     parent = Category.query.get(parent_id) if parent_id else None
     if parent_id and not parent:
         return jsonify({'success': False, 'message': '父分类不存在'}), 400
     path = (parent.path + '/' + name) if parent else name
+    if not _valid_cat_path(path):
+        return jsonify({'success': False, 'message': '分类路径不合法'}), 400
     if Category.query.filter_by(path=path).first():
         return jsonify({'success': False, 'message': '同名分类已存在'}), 400
     cat = Category(name=name, path=path, parent_id=parent.id if parent else None,
@@ -4351,8 +4572,9 @@ def admin_books_invalid():
     全量 stat 很慢，这里按 offset/limit 分段扫描，返回 has_more 供前端继续。"""
     if not _require_cap('manage_books'):
         return jsonify({'success': False, 'message': '无书籍管理权限'}), 403
-    offset = request.args.get('offset', 0, type=int)
-    limit = min(request.args.get('limit', 300, type=int), 1000)
+    offset = max(0, request.args.get('offset', 0, type=int))
+    # [FIX] 负 limit 在 SQLite 等于「无限制」，会一次 stat 全库卡死；补下限
+    limit = min(max(request.args.get('limit', 300, type=int), 1), 1000)
     rows = (db.session.query(Book.id, Book.title, Book.filename, Book.relative_path, Book.file_type)
             .order_by(Book.id.asc()).offset(offset).limit(limit).all())
     books_dir = str(current_app.config['BOOKS_DIR'])
@@ -4417,6 +4639,7 @@ def admin_books_batch():
     files_failed = []
     files_moved = 0
     files_skipped = 0
+    pending_reports = []
     if action == 'delete':
         for bid in ids:
             b = Book.query.get(bid)
@@ -4424,8 +4647,10 @@ def admin_books_batch():
                 failed.append(bid); continue
             if b.category_id:
                 touched.add(b.category_id)
-            # 连磁盘文件 / 封面 / 阅读进度 / 书签一起清掉
-            rep = _purge_book(b)
+            # [FIX] 先只清数据库、磁盘删除延后到 commit 成功后，
+            # 避免 commit 失败时书已经物理消失但记录还在。
+            rep = _purge_book(b, defer_files=True)
+            pending_reports.append(rep)
             if rep['file_deleted']:
                 files_deleted += 1
             elif rep['errors']:
@@ -4476,7 +4701,10 @@ def admin_books_batch():
         db.session.commit()
     except Exception as e:
         db.session.rollback()
+        # commit 失败：数据库已回滚，延后的磁盘删除从未执行，书与记录保持一致
         return jsonify({'success': False, 'message': '操作失败：' + str(e)}), 500
+    if pending_reports:
+        _flush_pending_deletes(pending_reports)  # DB 已落盘，此时删文件才安全
     _invalidate_tags_cache()  # 批量操作可能改了标签
     # 重算受影响分类的书本数
     for cid in touched:
@@ -4593,10 +4821,8 @@ def admin_books_series():
     kind = request.args.get('kind', 'volume')
     if kind not in ('volume', 'chapter'):
         return jsonify({'success': False, 'message': 'kind 只能是 volume 或 chapter'}), 400
-    rows = (db.session.query(Book.id, Book.title, Book.filename, Book.file_type)
-            .order_by(Book.id.asc()).all())
-    data = [{'id': r[0], 'title': r[1], 'filename': r[2], 'file_type': r[3]}
-            for r in rows]
+    # [PERF] 复用全量快照缓存，避免每次请求都把 6 万本拉进内存
+    data = _get_fullscan_rows()
     groups = [g for g in book_tools.group_series(data) if g['kind'] == kind]
     return jsonify({'success': True, 'kind': kind, 'scanned': len(data),
                     'total_groups': len(groups), 'groups': groups})
@@ -4619,10 +4845,8 @@ def admin_books_auto_tags():
     # 只给「同系列 >= 2 本」的组员建议系列名标签——比逐本判断误标率低得多。
     series_map = {}
     if include_series:
-        all_rows = (db.session.query(Book.id, Book.title, Book.filename)
-                    .order_by(Book.id.asc()).all())
-        data = [{'id': r[0], 'title': r[1], 'filename': r[2], 'file_type': ''}
-                for r in all_rows]
+        # [PERF] 复用同一份快照，翻页不再重复全库扫描
+        data = _get_fullscan_rows()
         for g in book_tools.group_series(data, min_size=2, max_groups=400):
             base = (g['base'] or '')[:20]
             for m in g['books']:
@@ -4980,10 +5204,13 @@ def admin_category_rename(cat_id):
     cat = Category.query.get_or_404(cat_id)
     data = request.get_json(silent=True) or {}
     new_name = (data.get('name') or '').strip()
-    if not new_name or '/' in new_name:
-        return jsonify({'success': False, 'message': '名称不能为空且不能含 /'}), 400
+    if not _valid_cat_name(new_name):
+        return jsonify({'success': False,
+                        'message': '名称不能为空，且不能包含斜杠、. 或 .. 等路径片段'}), 400
     old_path = cat.path
     new_path = (cat.parent.path + '/' + new_name) if cat.parent else new_name
+    if not _valid_cat_path(new_path):
+        return jsonify({'success': False, 'message': '分类路径不合法'}), 400
     if new_path != old_path and Category.query.filter_by(path=new_path).first():
         return jsonify({'success': False, 'message': '已存在同名分类'}), 409
     cat.name = new_name
@@ -5467,12 +5694,13 @@ def get_recommendations(book_id):
         key = book_tools.normalize_series_key(base)
         cur_order = s.get('order') or 0
         if key:
-            pat_pfx = base + '%'
-            pat_sub = '%' + base + '%'
+            # [FIX] 转义 % _ ，避免系列名含通配符时推荐出一堆无关书
+            pat_pfx = _like_prefix(base)
+            pat_sub = '%' + _like_prefix(base)
             cands = Book.query.filter(
                 Book.id != book_id,
-                db.or_(Book.title.like(pat_pfx), Book.title.like(pat_sub),
-                       Book.filename.like(pat_pfx), Book.filename.like(pat_sub))
+                db.or_(Book.title.like(pat_pfx, escape='\\'), Book.title.like(pat_sub, escape='\\'),
+                       Book.filename.like(pat_pfx, escape='\\'), Book.filename.like(pat_sub, escape='\\'))
             ).limit(250).all()
             nxt, prev = [], []
             for b in cands:

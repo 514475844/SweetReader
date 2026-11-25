@@ -84,9 +84,13 @@ class BookUtils:
         type_map = {
             '.epub': 'EPUB', '.pdf': 'PDF', '.mobi': 'MOBI', '.azw3': 'AZW3',
             '.txt': 'TXT', '.doc': 'DOC', '.docx': 'DOCX',
-            '.rtf': 'RTF', '.odt': 'ODT', '.fb2': 'FB2', '.cbz': 'CBZ', '.cbr': 'CBR'
+            '.rtf': 'RTF', '.odt': 'ODT', '.fb2': 'FB2', '.cbz': 'CBZ', '.cbr': 'CBR',
+            # [FIX] 扫描器声明支持但此前漏映射，导致入库为「未知」
+            '.md': 'MD', '.markdown': 'MD', '.html': 'HTML', '.htm': 'HTML',
+            '.xhtml': 'HTML', '.mhtml': 'HTML', '.log': 'LOG', '.cn': 'CN'
         }
-        return type_map.get(ext, '未知')
+        # [FIX] 统一大写口径，避免同格式两种写法让筛选漏书
+        return (type_map.get(ext) or '未知').upper()
 
     @staticmethod
     def get_file_icon(filename):

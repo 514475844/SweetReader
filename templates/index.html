@@ -983,7 +983,7 @@ body.dark-theme .batch-modal select { background: #1e1e28; color: #e0e0e0; borde
             <li class="cat-node{% if not c.valid %} cat-noise{% endif %}" data-id="{{ c.id }}" data-level="1" data-path="{{ c.path }}">
                 <div class="cat-row">
                     {% if c.has_children %}<span class="caret" onclick="toggleCatNode(this, {{ c.id }}, event)">▸</span>{% else %}<span class="caret empty">·</span>{% endif %}
-                    <a href="javascript:void(0)" class="cat-item" data-cat="{{ c.path }}" onclick="filterCategory('{{ c.path }}')">📁 {{ c.name }}<span class="badge">{{ c.book_count }}</span></a>
+                    <a href="javascript:void(0)" class="cat-item js-cat-filter" data-cat="{{ c.path }}">📁 {{ c.name }}<span class="badge">{{ c.book_count }}</span></a>
                 </div>
                 <ul class="cat-children" data-loaded="0"></ul>
             </li>
@@ -1398,6 +1398,14 @@ function loadTagFilters() {
         .catch(function() {});
 }
 
+// [FIX] 分类筛选统一走 data 属性委托，杜绝把分类名拼进 onclick 造成脚本注入
+document.addEventListener('click', function(e){
+  var el = e.target.closest && e.target.closest('.js-cat-filter');
+  if(el && typeof filterCategory === 'function'){
+    e.preventDefault();
+    filterCategory(el.getAttribute('data-cat') || '');
+  }
+});
 function filterCategory(cat) {
     currentCategory = cat;
     document.querySelectorAll('.sidebar .cat-item').forEach(function(el) {
@@ -1531,8 +1539,8 @@ function updateSearchStats(data) {
         if (st && st.categories && st.categories.length) {
             html += ' <span style="margin-left:6px;">';
             st.categories.forEach(function(c) {
-                html += '<span class="stat-cat" onclick="filterCategory(&quot;' + (c.path || '') + '&quot;)" title="按该分类筛选">' +
-                    escapeHtml(c.name) + ' ' + c.count + '</span>';
+                html += '<span class="stat-cat js-cat-filter" data-cat="' + esc(c.path || '') + '" title="按该分类筛选">' +
+                    esc(c.name) + ' ' + c.count + '</span>';
             });
             html += '</span>';
         }
@@ -2332,7 +2340,7 @@ function updateBreadcrumb() {
         if (i === parts.length - 1) {
             html += '<span class="bc-item current">' + escapeHtml(p) + '</span>';
         } else {
-            html += '<span class="bc-item" onclick="filterCategory(&quot;' + p + '&quot;)">' + escapeHtml(p) + '</span>';
+            html += '<span class="bc-item js-cat-filter" data-cat="' + esc(p) + '">' + esc(p) + '</span>';
         }
     }
     box.innerHTML = html;
@@ -2389,7 +2397,8 @@ function loadHero(){
   fetch('/api/books?page=1&per_page=12', {credentials:'same-origin'})
     .then(function(r){ return r.json(); })
     .then(function(d){
-      var books = (d.books || []).slice(0, 12);
+      // [FIX] /api/books 返回的就是数组，不是 {books:[...]}
+      var books = (Array.isArray(d) ? d : (d.books || [])).slice(0, 12);
       var track = document.getElementById('heroTrack');
       if(!books.length){ box.style.display='none'; return; }
       track.innerHTML = books.map(function(b){

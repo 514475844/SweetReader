@@ -23,6 +23,7 @@
 读取自己的设置：get_plugin_settings('your_plugin_id')  ->  合并默认值后的 dict。
 """
 import os
+import sys
 import json
 import importlib
 import importlib.util
@@ -105,7 +106,19 @@ class PluginRegistry:
         self._loaded = True
 
     def reload(self):
-        """重新扫描（管理页「重新扫描」用）。"""
+        """重新扫描（管理页「重新扫描」用）。
+
+        [FIX] import_module 会命中 sys.modules 缓存，改完插件代码必须把相关模块
+        从缓存里摘掉，否则 PLUGIN 对象还是旧的，页面显示「已生效」其实没生效。
+        """
+        import sys
+        for name in list(sys.modules):
+            if name.startswith('app.plugins.builtin.') or name.startswith('app.plugins.user.') \
+                    or name.startswith('sr_user_'):
+                try:
+                    del sys.modules[name]
+                except KeyError:
+                    pass
         self._loaded = False
         self._plugins = {}
         self.load()
@@ -126,10 +139,14 @@ class PluginRegistry:
         if not os.path.isdir(d):
             return
         for fn in sorted(os.listdir(d)):
+            path = os.path.join(d, fn)
             if fn.endswith('.py') and not fn.startswith('_'):
-                path = os.path.join(d, fn)
                 name = fn[:-3]
                 self._import_plugin_file(path, 'sr_user_%s' % name, 'user')
+            elif os.path.isdir(path) and os.path.isfile(os.path.join(path, '__init__.py')):
+                # [FIX] zip 包插件解压后是目录，此前只认 .py 文件导致装了却永远不加载
+                self._import_plugin_file(os.path.join(path, '__init__.py'),
+                                         'sr_user_pkg_%s' % fn, 'user')
 
     def _import_plugin_module(self, modname, source):
         try:
@@ -150,7 +167,14 @@ class PluginRegistry:
                 print('[plugins] 无法加载 %s' % path, flush=True)
                 return
             m = importlib.util.module_from_spec(spec)
-            spec.loader.exec_module(m)
+            # [FIX] 注册到 sys.modules，Flask 才能从模块定位到插件目录，
+            # 否则 template_folder='templates' 被解析到进程当前目录 → TemplateNotFound
+            sys.modules[modname] = m
+            try:
+                spec.loader.exec_module(m)
+            except Exception:
+                sys.modules.pop(modname, None)
+                raise
             p = getattr(m, 'PLUGIN', None)
             if isinstance(p, Plugin):
                 p.source = source

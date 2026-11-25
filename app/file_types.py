@@ -17,6 +17,7 @@ import zipfile
 
 # ---- 扩展名 → 内部 file_type（与阅读器路由的判断口径保持一致）----
 EXT_TYPE_MAP = {
+    '.doc': 'doc', '.docx': 'docx', '.odt': 'odt',  # [FIX] 原先缺失，docx 被内容嗅探误判为 zip
     '.txt': 'txt', '.text': 'txt', '.log': 'txt', '.cn': 'txt',
     '.md': 'md', '.markdown': 'md',
     '.epub': 'epub',

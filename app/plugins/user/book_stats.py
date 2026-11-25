@@ -22,7 +22,12 @@ bp = Blueprint('book_stats', __name__, template_folder='templates')
 def stats_page():
     # 读取本插件设置（合并默认值后的 dict）
     cfg = registry.get_settings('book_stats')
-    top_n = int(cfg.get('topN', 8))
+    # [FIX] 设置值来自表单/API，类型未校验，填错就让统计页 500
+    try:
+        top_n = int(cfg.get('topN', 8) or 8)
+    except (TypeError, ValueError):
+        top_n = 8
+    top_n = max(1, min(100, top_n))
     show_format = bool(cfg.get('show_format', True))
     show_recent = bool(cfg.get('show_recent', True))
 

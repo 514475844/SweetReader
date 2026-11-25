@@ -315,13 +315,18 @@ class CategoryScanner:
             )
             return
 
-        # [C3] 没开外键级联，删书前必须手动清进度，否则留下悬空 reading_progress
-        from app.models import ReadingProgress
+        # [C3] 没开外键级联，删书前必须手动清进度 / 书签 / 权限，
+        # 否则 NOT NULL 外键会抛 IntegrityError 让整轮扫描失败。
+        from app.models import ReadingProgress, Bookmark, BookPermission
+
+        def _purge_relations(book_id):
+            ReadingProgress.query.filter_by(book_id=book_id).delete(synchronize_session=False)
+            Bookmark.query.filter_by(book_id=book_id).delete(synchronize_session=False)
+            BookPermission.query.filter_by(book_id=book_id).delete(synchronize_session=False)
 
         for category in doomed:
             for book in category.books:
-                ReadingProgress.query.filter_by(book_id=book.id).delete(
-                    synchronize_session=False)
+                _purge_relations(book.id)
                 db.session.delete(book)
             db.session.delete(category)
             result['categories_removed'] = result.get('categories_removed', 0) + 1
@@ -333,8 +338,7 @@ class CategoryScanner:
         dead = [b for b in orphan_books
                 if not cls._book_file_exists(b, books_dir)]
         for book in dead:
-            ReadingProgress.query.filter_by(book_id=book.id).delete(
-                synchronize_session=False)
+            _purge_relations(book.id)
             db.session.delete(book)
         if dead:
             db.session.commit()
