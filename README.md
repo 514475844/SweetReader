@@ -3,7 +3,7 @@
 **SweetReader** 是一个轻量级的自托管电子书阅读器，支持 EPUB、PDF、TXT、DOCX、MOBI 等
 多种格式。你可以把它部署在 NAS、软路由或任何 Linux 设备上，随时随地阅读自己的书库。
 
-当前版本：**2.4**（[更新日志](CHANGELOG.md)）
+当前版本：**2.11**（[更新日志](CHANGELOG.md)）
 
 ---
 
@@ -186,7 +186,6 @@ python run.py
 
 ## 📋 待开发功能
 
-- [ ] 翻页动效（仿真翻页 / 平滑翻页）
 - [ ] 插件上传入口（直接上传单个文件或压缩包）
 - [ ] 全库乱码与损坏文件的检测、修复与清理
 - [ ] OPDS 支持
@@ -203,4 +202,4 @@ python run.py
 
 ## 📄 许可证
 
-MIT License，详见 [LICENSE](LICENSE)。
+GPL-3.0 License，详见 [LICENSE](LICENSE)。
